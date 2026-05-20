@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "mineral-silicon-496400-a0",
+  "private_key_id": "a4f3a84609a5b80b38d53a488a88876140688618",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDJs4gbtKSxd1Jc\nmE9gaNm8OOz9mtvh9atYzQznRYNsd48EyEMDw91EJWQX8gs+GyNlOv61fdL82aGJ\n5WKt98Xnbw8pF2te1jhFIRVqbCoLupC+wv3vCyyaFDK6oA0lwibXFHrOVkHCYAbJ\nhnchZO8whkZuzYSXEh3tWRZAYNiwjyBRiF3B1aX8vLod8ztOKPTsGHvL9BLNAQVx\nOeL6ME6T7tE4wxl3tkfwHrYeL35lnIgu8/Mn47lAPIdjDKfz0WnG5B40LUUcMTgx\nRJVWKeo2WBxJhS7IAJQ1hvtAl69R1QJbLT2hUNoVo6461bnq9jpUPu45W+7ZU//b\nOUkbpM8HAgMBAAECggEAA2HiV2yZEmzI0cqwEhLQC+r8dmhBZbGj9PJDVCGDSa9b\nk530Gb0QGdNysUAa1ijIWCs8GDkK77iKj/BrzjUIeZAQNgUxhL6c5PPgEw/LSLUR\nNlG4xmhukArkquKCNe7ijdrHEGy735GSq5B4sPOrWyn1Rmhl386q9871o5C8MYG9\nTlZOYYc/PM3fJSiBUgmJzoP/b0QPmfAKA2TIRHnaF7iF2Fsq3BK/+RhViYfKEDb0\nGgy558ATDkf1JRhyghKsDBZq5/uOQluzApStUWJLn07N+zOjfs+3jKEMyeMRoSxM\njgxBC/TZ4s/a/kuhaPR5Y6+mXxAAQvZXKiyFhh1xMQKBgQDpJjmA/pw9SXRAe++/\nj2TAgV7DpsRyD+tNC1tTkEol+KK2W2BomAvZNeZoLlt4eEre2x0FcTrtzfHSV2Da\n0v4/cRzY64vUpfibLXKBMU7aURtonZpJSgLK6tdGsYmzMCisRCzRUf8o9YpGgW9J\nTR7x9t9KFkvQga4rjIVhRj4IOQKBgQDdeEStv1nXkT+in4hhS/Xba++KMeHbcIga\n1JAjgLMDM/ZAZWtCZ49mnFUKpiS29bNsEFPLXEii1Q4LOH2J66w8j3BixhPBi22j\nPTJOXVEpJTIm+ZMmJPWMpaA76Tw4LGeuwkGfvYXoLW/e9DA71gGY7J84WmpsYrBI\nMPWqMH0RPwKBgQCKCRCIl7XG70M9nmL+ZhY/hxik+4pZAaXNEok6ezX7Ly6eipEU\nu9hf/HJygeez9nxVXyLagwRhoMmoQAVe6QaQZxauMx6xgqYisZCWfqvxw41Xrd+X\nvpLSsqFMAHbHOR8Lhr2GHGbWSDFatu09V8SXexMOGQ8/3ldQ/zxEsEKvuQKBgEd6\nqa/qMnUAzCkQlFPS0GchTw6rStooV8VRFbRftWczPidKlHO6OO5FRq1JMlBavK4E\nFwdroYXsfbvhX6NEDTL+mKdIhtfQyHIHLlVciPVeq/EoW/XTt+zNCApOHMGEk3I0\nADouUSm+gHzVEzw8tgdFV544kGCq+XpTUva676LBAoGBANFxNF6XAWaMeGbmkYkT\n1wfgKdr2h0Q5UuQAYYfFHhkIUzBHqgOV81qWMxQ9BqEqfkWbbE5TfMnQyr9mK9XU\nOtFGbeGOVYXtEhUN6Ka+FrXdjG/PoUnHcXNnabSBKqYXqn6EYd8nRM4pUtCxLYwS\nwp8XoB63aBFOxXPlreQOxvWY\n-----END PRIVATE KEY-----\n",
+  "client_email": "burreria-wallet-motor@mineral-silicon-496400-a0.iam.gserviceaccount.com",
+  "client_id": "114873562200782397271",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/burreria-wallet-motor%40mineral-silicon-496400-a0.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
