@@ -1,7 +1,8 @@
 import { SignJWT, importPKCS8 } from 'jose'
 import { NextResponse } from 'next/server'
 
-export async function POST(req: Request): Promise<NextResponse> {
+// 1. Cambiamos Promise<NextResponse> por Promise<Response> (Next.js lo prefiere así)
+export async function POST(req: Request): Promise<Response> {
   try {
     const body = await req.json()
     const id = String(body.id || body.clienteId || '')
@@ -22,49 +23,39 @@ export async function POST(req: Request): Promise<NextResponse> {
       return NextResponse.json({ error: 'Credenciales incompletas en el servidor' }, { status: 500 })
     }
 
-    // CAMBIAMOS A V6 PARA BURLAR EL CACHÉ DE GOOGLE OTRA VEZ
-    const classId = `${issuerId}.burreria_vip_class_v6`
-    const objectId = `${issuerId}.${id}`
+    // Apuntamos a la clase que creaste en la consola
+    const classId = `${issuerId}.lealtad_v1`
+    const objectId = `${issuerId}.${id.replace(/[^a-zA-Z0-9_-]/g, '')}` 
 
     const payload = {
       iss: clientEmail,
       aud: 'google',
       typ: 'savetowallet',
-      // CORRECCIÓN 1: Origins es obligatorio para que Google no bloquee el pase
       origins: ['http://localhost:3000', 'https://lealtad-burreria.vercel.app'], 
       payload: {
-        genericClasses: [{
-          id: classId,
-          // CORRECCIÓN 2: Omitir esto hace que Google rechace la clase silenciosamente
-          issuerName: 'La Burrería', 
-          classTemplateInfo: {
-            cardTemplateOverride: {
-              cardRowTemplateInfos: [{
-                twoItems: {
-                  startItem: { firstValue: { fields: [{ fieldPath: "object.textModulesData['puntos']" }] } },
-                  endItem: { firstValue: { fields: [{ fieldPath: "object.textModulesData['nombre']" }] } }
-                }
-              }]
-            }
-          }
-        }],
-        genericObjects: [{
+        loyaltyObjects: [{
           id: objectId,
           classId: classId,
-          cardTitle: { defaultValue: { language: 'es', value: 'La Burrería VIP' } },
-          header: { defaultValue: { language: 'es', value: nombre } },
-          textModulesData: [
-            { id: 'puntos', header: 'Sellos Acumulados', body: `${puntos} de 10` },
-            { id: 'nombre', header: 'ID VIP', body: id.split('-')[0].toUpperCase() }
-          ],
-          barcode: { type: 'QR_CODE', value: id },
-          hexBackgroundColor: '#09090b'
+          state: 'ACTIVE',
+          accountId: id,
+          accountName: nombre,
+          barcode: {
+            type: 'QR_CODE',
+            value: id,
+            alternateText: 'Escanea en mostrador'
+          },
+          loyaltyPoints: {
+            balance: { string: String(puntos) },
+            label: 'Sellos Acumulados'
+          }
         }]
       }
     }
 
     const privateKeyObj = await importPKCS8(privateKey, 'RS256')
-    const token = await new SignJWT(payload)
+    
+    // 2. Agregamos "as any" para que la librería jose no marque advertencia naranja
+    const token = await new SignJWT(payload as any)
       .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
       .setIssuedAt()
       .setExpirationTime('1h')
