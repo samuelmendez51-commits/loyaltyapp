@@ -9,11 +9,9 @@ export default function TarjetaLealtadFinal() {
   const [cliente, setCliente] = useState<any>(null)
   const [cargando, setCargando] = useState(true)
   
-  // Estados para saber si estamos generando el pase
   const [generandoGoogle, setGenerandoGoogle] = useState(false)
   const [generandoApple, setGenerandoApple] = useState(false)
 
-  // Total de estampillas por defecto
   const sellosTotales = 10 
 
   useEffect(() => {
@@ -30,9 +28,6 @@ export default function TarjetaLealtadFinal() {
     cargarDatos()
   }, [id])
 
-  // ==========================================
-  // MOTOR 1: GOOGLE WALLET
-  // ==========================================
   const generarPaseGoogle = async () => {
     setGenerandoGoogle(true)
     try {
@@ -41,9 +36,7 @@ export default function TarjetaLealtadFinal() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ clienteId: cliente.id })
       })
-      
       const data = await res.json()
-      
       if (data.url) {
         window.location.href = data.url
       } else {
@@ -57,9 +50,6 @@ export default function TarjetaLealtadFinal() {
     }
   }
 
-  // ==========================================
-  // MOTOR 2: APPLE WALLET
-  // ==========================================
   const generarPaseApple = async () => {
     setGenerandoApple(true)
     try {
@@ -70,8 +60,6 @@ export default function TarjetaLealtadFinal() {
       })
 
       const contentType = res.headers.get('Content-Type')
-      
-      // Si nos devuelve el archivo físico (.pkpass), forzamos la descarga
       if (contentType && contentType.includes('application/vnd.apple.pkpass')) {
         const blob = await res.blob()
         const url = window.URL.createObjectURL(blob)
@@ -81,7 +69,6 @@ export default function TarjetaLealtadFinal() {
         a.click()
         window.URL.revokeObjectURL(url)
       } else {
-        // Si no hay llaves aún, nos devuelve la simulación en texto
         const data = await res.json()
         if (data.simulacion) {
           alert(data.mensaje)
@@ -97,20 +84,18 @@ export default function TarjetaLealtadFinal() {
     }
   }
 
-  // PANTALLA DE CARGA
   if (cargando) return (
-    <div className="min-h-screen bg-zinc-950 flex items-center justify-center font-sans text-amber-500 animate-pulse">
-      Cargando acceso VIP...
+    <div className="min-h-screen flex items-center justify-center font-sans text-[var(--brand-gold)] animate-pulse relative z-10 font-bold uppercase tracking-widest text-sm">
+      Abriendo Bóveda VIP...
     </div>
   )
 
-  // PANTALLA DE ERROR (Cliente no encontrado)
   if (!cliente) return (
-    <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center font-sans text-white p-4">
-      <div className="w-full max-w-[360px] bg-gradient-to-b from-zinc-900 to-black rounded-[30px] border border-zinc-800 p-8 text-center shadow-2xl">
-        <span className="text-red-500 text-6xl block mb-4">⚠️</span>
-        <h1 className="text-2xl font-black italic tracking-tighter mb-2">CLIENTE NO ENCONTRADO</h1>
-        <p className="text-zinc-400 text-sm">Este pase VIP ya no existe o fue eliminado de la base de datos.</p>
+    <div className="min-h-screen flex flex-col items-center justify-center font-sans text-white p-4 relative z-10">
+      <div className="card-glass w-full max-w-[380px] p-10 text-center">
+        <span className="text-red-500 text-6xl block mb-6 drop-shadow-[0_0_15px_rgba(239,68,68,0.5)]">⚠️</span>
+        <h1 className="text-3xl font-serif font-black italic tracking-tighter mb-4 text-white">No Encontrado</h1>
+        <p className="text-[#a1a1aa] font-sans text-xs uppercase tracking-widest leading-relaxed">Este pase VIP no existe o fue eliminado.</p>
       </div>
     </div>
   )
@@ -118,52 +103,44 @@ export default function TarjetaLealtadFinal() {
   const sellosMarcados = cliente.puntos || 0
 
   return (
-    <main className="min-h-screen bg-zinc-950 flex items-center justify-center p-4 selection:bg-red-600">
+    <main className="min-h-screen flex items-center justify-center p-4 relative z-10 font-sans">
       
-      {/* CONTENEDOR MAESTRO */}
-      <div className="w-full max-w-[360px] bg-gradient-to-b from-zinc-900 to-black rounded-[30px] shadow-[0_20px_50px_rgba(0,0,0,0.8)] overflow-hidden border border-zinc-800 relative">
+      {/* TARJETA MAESTRA */}
+      <div className="card-glass w-full max-w-[380px] overflow-hidden relative">
         
-        {/* Brillo decorativo superior */}
-        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-red-600 via-amber-500 to-red-600"></div>
+        {/* Línea superior brillante */}
+        <div className={`absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-transparent ${sellosMarcados >= sellosTotales ? 'via-[var(--brand-gold)]' : 'via-[var(--brand-red)]'} to-transparent opacity-80`}></div>
 
-        {/* LOGO */}
-        <div className="w-full pt-8 pb-4 flex justify-center drop-shadow-[0_5px_15px_rgba(239,68,68,0.15)]">
+        {/* LOGO Y BRANDING */}
+        <div className="w-full pt-10 pb-4 flex flex-col items-center drop-shadow-[0_0_25px_rgba(185,28,28,0.1)]">
           <img 
             src="/logo.png" 
             alt="Logo La Burrería" 
-            className="w-[100px] h-[100px] object-contain block" 
+            className="w-[110px] h-[110px] object-contain block mb-6 filter drop-shadow-lg" 
           />
-        </div>
-
-        {/* NOMBRE DEL USUARIO Y TÍTULO */}
-        <div className="text-center px-6 mb-8">
-          <p className="text-amber-500 text-[10px] font-black uppercase tracking-[0.3em] mb-1">
-            CLUB VIP DE LA BURRERIA
+          <p className="text-[var(--brand-gold)] text-[9px] font-black uppercase tracking-[0.4em] mb-2">
+            Club VIP de La Burrería
           </p>
-          <h1 className="text-white text-3xl font-black uppercase italic tracking-tighter truncate leading-tight">
+          <h1 className="text-white text-3xl sm:text-4xl font-serif font-black italic tracking-wide truncate w-full text-center px-6 drop-shadow-md">
             {cliente.nombre}
           </h1>
         </div>
 
-        {/* SISTEMA DE SELLOS: Estética Ultra Premium */}
-        <div className="p-6 bg-black/40 border-y border-zinc-800/50">
-          <div className="grid grid-cols-5 gap-y-6 gap-x-2 place-items-center">
+        {/* SISTEMA DE SELLOS (Manteniendo tu brillo espectacular) */}
+        <div className="p-8 bg-black/50 border-y border-[var(--border-subtle)] relative">
+          <div className="grid grid-cols-5 gap-y-6 gap-x-3 place-items-center relative z-10">
             {[...Array(sellosTotales)].map((_, i) => {
               const estaMarcado = i < sellosMarcados;
               return (
                 <div key={i} className="relative flex justify-center items-center w-full">
                   {estaMarcado ? (
-                    <div className="w-[45px] h-[45px] rounded-full bg-gradient-to-br from-[#FFD700] via-[#FDB931] to-[#B8860B] border-[3px] border-black flex items-center justify-center shadow-[0_0_20px_rgba(255,215,0,0.5)] transform hover:scale-110 transition-transform duration-300 z-10 relative">
-                      <span className="text-black text-xl font-black drop-shadow-md">★</span>
+                    <div className="w-[48px] h-[48px] rounded-full bg-gradient-to-br from-[#FFD700] via-[#FDB931] to-[#B8860B] border-[3px] border-[#3f3f46] flex items-center justify-center shadow-[0_0_20px_rgba(255,215,0,0.4)] transform hover:scale-110 transition-transform duration-300 z-10 relative">
+                      <span className="text-[#452000] text-2xl font-black drop-shadow-sm">★</span>
                     </div>
                   ) : (
-                    <div className="w-[40px] h-[40px] rounded-full bg-zinc-900/50 border-2 border-dashed border-zinc-700 flex items-center justify-center z-10 relative shadow-inner">
-                      <span className="text-zinc-800 text-sm font-black">★</span>
+                    <div className="w-[42px] h-[42px] rounded-full bg-[#0a0a0a] border-2 border-dashed border-[#3f3f46] flex items-center justify-center z-10 relative shadow-inner">
+                      <span className="text-[#27272a] text-lg font-black">★</span>
                     </div>
-                  )}
-                  
-                  {i % 5 !== 4 && (
-                     <div className="absolute top-1/2 -right-3 w-4 h-[2px] bg-zinc-800/50 -translate-y-1/2 z-0 hidden sm:block"></div>
                   )}
                 </div>
               );
@@ -171,59 +148,69 @@ export default function TarjetaLealtadFinal() {
           </div>
         </div>
 
-        {/* MENSAJE DE PROGRESO */}
-        <div className="text-center mt-6 px-4">
-          <p className="text-xs text-zinc-400 font-bold uppercase tracking-wider">
+        {/* ESTATUS DE PROGRESO */}
+        <div className="text-center mt-8 px-6">
+          <p className="text-[11px] text-[#a1a1aa] font-bold uppercase tracking-[0.3em]">
             {sellosMarcados >= sellosTotales ? (
-              <span className="text-amber-500 font-black animate-pulse">¡PREMIO DESBLOQUEADO! 🎁</span>
+              <span className="text-green-500 font-black animate-pulse drop-shadow-[0_0_10px_rgba(34,197,94,0.5)]">¡PREMIO DESBLOQUEADO! 🏆</span>
             ) : (
-              <>FALTAN <span className="text-red-500 font-black mx-1">{sellosTotales - sellosMarcados}</span> SELLOS</>
+              <>FALTAN <span className="text-[var(--brand-red)] font-black mx-1.5 text-sm">{sellosTotales - sellosMarcados}</span> SELLOS</>
             )}
           </p>
         </div>
 
         {/* CÓDIGO QR */}
-        <div className="flex flex-col items-center py-6">
-          <div className="p-3 bg-white rounded-2xl shadow-[0_0_20px_rgba(255,255,255,0.1)]">
-            <QRCodeSVG value={cliente.id} size={140} level="H" fgColor="#000000" />
+        <div className="flex flex-col items-center py-8">
+          <div className="p-4 bg-white rounded-3xl shadow-[0_0_40px_rgba(255,255,255,0.15)] transform hover:scale-105 transition-transform duration-300">
+            <QRCodeSVG value={cliente.id} size={150} level="H" fgColor="#000000" />
           </div>
-          <p className="mt-3 text-[10px] text-zinc-600 font-mono tracking-widest">
-            ID: {cliente.id.substring(0, 8).toUpperCase()}
+          <p className="mt-4 text-[10px] text-[#71717a] font-mono tracking-widest uppercase">
+            ID-VIP: {cliente.id.substring(0, 8)}
           </p>
         </div>
 
-        {/* BOTONES DE WALLET */}
-        <div className="flex gap-3 px-6 pb-8">
+        {/* BOTONES DE WALLET NATIVOS (Diseño Premium Stacked) */}
+        <div className="flex flex-col gap-4 px-8 pb-10">
           
-          {/* BOTÓN APPLE WALLET DINÁMICO */}
+          {/* BOTÓN APPLE WALLET */}
           <button 
             onClick={generarPaseApple}
             disabled={generandoApple}
-            className={`flex-1 h-12 bg-black border border-zinc-800 rounded-xl flex items-center justify-center transition-all shadow-[0_4px_10px_rgba(0,0,0,0.5)] ${
-              generandoApple ? 'opacity-50 cursor-not-allowed' : 'active:scale-95 hover:bg-zinc-900'
+            className={`w-full h-14 bg-black border border-[#3f3f46] rounded-2xl flex items-center justify-center transition-all shadow-lg ${
+              generandoApple ? 'opacity-50 cursor-not-allowed' : 'active:scale-95 hover:bg-[#18181b] hover:border-[#a1a1aa]'
             }`}
           >
             {generandoApple ? (
-              <span className="text-[10px] font-black text-white uppercase tracking-widest animate-pulse">Generando...</span>
+              <span className="text-[10px] font-black text-white uppercase tracking-widest animate-pulse">Procesando...</span>
             ) : (
-              <img src="https://upload.wikimedia.org/wikipedia/commons/b/b3/Add_to_Apple_Wallet_badge.svg" alt="Añadir a Apple Wallet" className="h-7" />
+              <div className="flex items-center gap-3">
+                <svg viewBox="0 0 384 512" className="h-6 text-white fill-current"><path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/></svg>
+                <div className="flex flex-col items-start">
+                  <span className="text-[9px] font-medium leading-none text-white/80">Añadir a</span>
+                  <span className="text-lg font-semibold leading-tight text-white tracking-wide">Apple Wallet</span>
+                </div>
+              </div>
             )}
           </button>
           
-          {/* BOTÓN GOOGLE WALLET DINÁMICO */}
+          {/* BOTÓN GOOGLE WALLET */}
           <button 
             onClick={generarPaseGoogle}
             disabled={generandoGoogle}
-            className={`flex-1 h-12 bg-[#1a1a1a] border border-zinc-800 rounded-xl flex items-center justify-center transition-all shadow-[0_4px_10px_rgba(0,0,0,0.5)] ${
-              generandoGoogle 
-                ? 'opacity-50 cursor-not-allowed' 
-                : 'active:scale-95 hover:bg-zinc-800'
+            className={`w-full h-14 bg-[#1a1a1b] border border-[#3f3f46] rounded-2xl flex items-center justify-center transition-all shadow-lg ${
+              generandoGoogle ? 'opacity-50 cursor-not-allowed' : 'active:scale-95 hover:bg-[#27272a] hover:border-[#a1a1aa]'
             }`}
           >
             {generandoGoogle ? (
-              <span className="text-[10px] font-black text-white uppercase tracking-widest animate-pulse">Generando...</span>
+              <span className="text-[10px] font-black text-white uppercase tracking-widest animate-pulse">Procesando...</span>
             ) : (
-              <img src="https://upload.wikimedia.org/wikipedia/commons/f/f2/Google_Pay_Logo.svg" alt="Añadir a Google Wallet" className="h-5" />
+              <div className="flex items-center gap-3">
+                <svg viewBox="0 0 512 512" className="h-5"><path fill="#4285F4" d="M386 400c45-42 74-103 74-171 0-16-1-32-5-47H261v89h112c-5 29-21 54-43 71l56 58z"></path><path fill="#34A853" d="M261 460c70 0 129-23 172-63l-56-58c-24 16-53 25-86 25-66 0-122-45-142-106l-59 45c43 85 131 142 229 142z"></path><path fill="#FBBC05" d="M119 258c-5-15-8-32-8-49s3-34 8-49l-59-45c-16 31-25 67-25 104s9 73 25 104l59-45z"></path><path fill="#EA4335" d="M261 146c38 0 73 13 100 39l75-75C391 66 331 40 261 40 163 40 75 97 32 182l59 45c20-61 76-106 142-106z"></path></svg>
+                <div className="flex flex-col items-start">
+                  <span className="text-[9px] font-medium leading-none text-white/80">Añadir a</span>
+                  <span className="text-lg font-semibold leading-tight text-white tracking-wide">Google Wallet</span>
+                </div>
+              </div>
             )}
           </button>
 

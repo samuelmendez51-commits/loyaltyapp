@@ -74,52 +74,54 @@ export default function LoginPantalla() {
   }
 
   return (
-    <main className="min-h-screen bg-[#0a0a0a] text-white flex flex-col items-center justify-center p-4 selection:bg-red-600/30 relative overflow-hidden antialiased">
+    <main className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
       
-      {/* MARCA DE AGUA: Logo brillante en el fondo */}
-      <div className="absolute inset-0 flex items-center justify-center opacity-[0.015] pointer-events-none z-0">
-          <img src="/logo.png" alt="La Burrería" className="w-[120vw] sm:w-[80vw] max-w-[800px] object-contain filter grayscale invert brightness-100" />
+      {/* MARCA DE AGUA: Logo brillante en el fondo - Ahora más sutil para la elegancia */}
+      <div className="absolute inset-0 flex items-center justify-center opacity-[0.02] pointer-events-none z-0">
+          <img src="/logo.png" alt="La Burrería" className="w-[120vw] sm:w-[80vw] max-w-[800px] object-contain filter grayscale invert" />
       </div>
 
-      <div className="relative z-10 w-full max-w-[380px] flex flex-col items-center">
+      {/* CONTENEDOR TIPO BÓVEDA (Usa la clase card-glass global) */}
+      <div className="card-glass w-full max-w-[420px] p-8 sm:p-10 flex flex-col items-center relative z-10">
         
-        {/* HEADER BRANDING: Limpio y centrado */}
-        <div className="mb-10 text-center flex flex-col items-center border-b border-zinc-900 pb-6">
-          <h1 className="text-3xl font-black uppercase tracking-widest text-white shadow-black drop-shadow-md mb-2">
-            La <span className="text-red-600 font-serif italic">Burrería</span> Club 🤠
+        {/* HEADER BRANDING */}
+        <div className="mb-10 text-center flex flex-col items-center border-b border-[var(--border-subtle)] w-full pb-8">
+          <h1 className="text-4xl font-black uppercase mb-1">
+            La <span className="text-[var(--brand-red)] font-serif italic font-normal">Burrería</span>
           </h1>
-          <p className="text-[#e5c07b] text-[10px] uppercase font-bold tracking-[0.4em]">Control de Acceso VIP</p>
+          <h2 className="text-[var(--brand-gold)] font-sans text-xl tracking-[0.3em] font-black mb-2">CLUB</h2>
+          <p className="text-[#a1a1aa] font-sans text-[10px] uppercase font-bold tracking-[0.4em]">Acceso Restringido</p>
         </div>
 
         {/* INDICADOR DE PUNTOS (PIN) Y MENSAJE */}
         <div className="mb-10 w-full flex flex-col items-center">
-          <div className={`flex gap-5 mb-5 ${error ? 'animate-[shake_0.5s_ease-in-out]' : ''}`}>
+          <div className={`flex gap-6 mb-6 ${error ? 'animate-[shake_0.5s_ease-in-out]' : ''}`}>
             {[0, 1, 2, 3].map((index) => (
               <div 
                 key={index}
-                className={`w-4 h-4 rounded-full border-2 transition-all duration-300 ${
+                className={`w-5 h-5 rounded-full transition-all duration-300 ${
                   pin.length > index 
-                    ? 'bg-red-600 border-red-600 shadow-[0_0_15px_rgba(220,38,38,0.8)] scale-125' 
+                    ? 'bg-[var(--brand-red)] shadow-[0_0_20px_var(--brand-red)] scale-110' 
                     : error 
-                      ? 'border-red-900 bg-red-950/30'
-                      : 'border-zinc-600 bg-zinc-900'
+                      ? 'border-2 border-red-900 bg-red-950/30'
+                      : 'border-2 border-[var(--border-subtle)] bg-black/50'
                 }`}
               />
             ))}
           </div>
-          <p className={`text-[11px] font-bold uppercase tracking-[0.2em] ${error ? 'text-red-500' : cargando ? 'text-[#e5c07b] animate-pulse' : 'text-zinc-500'}`}>
+          <p className={`font-sans text-[11px] font-bold uppercase tracking-[0.2em] h-4 ${error ? 'text-red-500' : cargando ? 'text-[var(--brand-gold)] animate-pulse' : 'text-[#71717a]'}`}>
             {mensaje}
           </p>
         </div>
 
-        {/* TECLADO NUMÉRICO PRO (LEGISLIBLE) */}
-        <div className="grid grid-cols-3 gap-4 w-full max-w-[280px] mx-auto">
+        {/* TECLADO NUMÉRICO ELEGANTE */}
+        <div className="grid grid-cols-3 gap-4 w-full max-w-[300px] mx-auto">
           {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
             <button
               key={num}
               onClick={() => manejarTecla(num.toString())}
               disabled={cargando}
-              className="aspect-square bg-[#18181b] border-2 border-zinc-800 rounded-2xl flex items-center justify-center text-3xl font-bold text-white hover:bg-zinc-800 hover:border-red-600/50 active:scale-95 transition-all shadow-[0_4px_10px_rgba(0,0,0,0.5)]"
+              className="aspect-square bg-black/40 border border-[var(--border-subtle)] rounded-2xl flex items-center justify-center text-3xl font-sans font-black text-white hover:bg-[#18181b] hover:border-[var(--brand-red)] hover:text-[var(--brand-gold)] active:scale-95 transition-all duration-200"
             >
               {num}
             </button>
@@ -130,7 +132,7 @@ export default function LoginPantalla() {
           <button
             onClick={() => manejarTecla('0')}
             disabled={cargando}
-            className="aspect-square bg-[#18181b] border-2 border-zinc-800 rounded-2xl flex items-center justify-center text-3xl font-bold text-white hover:bg-zinc-800 hover:border-red-600/50 active:scale-95 transition-all shadow-[0_4px_10px_rgba(0,0,0,0.5)]"
+            className="aspect-square bg-black/40 border border-[var(--border-subtle)] rounded-2xl flex items-center justify-center text-3xl font-sans font-black text-white hover:bg-[#18181b] hover:border-[var(--brand-red)] hover:text-[var(--brand-gold)] active:scale-95 transition-all duration-200"
           >
             0
           </button>
@@ -138,9 +140,9 @@ export default function LoginPantalla() {
           <button
             onClick={borrarUltimo}
             disabled={cargando}
-            className="aspect-square bg-transparent rounded-2xl flex items-center justify-center text-zinc-500 hover:text-red-500 active:scale-95 transition-all"
+            className="aspect-square bg-transparent rounded-2xl flex items-center justify-center text-[#71717a] hover:text-red-500 active:scale-95 transition-all duration-200"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 12l6.414 6.414a2 2 0 001.414.586H19a2 2 0 002-2V7a2 2 0 00-2-2h-8.172a2 2 0 00-1.414.586L3 12z" />
             </svg>
           </button>

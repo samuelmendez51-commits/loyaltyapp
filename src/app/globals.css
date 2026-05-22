@@ -1,3 +1,99 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --brand-red: #b91c1c;
+    --brand-red-dark: #7f1d1d;
+    --brand-gold: #d4af37;
+    --bg-deep: #050505;
+    --bg-card: #121212;
+    --border-subtle: #27272a;
+  }
+
+  body {
+    background-color: var(--bg-deep);
+    color: #ffffff;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-playfair), serif;
+  }
+}
+
+@layer components {
+  /* BOTÓN ESTILO MCDONALDS: CSS Puro y a prueba de balas */
+  .btn-primary {
+    background: linear-gradient(to right, var(--brand-red), var(--brand-red-dark));
+    color: #ffffff;
+    font-family: var(--font-inter), sans-serif;
+    font-weight: 900;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    border-radius: 1rem;
+    padding: 1rem 2rem;
+    transition: all 0.3s ease-in-out;
+    box-shadow: 0 8px 25px rgba(185, 28, 28, 0.3);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    border: none;
+  }
+
+  .btn-primary:hover {
+    box-shadow: 0 12px 35px rgba(185, 28, 28, 0.5);
+    transform: translateY(-4px);
+  }
+
+  .btn-primary:active {
+    transform: scale(0.95);
+  }
+
+  /* TARJETAS ESTILO HEMLOCK */
+  .card-glass {
+    background-color: rgba(18, 18, 18, 0.9);
+    backdrop-filter: blur(40px);
+    -webkit-backdrop-filter: blur(40px);
+    border: 1px solid var(--border-subtle);
+    border-radius: 32px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  }
+
+  /* TABLAS ELEGANTES */
+  .table-header {
+    background-color: #000000;
+    color: #a1a1aa;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    font-family: var(--font-inter), sans-serif;
+    font-weight: 700;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  
+  .table-row {
+    transition: background-color 0.3s;
+    border-bottom: 1px solid rgba(39, 39, 42, 0.5);
+  }
+
+  .table-row:hover {
+    background-color: #18181b;
+  }
+}
+
+/* Scrollbar personalizada para que no rompa la elegancia */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46;
+}

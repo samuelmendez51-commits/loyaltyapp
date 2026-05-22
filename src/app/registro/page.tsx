@@ -9,7 +9,12 @@ export default function RegistroCliente() {
   const [nombre, setNombre] = useState('')
   const [telefono, setTelefono] = useState('')
   const [email, setEmail] = useState('')
-  const [fechaNacimiento, setFechaNacimiento] = useState('')
+  
+  // Nuevos estados para el selector de fecha 3 Ruedas
+  const [dia, setDia] = useState('')
+  const [mes, setMes] = useState('')
+  const [anio, setAnio] = useState('')
+  
   const [registrando, setRegistrando] = useState(false)
   const [mensaje, setMensaje] = useState({ texto: '', tipo: '' })
 
@@ -17,29 +22,39 @@ export default function RegistroCliente() {
     e.preventDefault()
     if (!nombre.trim()) return
 
+    // Validación de teléfono (Exactamente 10 dígitos)
+    const telefonoLimpio = telefono.replace(/\D/g, '')
+    if (telefonoLimpio.length !== 10) {
+      setMensaje({ texto: 'El teléfono debe tener 10 dígitos.', tipo: 'error' })
+      return
+    }
+
     setRegistrando(true)
     setMensaje({ texto: '', tipo: '' })
+
+    // Ensamblaje de la fecha de nacimiento (YYYY-MM-DD)
+    let fechaEnsamblada = null
+    if (dia && mes && anio) {
+      const diaFormateado = dia.padStart(2, '0')
+      const mesFormateado = mes.padStart(2, '0')
+      fechaEnsamblada = `${anio}-${mesFormateado}-${diaFormateado}`
+    }
 
     try {
       const { data, error } = await supabase
         .from('clientes')
         .insert([{ 
           nombre: nombre.trim(), 
-          telefono: telefono.trim() || null, 
-          // Omitimos email si no lo tienes en tu tabla de Supabase actual, 
-          // si lo tienes, descomenta la siguiente línea:
-          // email: email.trim() || null, 
-          fecha_nacimiento: fechaNacimiento || null,
+          telefono: telefonoLimpio, 
+          email: email.trim() || null, 
+          fecha_nacimiento: fechaEnsamblada,
           puntos: 0,
-          // NOTA PRO: Usamos null temporalmente a menos que ya hayas creado 
-          // la sucursal '00000000...' en tu tabla de 'sucursales'
-          sucursal_origen_id: null 
+          sucursal_origen_id: null // Se llenará dinámicamente cuando actives sucursales
         }])
         .select()
 
       if (error) {
         console.error("Error al registrar:", error)
-        // Intercepción del error de duplicidad (Teléfono ya existe)
         if (error.code === '23505') {
           setMensaje({ 
             texto: 'Este número de teléfono o correo ya está registrado en el club.', 
@@ -53,7 +68,6 @@ export default function RegistroCliente() {
         }
       } else if (data && data[0]) {
         setMensaje({ texto: '¡Bienvenido al Club! Generando tu tarjeta VIP...', tipo: 'exito' })
-        // Redirección exitosa a la vista dinámica del cliente
         setTimeout(() => {
           router.push(`/cliente/${data[0].id}`)
         }, 1500)
@@ -65,6 +79,17 @@ export default function RegistroCliente() {
       setRegistrando(false)
     }
   }
+
+  // Generadores para los Selects de Fecha
+  const dias = Array.from({length: 31}, (_, i) => i + 1)
+  const meses = [
+    { num: '1', nombre: 'Ene' }, { num: '2', nombre: 'Feb' }, { num: '3', nombre: 'Mar' },
+    { num: '4', nombre: 'Abr' }, { num: '5', nombre: 'May' }, { num: '6', nombre: 'Jun' },
+    { num: '7', nombre: 'Jul' }, { num: '8', nombre: 'Ago' }, { num: '9', nombre: 'Sep' },
+    { num: '10', nombre: 'Oct' }, { num: '11', nombre: 'Nov' }, { num: '12', nombre: 'Dic' }
+  ]
+  const anioActual = new Date().getFullYear()
+  const anios = Array.from({length: 80}, (_, i) => anioActual - i)
 
   return (
     <main 
@@ -122,13 +147,14 @@ export default function RegistroCliente() {
 
             <div>
               <label className="block text-[10px] font-black text-[#a1a1aa] uppercase tracking-widest mb-2 ml-1">
-                Teléfono
+                Teléfono (10 dígitos)
               </label>
               <input 
                 type="tel" 
                 value={telefono}
                 onChange={(e) => setTelefono(e.target.value)}
                 required
+                maxLength={10}
                 className="w-full bg-[#000000] border border-[#3f3f46] rounded-xl px-4 py-3 text-[#ffffff] placeholder-[#52525b] focus:outline-none focus:border-[#dc2626] focus:ring-1 focus:ring-[#dc2626] transition-all text-sm font-bold block caret-[#dc2626]"
                 placeholder="Ej. 4521234567"
               />
@@ -147,17 +173,39 @@ export default function RegistroCliente() {
               />
             </div>
 
+            {/* NUEVO: SELECTOR DE FECHA 3 RUEDAS */}
             <div>
               <label className="block text-[10px] font-black text-[#a1a1aa] uppercase tracking-widest mb-2 ml-1">
                 Fecha de Nacimiento (Opcional)
               </label>
-              <input 
-                type="date" 
-                value={fechaNacimiento}
-                onChange={(e) => setFechaNacimiento(e.target.value)}
-                className="w-full bg-[#000000] border border-[#3f3f46] rounded-xl px-4 py-3 text-[#ffffff] placeholder-[#52525b] focus:outline-none focus:border-[#dc2626] focus:ring-1 focus:ring-[#dc2626] transition-all text-sm font-bold block caret-[#dc2626]"
-                style={{ colorScheme: 'dark' }}
-              />
+              <div className="grid grid-cols-3 gap-2">
+                <select 
+                  value={dia}
+                  onChange={(e) => setDia(e.target.value)}
+                  className="bg-[#000000] border border-[#3f3f46] rounded-xl px-2 py-3 text-[#ffffff] text-sm font-bold focus:outline-none focus:border-[#dc2626] focus:ring-1 focus:ring-[#dc2626]"
+                >
+                  <option value="">Día</option>
+                  {dias.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+                
+                <select 
+                  value={mes}
+                  onChange={(e) => setMes(e.target.value)}
+                  className="bg-[#000000] border border-[#3f3f46] rounded-xl px-2 py-3 text-[#ffffff] text-sm font-bold focus:outline-none focus:border-[#dc2626] focus:ring-1 focus:ring-[#dc2626]"
+                >
+                  <option value="">Mes</option>
+                  {meses.map(m => <option key={m.num} value={m.num}>{m.nombre}</option>)}
+                </select>
+
+                <select 
+                  value={anio}
+                  onChange={(e) => setAnio(e.target.value)}
+                  className="bg-[#000000] border border-[#3f3f46] rounded-xl px-2 py-3 text-[#ffffff] text-sm font-bold focus:outline-none focus:border-[#dc2626] focus:ring-1 focus:ring-[#dc2626]"
+                >
+                  <option value="">Año</option>
+                  {anios.map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
+              </div>
             </div>
 
             {mensaje.texto && (

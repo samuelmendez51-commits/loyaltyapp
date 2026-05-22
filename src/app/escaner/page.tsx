@@ -3,15 +3,15 @@ import { useEffect, useState } from 'react'
 import { Html5QrcodeScanner } from 'html5-qrcode'
 import { supabase } from '@/lib/supabase'
 
-// --- ESTRELLAS PREMIUM (Dorado Dashboard) ---
+// --- ESTRELLAS PREMIUM ---
 const StarActive = () => (
-  <svg viewBox="0 0 24 24" className="w-10 h-10 sm:w-11 sm:h-11 text-[#e5c07b] drop-shadow-[0_0_12px_rgba(229,192,123,0.8)] fill-current transition-all duration-300 animate-in zoom-in">
-    <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" stroke="#e5c07b" strokeWidth="1" strokeLinejoin="round" />
+  <svg viewBox="0 0 24 24" className="w-10 h-10 sm:w-11 sm:h-11 text-[var(--brand-gold)] drop-shadow-[0_0_15px_rgba(212,175,55,0.8)] fill-current transition-all duration-300">
+    <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" stroke="currentColor" strokeWidth="1" strokeLinejoin="round" />
   </svg>
 )
 const StarInactive = () => (
-  <svg viewBox="0 0 24 24" className="w-10 h-10 sm:w-11 sm:h-11 text-[#18181b] fill-current transition-all duration-300">
-    <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" stroke="#27272a" strokeWidth="1" strokeLinejoin="round" />
+  <svg viewBox="0 0 24 24" className="w-10 h-10 sm:w-11 sm:h-11 text-black fill-current transition-all duration-300">
+    <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" stroke="var(--border-subtle)" strokeWidth="1" strokeLinejoin="round" />
   </svg>
 )
 
@@ -88,16 +88,13 @@ export default function EscanerTrabajadores() {
     if (criterioLimpio) buscarCliente(criterioLimpio.trim());
   };
 
-  // --- LÓGICA INTELIGENTE: SELLO vs CANJE ---
   const manejarAccionVIP = async () => {
     if (!cliente) return
     setCargando(true)
 
-    // Detectamos si el cliente ya llenó la tarjeta (10 o más puntos)
     const esCanjeDePremio = cliente.puntos >= 10;
 
     try {
-      // Si es canje, los puntos regresan a 0. Si no, suma 1.
       const nuevosPuntos = esCanjeDePremio ? 0 : cliente.puntos + 1;
 
       const { error: errorCliente } = await supabase
@@ -107,13 +104,13 @@ export default function EscanerTrabajadores() {
 
       if (errorCliente) throw new Error('No se pudo actualizar el registro');
 
-      // Guardamos la auditoría correcta en el historial
       await supabase
         .from('historial_puntos')
         .insert({
            cliente_id: cliente.id,
-           puntos_afectados: esCanjeDePremio ? -10 : 1, 
-           motivo: esCanjeDePremio ? 'PREMIO CANJEADO EN SUCURSAL' : 'Sello registrado en mostrador'
+           cantidad: esCanjeDePremio ? 10 : 1, 
+           tipo_movimiento: esCanjeDePremio ? 'resta' : 'suma',
+           descripcion: esCanjeDePremio ? 'PREMIO CANJEADO EN SUCURSAL' : 'Sello registrado en mostrador'
         });
 
       if (typeof navigator !== 'undefined' && navigator.vibrate) {
@@ -122,7 +119,7 @@ export default function EscanerTrabajadores() {
       
       setMensaje({ 
         tipo: 'exito', 
-        texto: esCanjeDePremio ? '¡PREMIO ENTREGADO CON ÉXITO!' : '¡SELLO AGREGADO EXITOSAMENTE!' 
+        texto: esCanjeDePremio ? '¡PREMIO ENTREGADO!' : '¡SELLO AGREGADO!' 
       })
       
       setTimeout(() => {
@@ -140,58 +137,51 @@ export default function EscanerTrabajadores() {
   }
 
   return (
-    <main className="min-h-screen bg-[#0a0a0a] text-white flex flex-col items-center pt-8 px-4 font-sans selection:bg-red-600/30 relative overflow-x-hidden antialiased">
+    <main className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10 font-sans">
       
-      {/* MARCA DE AGUA */}
-      <div className="absolute inset-0 flex items-center justify-center opacity-[0.04] pointer-events-none z-0">
-          <img src="/logo.png" alt="La Burrería" className="w-[90vw] max-w-[800px] object-contain filter grayscale invert brightness-200" />
-      </div>
+      <header className="flex flex-col items-center justify-center mb-10 w-full text-center">
+        <h1 className="text-4xl font-black uppercase tracking-widest text-white shadow-black drop-shadow-md">
+          Staff <span className="text-[var(--brand-red)] font-serif italic">Escáner</span>
+        </h1>
+        <p className="text-[var(--brand-gold)] text-[10px] uppercase font-bold tracking-[0.4em] mt-2">Punto de Venta VIP</p>
+      </header>
 
-      {/* CONTENEDOR MAESTRO */}
+      {cargando && (
+        <div className="absolute inset-0 bg-black/80 backdrop-blur-md flex flex-col items-center justify-center z-50 rounded-2xl">
+          <div className="w-16 h-16 border-4 border-zinc-800 border-t-[var(--brand-red)] rounded-full animate-spin shadow-[0_0_20px_rgba(185,28,28,0.5)]"></div>
+        </div>
+      )}
+
       <div className="w-full max-w-[420px] mx-auto flex flex-col relative z-10">
         
-        <header className="flex flex-col items-center justify-center mb-8 px-2 w-full text-center">
-          <h1 className="text-3xl font-black uppercase tracking-widest text-white shadow-black drop-shadow-md">
-            Staff / <span className="text-red-600">Escáner</span>
-          </h1>
-          <p className="text-[#e5c07b] text-xs uppercase font-bold tracking-[0.3em] mt-2">La Burrería Club 🤠</p>
-        </header>
-
-        {cargando && (
-          <div className="absolute inset-0 bg-[#0a0a0a]/80 backdrop-blur-md flex flex-col items-center justify-center z-50 rounded-2xl">
-            <div className="w-12 h-12 border-4 border-zinc-800 border-t-red-600 rounded-full animate-spin mb-4 shadow-[0_0_15px_rgba(220,38,38,0.4)]"></div>
-          </div>
-        )}
-
-        {/* ================= ESTADO 1: ESCÁNER ================= */}
+        {/* ESTADO 1: ESCÁNER */}
         {!cliente && !mensaje.texto && (
-          <div className="w-full bg-[#121212] rounded-[1.5rem] p-6 border border-zinc-800/80 shadow-[0_0_40px_rgba(220,38,38,0.03)] relative">
-            
-            <div className="relative w-full aspect-[4/3] bg-black rounded-xl overflow-hidden mb-7 shadow-inner block border border-zinc-900">
+          <div className="card-glass p-8 relative">
+            <div className="relative w-full aspect-square bg-black rounded-2xl overflow-hidden mb-8 border border-[var(--border-subtle)] shadow-inner">
               <div id="reader" className="w-full h-full object-cover"></div>
               
-              <div className="absolute top-4 left-4 w-6 h-6 border-t-[3px] border-l-[3px] border-red-600/80 rounded-tl-md z-10 pointer-events-none"></div>
-              <div className="absolute top-4 right-4 w-6 h-6 border-t-[3px] border-r-[3px] border-red-600/80 rounded-tr-md z-10 pointer-events-none"></div>
-              <div className="absolute bottom-4 left-4 w-6 h-6 border-b-[3px] border-l-[3px] border-red-600/80 rounded-bl-md z-10 pointer-events-none"></div>
-              <div className="absolute bottom-4 right-4 w-6 h-6 border-b-[3px] border-r-[3px] border-red-600/80 rounded-br-md z-10 pointer-events-none"></div>
+              {/* Esquinas de enfoque estilo Sci-Fi/Lujo */}
+              <div className="absolute top-6 left-6 w-8 h-8 border-t-[4px] border-l-[4px] border-[var(--brand-red)] rounded-tl-xl z-10 pointer-events-none"></div>
+              <div className="absolute top-6 right-6 w-8 h-8 border-t-[4px] border-r-[4px] border-[var(--brand-red)] rounded-tr-xl z-10 pointer-events-none"></div>
+              <div className="absolute bottom-6 left-6 w-8 h-8 border-b-[4px] border-l-[4px] border-[var(--brand-red)] rounded-bl-xl z-10 pointer-events-none"></div>
+              <div className="absolute bottom-6 right-6 w-8 h-8 border-b-[4px] border-r-[4px] border-[var(--brand-red)] rounded-br-xl z-10 pointer-events-none"></div>
             </div>
             
-            <div className="flex flex-col gap-2.5 w-full">
-              <label className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest text-center">
-                Búsqueda Manual (ID o Teléfono)
+            <div className="flex flex-col gap-4 w-full">
+              <label className="text-[#a1a1aa] text-[10px] uppercase font-bold tracking-[0.2em] text-center">
+                Búsqueda Manual
               </label>
               <input 
                 type="text" 
                 value={inputManual}
                 onChange={(e) => setInputManual(e.target.value)}
                 onKeyDown={handleKeyDownBusqueda}
-                placeholder="Ingresa el número..."
-                style={{ color: '#ffffff', backgroundColor: '#000000' }}
-                className="w-full border border-zinc-800 rounded-xl px-4 py-4 focus:outline-none focus:border-red-600 transition-colors text-base placeholder:text-zinc-700 shadow-inner text-center font-mono"
+                placeholder="Teléfono o ID..."
+                className="w-full bg-black/50 border border-[var(--border-subtle)] rounded-xl px-4 py-4 focus:outline-none focus:border-[var(--brand-red)] transition-colors text-lg placeholder:text-zinc-700 text-center font-mono text-white"
               />
               <button 
                 onClick={procesarBusquedaManual}
-                className="w-full bg-red-600 hover:bg-red-700 text-white py-4 rounded-xl font-black uppercase text-xs transition-all shadow-[0_4px_15px_rgba(220,38,38,0.3)] active:scale-95 tracking-[0.2em] mt-2 border-b-4 border-red-900 active:border-b-0 active:translate-y-1"
+                className="btn-primary w-full mt-2"
               >
                 Buscar Cliente
               </button>
@@ -199,51 +189,54 @@ export default function EscanerTrabajadores() {
           </div>
         )}
 
-        {/* ================= ESTADO 2: MENSAJE DE ERROR ================= */}
+        {/* ESTADO 2: MENSAJE DE ERROR */}
         {mensaje.texto && !cliente && (
-          <div className="w-full bg-[#121212] border border-red-900/50 rounded-[1.5rem] flex flex-col items-center justify-center p-8 text-center min-h-[400px] shadow-[0_0_50px_rgba(220,38,38,0.1)]">
-            <div className="text-6xl mb-6 drop-shadow-lg">⚠️</div>
-            <p className="text-xl font-black uppercase text-zinc-300 mb-8 tracking-widest">{mensaje.texto}</p>
-            <button onClick={() => window.location.reload()} className="bg-transparent border-2 border-red-600 text-white px-8 py-3.5 rounded-xl font-bold text-xs uppercase shadow-lg active:scale-95 transition-all tracking-widest">Volver a intentar</button>
+          <div className="card-glass p-10 text-center flex flex-col items-center min-h-[400px] justify-center">
+            <div className="text-7xl mb-6 drop-shadow-lg">⚠️</div>
+            <p className="text-xl font-black uppercase text-white mb-10 tracking-widest leading-relaxed">{mensaje.texto}</p>
+            <button onClick={() => window.location.reload()} className="px-8 py-4 bg-transparent border-2 border-[var(--brand-red)] text-white rounded-2xl font-bold text-xs uppercase hover:bg-[var(--brand-red)]/10 transition-all tracking-widest">
+              Reintentar
+            </button>
           </div>
         )}
 
-        {/* ================= ESTADO 3: TARJETA VIP ================= */}
+        {/* ESTADO 3: TARJETA VIP (LA QUE VE EL STAFF) */}
         {cliente && (
-          <div className={`w-full rounded-[1.5rem] p-6 border shadow-[0_0_60px_rgba(220,38,38,0.1)] relative animate-in fade-in zoom-in-95 duration-300 ${cliente.puntos >= 10 ? 'bg-[#1a1608] border-[#e5c07b]/50' : 'bg-[#121212] border-zinc-800/80'}`}>
+          <div className={`card-glass p-8 relative overflow-hidden transition-all duration-500 ${cliente.puntos >= 10 ? 'border-[var(--brand-gold)] shadow-[0_0_50px_rgba(212,175,55,0.15)]' : ''}`}>
             
             {mensaje.texto && mensaje.tipo === 'exito' && (
-              <div className="absolute inset-0 bg-[#0a0a0a]/95 backdrop-blur-sm flex flex-col items-center justify-center z-50 rounded-[1.5rem]">
-                <div className="w-20 h-20 bg-green-600 rounded-full flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(22,163,74,0.4)]">
-                    <span className="text-4xl text-white">✓</span>
+              <div className="absolute inset-0 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center z-50">
+                <div className="w-24 h-24 bg-green-600 rounded-full flex items-center justify-center mb-8 shadow-[0_0_40px_rgba(22,163,74,0.5)]">
+                    <span className="text-5xl text-white">✓</span>
                 </div>
-                <p className="text-xl font-black text-white tracking-widest uppercase text-center px-4 leading-relaxed">{mensaje.texto}</p>
+                <p className="text-2xl font-black text-white tracking-widest uppercase text-center px-6 leading-relaxed">{mensaje.texto}</p>
               </div>
             )}
 
-            <div className="w-full bg-black/60 border border-zinc-800 rounded-xl py-6 px-4 flex flex-col items-center text-center mb-6 shadow-inner relative overflow-hidden">
-              <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent ${cliente.puntos >= 10 ? 'via-[#e5c07b]' : 'via-red-600'} to-transparent opacity-50`}></div>
-              <h2 className="text-white text-2xl sm:text-3xl font-serif font-black italic tracking-wide mb-2 drop-shadow-sm w-full truncate">
+            {/* Cabecera de la tarjeta del cliente */}
+            <div className="w-full bg-black/60 border border-[var(--border-subtle)] rounded-2xl py-8 px-6 flex flex-col items-center text-center mb-8 shadow-inner relative">
+              <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent ${cliente.puntos >= 10 ? 'via-[var(--brand-gold)]' : 'via-[var(--brand-red)]'} to-transparent opacity-70`}></div>
+              <h2 className="text-white text-3xl font-serif font-black italic tracking-wide mb-3 drop-shadow-sm w-full truncate">
                 {cliente.nombre}
               </h2>
-              <p className="text-[#e5c07b] text-sm tracking-[0.2em] font-mono">
-                {cliente.telefono}
+              <p className="text-[var(--brand-gold)] text-sm tracking-[0.3em] font-mono">
+                {cliente.telefono || 'ID-VIP'}
               </p>
             </div>
             
-            <div className="flex flex-col items-center w-full mb-8">
-              
-              <div className="flex items-baseline gap-2 mb-4">
-                <span className={`text-[4rem] font-black leading-none ${cliente.puntos >= 10 ? 'text-green-500 drop-shadow-[0_0_15px_rgba(34,197,94,0.4)]' : 'text-[#e5c07b] drop-shadow-[0_0_15px_rgba(229,192,123,0.3)]'}`}>
+            <div className="flex flex-col items-center w-full mb-10">
+              <div className="flex items-baseline gap-3 mb-5">
+                <span className={`text-6xl font-black leading-none ${cliente.puntos >= 10 ? 'text-green-500 drop-shadow-[0_0_20px_rgba(34,197,94,0.5)]' : 'text-[var(--brand-gold)] drop-shadow-[0_0_20px_rgba(212,175,55,0.4)]'}`}>
                   {cliente.puntos}
                 </span>
-                <span className="text-2xl font-bold text-zinc-600">/ 10</span>
+                <span className="text-3xl font-bold text-[#3f3f46]">/ 10</span>
               </div>
-              <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-[0.3em] mb-6">
-                {cliente.puntos >= 10 ? '¡META ALCANZADA!' : 'Sellos Acumulados'}
+              <p className="text-[10px] text-[#a1a1aa] font-bold uppercase tracking-[0.4em] mb-8">
+                {cliente.puntos >= 10 ? '¡PREMIO DESBLOQUEADO!' : 'Sellos Acumulados'}
               </p>
 
-              <div className="grid grid-cols-5 gap-y-4 gap-x-4 place-items-center w-full px-2">
+              {/* Matriz de Estrellas */}
+              <div className="grid grid-cols-5 gap-y-6 gap-x-4 place-items-center w-full px-2">
                 {[...Array(10)].map((_, i) => (
                   <div key={i} className="flex items-center justify-center">
                     {i < cliente.puntos ? <StarActive /> : <StarInactive />}
@@ -252,20 +245,20 @@ export default function EscanerTrabajadores() {
               </div>
             </div>
 
-            {/* BOTÓN INTELIGENTE: Cambia si llegó a 10 puntos */}
+            {/* Botón de Acción Masivo */}
             {cliente.puntos >= 10 ? (
               <button 
                 onClick={manejarAccionVIP}
                 disabled={cargando}
-                className="w-full bg-green-600 hover:bg-green-500 text-white py-4.5 rounded-xl font-black text-sm uppercase shadow-[0_0_25px_rgba(34,197,94,0.4)] active:scale-95 transition-all tracking-[0.2em] border-b-4 border-green-800 active:border-b-0 active:translate-y-1"
+                className="w-full bg-gradient-to-r from-green-600 to-green-800 text-white py-5 rounded-2xl font-black text-sm uppercase shadow-[0_8px_30px_rgba(34,197,94,0.4)] active:scale-95 transition-all tracking-[0.2em] flex items-center justify-center gap-2"
               >
-                🏆 CANJEAR BURRITO GRATIS
+                🏆 CANJEAR PREMIO
               </button>
             ) : (
               <button 
                 onClick={manejarAccionVIP}
                 disabled={cargando}
-                className="w-full bg-red-600 hover:bg-red-700 text-white py-4.5 rounded-xl font-black text-sm uppercase shadow-[0_0_20px_rgba(220,38,38,0.3)] active:scale-95 transition-all tracking-[0.2em] border-b-4 border-red-900 active:border-b-0 active:translate-y-1"
+                className="btn-primary w-full"
               >
                 + APLICAR SELLO
               </button>
@@ -273,7 +266,7 @@ export default function EscanerTrabajadores() {
             
             <button 
               onClick={() => { setCliente(null); window.location.reload(); }} 
-              className="w-full mt-5 text-zinc-500 hover:text-white text-[10px] font-bold tracking-[0.2em] uppercase transition-colors py-2 bg-transparent border-none"
+              className="w-full mt-6 text-[#71717a] hover:text-white text-[10px] font-bold tracking-[0.3em] uppercase transition-colors py-3"
             >
               CERRAR PERFIL
             </button>
@@ -281,7 +274,6 @@ export default function EscanerTrabajadores() {
         )}
       </div>
 
-      {/* CSS MAGICO */}
       <style dangerouslySetInnerHTML={{__html: `
         #reader a { display: none !important; }
         #reader__status_span { display: none !important; }
@@ -292,7 +284,7 @@ export default function EscanerTrabajadores() {
             width: 100% !important;
             height: 100% !important;
             background: transparent !important;
-            border-radius: 0.75rem !important;
+            border-radius: 1rem !important;
             overflow: hidden !important;
         }
         #reader video {
@@ -302,34 +294,36 @@ export default function EscanerTrabajadores() {
         }
 
         #reader button { 
-          background: #dc2626 !important; 
+          background: linear-gradient(to right, var(--brand-red), var(--brand-red-dark)) !important; 
           color: white !important; 
-          border-radius: 0.75rem !important; 
-          padding: 12px 24px !important; 
-          font-family: inherit;
-          font-weight: 900; 
-          font-size: 0.75rem;
-          letter-spacing: 0.1em;
-          text-transform: uppercase;
+          border-radius: 1rem !important; 
+          padding: 14px 24px !important; 
+          font-family: var(--font-inter), sans-serif !important;
+          font-weight: 900 !important; 
+          font-size: 0.8rem !important;
+          letter-spacing: 0.1em !important;
+          text-transform: uppercase !important;
           border: none !important; 
-          cursor: pointer;
-          box-shadow: 0 4px 14px 0 rgba(220, 38, 38, 0.4);
-          margin-top: 1rem;
+          cursor: pointer !important;
+          box-shadow: 0 8px 25px rgba(185, 28, 28, 0.3) !important;
+          margin-top: 1.5rem !important;
+          width: 90% !important;
+          max-width: 300px !important;
         }
         
         #reader select { 
-          background: #000000; 
-          color: white; 
-          border: 1px solid #27272a; 
-          padding: 12px 16px; 
-          border-radius: 0.75rem; 
-          font-size: 0.8rem;
-          font-family: monospace;
-          outline: none;
-          margin-top: 15px;
-          margin-bottom: 10px;
-          width: 90%;
-          max-width: 300px;
+          background: #000000 !important; 
+          color: white !important; 
+          border: 1px solid var(--border-subtle) !important; 
+          padding: 14px 16px !important; 
+          border-radius: 1rem !important; 
+          font-size: 0.9rem !important;
+          font-family: monospace !important;
+          outline: none !important;
+          margin-top: 15px !important;
+          margin-bottom: 10px !important;
+          width: 90% !important;
+          max-width: 300px !important;
         }
       `}} />
     </main>

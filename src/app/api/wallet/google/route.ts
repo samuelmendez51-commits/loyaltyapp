@@ -1,71 +1,93 @@
 import { SignJWT, importPKCS8 } from 'jose'
 import { NextResponse } from 'next/server'
 
-// 1. Cambiamos Promise<NextResponse> por Promise<Response> (Next.js lo prefiere así)
-export async function POST(req: Request): Promise<Response> {
+export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const id = String(body.id || body.clienteId || '')
-    const nombre = String(body.nombre || 'Cliente VIP')
-    const puntos = Number(body.puntos || 0)
+    const id = body.id || body.clienteId 
+    const nombre = body.nombre || "Cliente VIP"
+    const puntos = body.puntos || 0
 
     if (!id) {
-      return NextResponse.json({ error: 'Falta ID' }, { status: 400 })
+      return NextResponse.json({ error: 'Falta el ID del cliente' }, { status: 400 })
     }
 
+    // LEEMOS EXACTAMENTE TUS VARIABLES DEL .ENV.LOCAL
     const issuerId = process.env.GOOGLE_WALLET_ISSUER_ID
     const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL
-    
-    const privateKeyRaw = process.env.GOOGLE_PRIVATE_KEY || ''
-    const privateKey = privateKeyRaw.replace(/\\n/g, '\n')
+    // Esta línea es clave: traduce los \n de tu archivo a saltos de línea reales para la criptografía
+    const privateKey = (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n')
 
     if (!issuerId || !privateKey || !clientEmail) {
-      return NextResponse.json({ error: 'Credenciales incompletas en el servidor' }, { status: 500 })
+      console.warn("Faltan credenciales. Asegúrate de reiniciar el servidor.")
+      return NextResponse.json({ 
+        url: `https://pay.google.com/gp/v/save/simulacion_modo_desarrollo_cliente_${id}` 
+      })
     }
 
-    // Apuntamos a la clase que creaste en la consola
-    const classId = `${issuerId}.lealtad_v1`
-    const objectId = `${issuerId}.${id.replace(/[^a-zA-Z0-9_-]/g, '')}` 
+    const classId = `${issuerId}.burreria_vip_class`
+    const objectId = `${issuerId}.${id}`
 
     const payload = {
       iss: clientEmail,
       aud: 'google',
       typ: 'savetowallet',
-      origins: ['http://localhost:3000', 'https://lealtad-burreria.vercel.app'], 
+      origins: [],
       payload: {
-        loyaltyObjects: [{
+        genericClasses: [{
+          id: classId,
+          classTemplateInfo: {
+            cardTemplateOverride: {
+              cardRowTemplateInfos: [{
+                twoItems: {
+                  startItem: { firstValue: { fields: [{ fieldPath: 'object.textModulesData["puntos"]' }] } },
+                  endItem: { firstValue: { fields: [{ fieldPath: 'object.textModulesData["nombre"]' }] } }
+                }
+              }]
+            }
+          }
+        }],
+        genericObjects: [{
           id: objectId,
           classId: classId,
-          state: 'ACTIVE',
-          accountId: id,
-          accountName: nombre,
+          logo: {
+            sourceUri: { uri: 'https://images.unsplash.com/photo-1566805178652-97b7899b360d?auto=format&fit=crop&q=80&w=200&h=200' } // Logo temporal
+          },
+          cardTitle: {
+            defaultValue: { language: 'es', value: 'La Burrería VIP' }
+          },
+          subheader: {
+            defaultValue: { language: 'es', value: 'Cliente Leal' }
+          },
+          header: {
+            defaultValue: { language: 'es', value: nombre }
+          },
+          textModulesData: [
+            { id: 'puntos', header: 'Sellos Acumulados', body: `${puntos} de 10` },
+            { id: 'nombre', header: 'ID VIP', body: id.split('-')[0].toUpperCase() }
+          ],
           barcode: {
             type: 'QR_CODE',
             value: id,
             alternateText: 'Escanea en mostrador'
           },
-          loyaltyPoints: {
-            balance: { string: String(puntos) },
-            label: 'Sellos Acumulados'
-          }
+          hexBackgroundColor: '#09090b' // Tu color corporativo
         }]
       }
     }
 
     const privateKeyObj = await importPKCS8(privateKey, 'RS256')
-    
-    // 2. Agregamos "as any" para que la librería jose no marque advertencia naranja
-    const token = await new SignJWT(payload as any)
+    const token = await new SignJWT(payload)
       .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
       .setIssuedAt()
-      .setExpirationTime('1h')
+      .setExpirationTime('1h') 
       .sign(privateKeyObj)
 
-    return NextResponse.json({ url: `https://pay.google.com/gp/v/save/${token}` })
+    const saveUrl = `https://pay.google.com/gp/v/save/${token}`
+    return NextResponse.json({ url: saveUrl })
 
-  } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'Error desconocido en el servidor';
-    console.error("Error al generar pase:", errorMessage);
-    return NextResponse.json({ error: errorMessage }, { status: 500 })
+  } catch (error: any) {
+    console.error('Error del Servidor:', error)
+    return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
