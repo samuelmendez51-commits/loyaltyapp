@@ -17,15 +17,25 @@ export default function DashboardPro() {
   const [historial, setHistorial] = useState<Historial[]>([])
   const [cargando, setCargando] = useState(true)
 
-  // Estados del Previsualizador
   const [previewId, setPreviewId] = useState('')
   const [previewPuntos, setPreviewPuntos] = useState(0)
   const [previewNombre, setPreviewNombre] = useState('Socio VIP')
-  const [descargando, setDescargando] = useState(false)
+  
+  const [descargandoApple, setDescargandoApple] = useState(false)
+  const [os, setOs] = useState('unknown') // Para detectar iOS o Android
 
-  // --- URLs REALES Y PÚBLICAS DE TU SUPABASE BUCKET 'assets' ---
   const LOGO_URL = "https://hjaeireljkcvjnigfhzb.supabase.co/storage/v1/object/public/assets/logo.png"
   const DESTACADA_URL = "https://hjaeireljkcvjnigfhzb.supabase.co/storage/v1/object/public/assets/destacada.jpg"
+
+  useEffect(() => { 
+    cargarDatos() 
+    // Detectar el dispositivo al cargar
+    if (typeof navigator !== 'undefined') {
+      if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) setOs('ios')
+      else if (/Android/i.test(navigator.userAgent)) setOs('android')
+      else setOs('desktop')
+    }
+  }, [])
 
   async function cargarDatos() {
     setCargando(true)
@@ -38,20 +48,15 @@ export default function DashboardPro() {
         setPreviewPuntos(dataClientes[0].puntos)
       }
     }
-
     const { data: dataHistorial } = await supabase.from('historial_puntos').select('*, clientes(nombre)').order('created_at', { ascending: false }).limit(50)
     if (dataHistorial) setHistorial(dataHistorial as any)
     setCargando(false)
   }
 
-  useEffect(() => { cargarDatos() }, [])
-
-  // --- LÓGICA BLINDADA DE PUNTOS ---
   async function ajustarPuntos(id: string, puntosActuales: number, cantidad: number) {
     let nuevosPuntos = puntosActuales + cantidad
     if (nuevosPuntos < 0) nuevosPuntos = 0
     if (nuevosPuntos > 10) nuevosPuntos = 10 
-
     if (nuevosPuntos === puntosActuales) return 
 
     await supabase.from('clientes').update({ puntos: nuevosPuntos }).eq('id', id)
@@ -61,54 +66,38 @@ export default function DashboardPro() {
     cargarDatos()
   }
 
-  // --- FUNCIÓN: CANJEAR PREMIO (BLINDADA PARA IPHONE) ---
   async function canjearPremio(id: string) {
-    // Usamos una alerta simple en celular si confirm() falla
-    if (typeof window !== 'undefined' && !window.confirm('¿Confirmas el canje de la Chavipizza? El contador del cliente volverá a 0.')) {
-      return; // Si cancela, no hace nada
-    }
-    
+    if (typeof window !== 'undefined' && !window.confirm('¿Confirmas el canje del Premio VIP? El contador del cliente volverá a 0.')) return;
     try {
       setCargando(true)
       await supabase.from('clientes').update({ puntos: 0 }).eq('id', id)
       await supabase.from('historial_puntos').insert([{ cliente_id: id, tipo_movimiento: 'canje', cantidad: 10, descripcion: 'Premio Canjeado' }])
-      
       if (id === previewId) setPreviewPuntos(0)
       await cargarDatos()
-      alert("✅ Chavipizza Canjeada Exitosamente. El contador VIP está en 0.");
+      alert("✅ Premio Canjeado Exitosamente.");
     } catch (e) {
-      alert("❌ Hubo un error al canjear. Intenta de nuevo.");
+      alert("❌ Hubo un error al canjear.");
     } finally {
       setCargando(false)
     }
   }
 
   async function eliminarCliente(id: string) {
-    if(!confirm('¿Estás seguro de que deseas eliminar este cliente VIP?')) return
+    if(!confirm('¿Eliminar este cliente VIP definitivamente?')) return
     await supabase.from('clientes').delete().eq('id', id)
     cargarDatos()
   }
 
-  // --- EL CEREBRO DE DESCARGA WALLET (Blindado) ---
-  async function descargarPase() {
-    if (!previewId) return alert("Selecciona un cliente primero en la lista");
-    
-    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-    if (!isIOS) {
-      return alert("Estás en PC/Android. Para instalar en tu iPhone, abre este panel desde tu Safari y presiona el botón.");
-    }
-
-    setDescargando(true)
+  async function descargarPaseApple() {
+    if (!previewId) return alert("Selecciona un cliente");
+    setDescargandoApple(true)
     try {
-      // Llama a tu endpoint de Apple real
       const res = await fetch('/api/wallet/apple', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ clienteId: previewId, nombre: previewNombre, puntos: previewPuntos })
       });
-      
-      if (!res.ok) throw new Error("Fallo la generación del pase en el servidor.");
-      
+      if (!res.ok) throw new Error("Fallo en servidor de Apple");
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -119,11 +108,14 @@ export default function DashboardPro() {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch (e) {
-      console.error(e);
-      alert("Hubo un error al generar la tarjeta real. Revisa los logs de Vercel.");
+      alert("Error al generar el pase de Apple. Revisa Vercel Logs.");
     } finally {
-      setDescargando(false)
+      setDescargandoApple(false)
     }
+  }
+
+  async function descargarPaseGoogle() {
+    alert("Función de Google Wallet en construcción en este Dashboard (Próximamente).");
   }
 
   return (
@@ -206,34 +198,27 @@ export default function DashboardPro() {
                       </table>
                     </div>
                   )}
-                  {/* ... Auditoria se mantiene igual ... */}
                 </div>
               )}
             </div>
           </div>
 
-          {/* COLUMNA DERECHA: PREVISUALIZADOR LIVE REAL BLINDADO */}
+          {/* COLUMNA DERECHA: PREVISUALIZADOR LIVE */}
           <div className="lg:col-span-1">
             <div className="bg-[#18181b]/90 backdrop-blur-md rounded-[25px] border border-[#27272a] shadow-2xl p-6 sticky top-8 flex flex-col items-center">
               <h2 className="text-xs uppercase tracking-[0.2em] font-black text-[#a1a1aa] mb-6 w-full flex items-center justify-between">
                 Vista Previa VIP <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
               </h2>
 
-              {/* RENDER DE TARJETA ESTILO WALLET CON IMAGENES REALES Y BLINDADAS */}
               <div 
                 className="w-full aspect-[0.63] max-w-[320px] rounded-[30px] shadow-[0_20px_50px_rgba(0,0,0,0.8)] p-6 flex flex-col justify-between relative overflow-hidden transition-all duration-300 border-[4px] border-[#27272a] bg-cover bg-center"
-                style={{
-                  backgroundImage: `url('${DESTACADA_URL}')`, // Corregido: comillas añadidas
-                }}
+                style={{ backgroundImage: `url('${DESTACADA_URL}')` }}
               >
-                {/* Overlay Oscuro para lectura (Corregido: más claro) */}
-                <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px]"></div>
+                <div className="absolute inset-0 bg-black/50 backdrop-blur-[1px]"></div>
                 
-                {/* Cabecera Tarjeta */}
                 <div className="flex justify-between items-start z-10">
                   <div className="w-14 h-14 bg-black rounded-full border-2 border-[#d4af37] flex items-center justify-center overflow-hidden shadow-lg p-1">
-                    {/* LOGO REAL DE SUPABASE */}
-                    <img src={LOGO_URL} alt="Logo" className="w-full h-full object-contain" onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/100?text=LOGO'; }}/>
+                    <img src={LOGO_URL} alt="Logo" className="w-full h-full object-contain" />
                   </div>
                   <div className="text-right drop-shadow-lg">
                     <p className="text-[10px] text-white uppercase tracking-widest font-black">La Burrería Club</p>
@@ -241,13 +226,11 @@ export default function DashboardPro() {
                   </div>
                 </div>
 
-                {/* Centro Tarjeta */}
                 <div className="z-10 mt-8 drop-shadow-xl">
                   <p className="text-[10px] text-gray-200 uppercase tracking-widest mb-1 font-bold">Titular VIP</p>
                   <p className="text-2xl font-black text-white truncate">{previewNombre}</p>
                 </div>
 
-                {/* Sellos */}
                 <div className="z-10 bg-black/80 backdrop-blur-md p-5 rounded-2xl border border-[#3f3f46] flex justify-between items-center mt-6 shadow-xl">
                   <div>
                     <p className="text-[10px] text-gray-400 uppercase tracking-widest font-bold">Progreso</p>
@@ -256,29 +239,51 @@ export default function DashboardPro() {
                       <span className="text-sm text-gray-400 font-bold">/ 10</span>
                     </div>
                   </div>
-                  {/* CÓDIGO QR REAL DINÁMICO */}
                   <div className="w-20 h-20 bg-white rounded-xl p-1.5 shadow-inner">
                     <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://laburreriaclub.vercel.app/cliente/${previewId}`} alt="QR Code" className="w-full h-full opacity-90" />
                   </div>
                 </div>
               </div>
 
-              {/* BOTÓN OFICIAL DE AÑADIR A APPLE WALLET (El real) */}
-              <button 
-                onClick={descargarPase}
-                disabled={descargando}
-                className={`mt-10 w-full max-w-[320px] transition-all duration-200 ${descargando ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105 active:scale-95'}`}
-              >
-                {descargando ? (
-                  <div className="flex items-center justify-center gap-2 text-xs text-gray-500 font-bold bg-black py-4 rounded-xl border border-gray-800">
-                    <div className="w-4 h-4 border-2 border-gray-500 border-t-white rounded-full animate-spin"></div> Generando Pase...
-                  </div>
-                ) : (
-                  // LOGO OFICIAL DE "ADD TO APPLE WALLET"
-                  <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/Add_to_Apple_Wallet_badge.svg/2560px-Add_to_Apple_Wallet_badge.svg.png" alt="Add to Apple Wallet" className="w-full h-auto object-contain" />
+              {/* BOTONES INTELIGENTES (Aparecen según el dispositivo) */}
+              <div className="mt-8 w-full max-w-[320px] space-y-4">
+                
+                {/* BOTÓN APPLE WALLET (Se muestra en iOS o Desktop) */}
+                {(os === 'ios' || os === 'desktop') && (
+                  <button 
+                    onClick={descargarPaseApple}
+                    disabled={descargandoApple}
+                    className={`w-full bg-black text-white h-14 rounded-xl flex items-center justify-center gap-3 border border-gray-800 transition-all ${descargandoApple ? 'opacity-50' : 'hover:bg-gray-900 active:scale-95'}`}
+                  >
+                    {descargandoApple ? (
+                      <span className="text-sm font-bold animate-pulse">Generando Pase...</span>
+                    ) : (
+                      <>
+                        <svg viewBox="0 0 384 512" className="h-6 fill-white"><path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 24 184.8 8.8 243.6-26 381.1 57.1 484.8 91 484.8c18.5 0 28.5-11.8 51.5-11.8 23 0 32.7 11.8 52.1 11.8 35.5 0 54.3-37 72-68.5 15.6-27.7 21.6-47.2 22.3-48.4-1.2-.5-70.1-26.4-70.2-99.2zM242 84.8c20.8-25.8 34.7-60.1 31.2-94.8-28.5 1.1-64.1 18.6-85.3 43.4-18.8 22-35.5 57.6-31.5 90.9 31.7 2.4 66.7-13.8 85.6-39.5z"/></svg>
+                        <div className="flex flex-col items-start leading-none">
+                          <span className="text-[10px]">Añadir a</span>
+                          <span className="text-[16px] font-semibold">Apple Wallet</span>
+                        </div>
+                      </>
+                    )}
+                  </button>
                 )}
-              </button>
 
+                {/* BOTÓN GOOGLE WALLET (Se muestra en Android o Desktop) */}
+                {(os === 'android' || os === 'desktop') && (
+                  <button 
+                    onClick={descargarPaseGoogle}
+                    className="w-full bg-[#1e1e1e] text-white h-14 rounded-full flex items-center justify-center gap-3 border border-gray-700 transition-all hover:bg-gray-800 active:scale-95"
+                  >
+                    <svg viewBox="0 0 24 24" className="h-6 w-6"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+                    <div className="flex flex-col items-start leading-none text-gray-200">
+                      <span className="text-[10px]">Añadir a</span>
+                      <span className="text-[16px] font-semibold text-white">Google Wallet</span>
+                    </div>
+                  </button>
+                )}
+                
+              </div>
             </div>
           </div>
         </div>
