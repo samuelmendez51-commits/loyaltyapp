@@ -2,23 +2,9 @@ import { NextResponse } from 'next/server'
 // @ts-ignore
 import { Template } from '@walletpass/pass-js'
 
-// --- REPARADOR EXTREMO DE CERTIFICADOS PARA VERCEL ---
 function formatPem(pemStr: string | undefined) {
   if (!pemStr) return '';
-  let clean = pemStr.replace(/^["']|["']$/g, ''); // Quita comillas
-  
-  // Si Vercel guardó el literal "\n", lo convertimos a salto real
-  if (clean.includes('\\n')) {
-    clean = clean.replace(/\\n/g, '\n');
-  } else if (!clean.includes('\n')) {
-    // Si Vercel lo hizo todo una sola línea, intentamos reconstruirlo (Magia negra)
-    clean = clean.replace(/(-----BEGIN[^-]+-----)(.+?)(-----END[^-]+-----)/g, (match, p1, p2, p3) => {
-      const body = p2.replace(/\s+/g, ''); // Quitamos espacios
-      const lines = body.match(/.{1,64}/g)?.join('\n') || body; // Cortamos cada 64 caracteres
-      return `${p1}\n${lines}\n${p3}`;
-    });
-  }
-  return clean.trim();
+  return pemStr.replace(/^["']|["']$/g, '').replace(/\\n/g, '\n').trim();
 }
 
 const PASS_TYPE_IDENTIFIER = process.env.APPLE_PASS_TYPE_IDENTIFIER;
@@ -38,7 +24,7 @@ export async function POST(req: Request) {
       teamIdentifier: TEAM_IDENTIFIER!,
       organizationName: 'La Burrería Club',
       description: 'Pase VIP de Fidelidad',
-      logoText: 'La Burrería VIP',
+      logoText: 'La Burrería',
       backgroundColor: '#0a0a0a',
       foregroundColor: '#ffffff',
       labelColor: '#d4af37',
@@ -50,21 +36,39 @@ export async function POST(req: Request) {
       relevantText: "¡Estás cerca! Pasa por tu Chavipizza a La Burrería."
     }];
 
+    // --- INYECCIÓN DE CERTIFICADOS CORREGIDA ---
     template.setCertificate(SIGNER_CERT);
-    template.setPrivateKey(SIGNER_KEY, process.env.APPLE_SIGNER_PASSWORD || '');
     template.setWWDR(WWDR_CERT);
+    
+    // El escudo para el error OSSL_UNSUPPORTED
+    if (process.env.APPLE_SIGNER_PASSWORD && process.env.APPLE_SIGNER_PASSWORD.trim() !== '') {
+      template.setPrivateKey(SIGNER_KEY, process.env.APPLE_SIGNER_PASSWORD);
+    } else {
+      template.setPrivateKey(SIGNER_KEY); // Sin contraseña si el candado no existe
+    }
 
-    // --- CARGA DE IMAGEN REAL DESDE TU SUPABASE ---
+    // --- MAGIA DE IMÁGENES ---
     try {
       const LOGO_URL = "https://hjaeireljkcvjnigfhzb.supabase.co/storage/v1/object/public/assets/logo.png";
-      const iconRes = await fetch(LOGO_URL);
+      const DESTACADA_URL = "https://hjaeireljkcvjnigfhzb.supabase.co/storage/v1/object/public/assets/destacada.jpg";
+
+      const [iconRes, stripRes] = await Promise.all([
+        fetch(LOGO_URL),
+        fetch(DESTACADA_URL)
+      ]);
+
       if (iconRes.ok) {
         const iconBuffer = Buffer.from(await iconRes.arrayBuffer());
-        template.images.add('icon', iconBuffer);
-        template.images.add('logo', iconBuffer);
+        template.images.add('icon', iconBuffer); 
+        template.images.add('logo', iconBuffer); 
+      }
+      
+      if (stripRes.ok) {
+        const stripBuffer = Buffer.from(await stripRes.arrayBuffer());
+        template.images.add('strip', stripBuffer); 
       }
     } catch (e) {
-      console.error("No se pudo cargar el logo:", e);
+      console.error("No se pudieron inyectar las imágenes al pase.", e);
     }
 
     template.headerFields.add({ key: 'puntos', label: 'SELLOS', value: String(puntos || 0), textAlignment: 'pkTextAlignmentRight' });
