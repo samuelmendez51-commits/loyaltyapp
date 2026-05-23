@@ -1,13 +1,10 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
 // @ts-ignore
 import { Template } from '@walletpass/pass-js'
-import fs from 'fs'
-import path from 'path'
 
 // --- CONFIGURACIÓN DE SEGURIDAD ---
 const PASS_TYPE_IDENTIFIER = process.env.APPLE_PASS_TYPE_IDENTIFIER;
-const TEAM_IDENTIFIER = process.env.APPLE_TEAM_ID; // CORREGIDO A APPLE_TEAM_ID
+const TEAM_IDENTIFIER = process.env.APPLE_TEAM_ID;
 const SIGNER_KEY = process.env.APPLE_SIGNER_KEY; 
 const SIGNER_CERT = process.env.APPLE_SIGNER_CERT; 
 const WWDR_CERT = process.env.APPLE_WWDR_CERT;
@@ -22,11 +19,7 @@ export async function POST(req: Request) {
 
     if (!SIGNER_KEY || !SIGNER_CERT || !WWDR_CERT) {
       console.warn("⚠️ API Apple Wallet: Faltan certificados. Simulando...");
-      return NextResponse.json({ 
-        success: true, 
-        simulacion: true, 
-        mensaje: `⚠️ (Modo Simulación) Pase generado exitosamente para ${nombre}.`
-      });
+      return NextResponse.json({ success: true, simulacion: true, mensaje: `⚠️ Simulando pase para ${nombre}` });
     }
 
     // 1. Crear el Template
@@ -35,35 +28,43 @@ export async function POST(req: Request) {
       teamIdentifier: TEAM_IDENTIFIER!,
       organizationName: 'La Burrería Club',
       description: 'Pase VIP de Fidelidad',
-      logoText: 'La Burrería VIP',
+      logoText: 'La Burrería',
       backgroundColor: '#0a0a0a',
       foregroundColor: '#ffffff',
       labelColor: '#d4af37',
     });
 
-    // 2. Inyectar Certificados
-    // Reemplazamos los saltos de línea \n literales si es que vienen del .env
+    // 2. GEOPUSH (El Gancho)
+    template.locations = [{
+      latitude: 19.421583,
+      longitude: -102.067222,
+      relevantText: "¡Estás cerca! Pasa por tu Chavipizza a La Burrería."
+    }];
+
+    // 3. Inyectar Certificados
     template.setCertificate(SIGNER_CERT.replace(/\\n/g, '\n'));
     template.setPrivateKey(SIGNER_KEY.replace(/\\n/g, '\n'), process.env.APPLE_SIGNER_PASSWORD || '');
     template.setWWDR(WWDR_CERT.replace(/\\n/g, '\n'));
 
-    // 3. INYECTAR LAS IMÁGENES OBLIGATORIAS (El posible causante del error 500)
-    // Buscamos tu archivo public/logo.png
-    const logoPath = path.join(process.cwd(), 'public', 'logo.png');
-    if (fs.existsSync(logoPath)) {
-      const logoBuffer = fs.readFileSync(logoPath);
-      template.images.add('icon', logoBuffer); // Obligatorio para Apple
-      template.images.add('logo', logoBuffer);
-    } else {
-      console.warn("⚠️ No se encontró logo.png en la carpeta public");
+    // 4. Inyectar Imágenes (Solución Anti-Vercel Crash)
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://laburreriaclub.vercel.app';
+      const iconRes = await fetch(`${baseUrl}/logo.png`);
+      if (iconRes.ok) {
+        const iconBuffer = Buffer.from(await iconRes.arrayBuffer());
+        template.images.add('icon', iconBuffer);
+        template.images.add('logo', iconBuffer);
+      }
+    } catch (e) {
+      console.error("⚠️ No se pudo cargar el logo remoto, generando sin logo...", e);
     }
 
-    // 4. Configurar Campos
-    template.headerFields.add({ key: 'puntos', label: 'SELLOS', value: puntos || 0, textAlignment: 'pkDataDetectorTypeNone' });
+    // 5. Configurar Campos
+    template.headerFields.add({ key: 'puntos', label: 'SELLOS', value: String(puntos || 0), textAlignment: 'pkTextAlignmentRight' });
     template.primaryFields.add({ key: 'cliente', label: 'SOCIO VIP', value: nombre });
     template.secondaryFields.add({ key: 'id', label: 'ID DE SOCIO', value: clienteId.substring(0, 8) });
 
-    // 5. Generar Pase
+    // 6. Generar Pase
     const pass = template.createPass({
       serialNumber: clienteId,
       authenticationToken: process.env.APPLE_PASS_AUTH_TOKEN || 'secure_token_123456789',
@@ -71,16 +72,14 @@ export async function POST(req: Request) {
 
     pass.barcodes = [{
       format: 'PKBarcodeFormatQR',
-      message: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/cliente/${clienteId}`, 
+      message: `${process.env.NEXT_PUBLIC_SITE_URL || 'https://laburreriaclub.vercel.app'}/cliente/${clienteId}`, 
       messageEncoding: 'iso-8859-1',
       altText: `ID: ${clienteId.substring(0, 8)}`,
     }];
 
-    // 6. Enviar Buffer
     const passBuffer = await pass.asBuffer();
-    const passArray = new Uint8Array(passBuffer);
 
-    return new NextResponse(passArray, {
+    return new NextResponse(passBuffer, {
       status: 200,
       headers: {
         'Content-Type': 'application/vnd.apple.pkpass',
@@ -89,8 +88,7 @@ export async function POST(req: Request) {
     });
 
   } catch (error: any) {
-    // ESTE CONSOLE.LOG ES EL DETECTIVE
     console.error('API Apple Wallet Error Detallado:', error);
-    return NextResponse.json({ error: 'No se pudo generar el pase real' }, { status: 500 })
+    return NextResponse.json({ error: 'No se pudo generar el pase' }, { status: 500 })
   }
 }
