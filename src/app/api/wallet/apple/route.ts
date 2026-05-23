@@ -11,7 +11,6 @@ const PASS_TYPE_IDENTIFIER = process.env.APPLE_PASS_TYPE_IDENTIFIER;
 const TEAM_IDENTIFIER = process.env.APPLE_TEAM_ID;
 const SIGNER_KEY = formatPem(process.env.APPLE_SIGNER_KEY); 
 const SIGNER_CERT = formatPem(process.env.APPLE_SIGNER_CERT); 
-// Eliminamos la constante del WWDR porque la librería lo maneja sola
 
 export async function POST(req: Request) {
   try {
@@ -36,16 +35,16 @@ export async function POST(req: Request) {
       relevantText: "¡Estás cerca! Pasa por tu Chavipizza a La Burrería."
     }];
 
-    // --- INYECCIÓN DE CERTIFICADOS CORREGIDA ---
     template.setCertificate(SIGNER_CERT);
     
-    // ¡ELIMINAMOS setWWDR() POR ORDEN DE APPLE!
-    
-    // El escudo para el error OSSL_UNSUPPORTED
-    if (process.env.APPLE_SIGNER_PASSWORD && process.env.APPLE_SIGNER_PASSWORD.trim() !== '') {
-      template.setPrivateKey(SIGNER_KEY, process.env.APPLE_SIGNER_PASSWORD);
+    // --- EL ROMPECANDADOS: Limpieza extrema de la contraseña ---
+    let signerPassword = process.env.APPLE_SIGNER_PASSWORD || '';
+    signerPassword = signerPassword.replace(/^["']|["']$/g, '').trim();
+
+    if (signerPassword.length > 0) {
+      template.setPrivateKey(SIGNER_KEY, signerPassword);
     } else {
-      template.setPrivateKey(SIGNER_KEY); // Sin contraseña si el candado no existe
+      template.setPrivateKey(SIGNER_KEY); // Ahora sí, entra sin contraseña fantasma
     }
 
     // --- MAGIA DE IMÁGENES ---
