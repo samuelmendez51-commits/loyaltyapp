@@ -17,13 +17,27 @@ export default function DashboardPro() {
   const [historial, setHistorial] = useState<Historial[]>([])
   const [cargando, setCargando] = useState(true)
 
+  // Estados del Previsualizador
+  const [previewId, setPreviewId] = useState('')
   const [previewPuntos, setPreviewPuntos] = useState(0)
   const [previewNombre, setPreviewNombre] = useState('Socio VIP')
+  const [descargando, setDescargando] = useState(false)
+
+  // --- URLs REALES DE TU SUPABASE ---
+  const LOGO_URL = "https://hjaeireljkcvjnigfhzb.supabase.co/storage/v1/object/public/assets/logo.png"
+  const DESTACADA_URL = "https://hjaeireljkcvjnigfhzb.supabase.co/storage/v1/object/public/assets/destacada.jpg"
 
   async function cargarDatos() {
     setCargando(true)
     const { data: dataClientes } = await supabase.from('clientes').select('*').order('created_at', { ascending: false })
-    if (dataClientes) setClientes(dataClientes)
+    if (dataClientes) {
+      setClientes(dataClientes)
+      if (dataClientes.length > 0 && !previewId) {
+        setPreviewId(dataClientes[0].id)
+        setPreviewNombre(dataClientes[0].nombre)
+        setPreviewPuntos(dataClientes[0].puntos)
+      }
+    }
 
     const { data: dataHistorial } = await supabase.from('historial_puntos').select('*, clientes(nombre)').order('created_at', { ascending: false }).limit(50)
     if (dataHistorial) setHistorial(dataHistorial as any)
@@ -36,31 +50,70 @@ export default function DashboardPro() {
   async function ajustarPuntos(id: string, puntosActuales: number, cantidad: number) {
     let nuevosPuntos = puntosActuales + cantidad
     if (nuevosPuntos < 0) nuevosPuntos = 0
-    if (nuevosPuntos > 10) nuevosPuntos = 10 // EL TOPE MAESTRO
+    if (nuevosPuntos > 10) nuevosPuntos = 10 
 
-    if (nuevosPuntos === puntosActuales) return // Si no cambia, no hace nada
+    if (nuevosPuntos === puntosActuales) return 
 
     await supabase.from('clientes').update({ puntos: nuevosPuntos }).eq('id', id)
     await supabase.from('historial_puntos').insert([{ cliente_id: id, tipo_movimiento: cantidad > 0 ? 'suma' : 'resta', cantidad: Math.abs(cantidad), descripcion: 'Ajuste manual' }])
+    
+    if (id === previewId) setPreviewPuntos(nuevosPuntos)
     cargarDatos()
   }
 
-  // --- NUEVA FUNCIÓN: CANJEAR PREMIO ---
+  // --- FUNCIÓN: CANJEAR PREMIO ---
   async function canjearPremio(id: string) {
     if(!confirm('¿Confirmas el canje de la Chavipizza? El contador del cliente volverá a 0.')) return
     
     await supabase.from('clientes').update({ puntos: 0 }).eq('id', id)
     await supabase.from('historial_puntos').insert([{ cliente_id: id, tipo_movimiento: 'canje', cantidad: 10, descripcion: 'Premio Canjeado' }])
-    cargarDatos()
     
-    // Opcional: Reiniciar la previsualización si estaba viéndolo
-    setPreviewPuntos(0)
+    if (id === previewId) setPreviewPuntos(0)
+    cargarDatos()
   }
 
   async function eliminarCliente(id: string) {
     if(!confirm('¿Estás seguro de que deseas eliminar este cliente VIP?')) return
     await supabase.from('clientes').delete().eq('id', id)
     cargarDatos()
+  }
+
+  // --- EL CEREBRO DE DESCARGA WALLET ---
+  async function descargarPase() {
+    if (!previewId) return alert("Selecciona un cliente primero")
+    setDescargando(true)
+    
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+    
+    try {
+      if (isIOS) {
+        // Llama a tu endpoint de Apple
+        const res = await fetch('/api/wallet/apple', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ clienteId: previewId, nombre: previewNombre, puntos: previewPuntos })
+        });
+        
+        if (!res.ok) throw new Error("Error del servidor de Apple");
+        
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `LaBurreriaVIP-${previewId.substring(0,8)}.pkpass`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      } else {
+        alert("Estás en PC/Android. Para instalar en iPhone, abre este panel desde tu celular y presiona el botón.")
+        // Si tuvieras aquí la ruta de Google Wallet, haríamos el fetch a /api/wallet/google
+      }
+    } catch (e) {
+      alert("Hubo un error al generar la tarjeta. Revisa los logs de Vercel.");
+    } finally {
+      setDescargando(false)
+    }
   }
 
   return (
@@ -112,7 +165,7 @@ export default function DashboardPro() {
                         </thead>
                         <tbody className="divide-y divide-[#27272a]">
                           {clientes.map((cliente) => (
-                            <tr key={cliente.id} className="hover:bg-white/5 transition-colors group cursor-pointer" onMouseEnter={() => { setPreviewNombre(cliente.nombre); setPreviewPuntos(cliente.puntos); }}>
+                            <tr key={cliente.id} className="hover:bg-white/5 transition-colors group cursor-pointer" onMouseEnter={() => { setPreviewId(cliente.id); setPreviewNombre(cliente.nombre); setPreviewPuntos(cliente.puntos); }}>
                               <td className="px-6 py-4">
                                 <div className="font-bold text-white group-hover:text-[#d4af37] transition-colors">{cliente.nombre}</div>
                                 <div className="text-xs text-[#71717a] font-mono">{cliente.telefono || 'Sin teléfono'}</div>
@@ -124,10 +177,9 @@ export default function DashboardPro() {
                               </td>
                               <td className="px-6 py-4">
                                 <div className="flex justify-end gap-2 items-center">
-                                  {/* BOTONES CONDICIONALES */}
                                   {cliente.puntos === 10 ? (
                                     <button onClick={() => canjearPremio(cliente.id)} className="h-8 px-4 rounded-lg bg-green-600 hover:bg-green-500 text-white font-bold text-[10px] uppercase tracking-wider animate-pulse border border-green-400 shadow-[0_0_15px_rgba(34,197,94,0.4)] transition-all">
-                                      🎁 CANJEAR PREMIO
+                                      🎁 CANJEAR
                                     </button>
                                   ) : (
                                     <>
@@ -171,49 +223,73 @@ export default function DashboardPro() {
             </div>
           </div>
 
-          {/* COLUMNA DERECHA: PREVISUALIZADOR LIVE */}
+          {/* COLUMNA DERECHA: PREVISUALIZADOR LIVE REAL */}
           <div className="lg:col-span-1">
-            <div className="bg-[#18181b]/90 backdrop-blur-md rounded-[25px] border border-[#27272a] shadow-2xl p-6 sticky top-8">
-              <h2 className="text-xs uppercase tracking-[0.2em] font-black text-[#a1a1aa] mb-6 flex items-center justify-between">
-                Live Preview <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+            <div className="bg-[#18181b]/90 backdrop-blur-md rounded-[25px] border border-[#27272a] shadow-2xl p-6 sticky top-8 flex flex-col items-center">
+              <h2 className="text-xs uppercase tracking-[0.2em] font-black text-[#a1a1aa] mb-6 w-full flex items-center justify-between">
+                Vista Previa <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
               </h2>
-              
-              <div className="mb-8 bg-black/50 p-4 rounded-xl border border-[#3f3f46]">
-                <label className="text-[10px] uppercase text-[#71717a] font-bold flex justify-between mb-2">
-                  <span>Simulador de Sellos</span>
-                  <span className="text-[#d4af37]">{previewPuntos}/10</span>
-                </label>
-                <input type="range" min="0" max="10" value={previewPuntos} onChange={(e) => setPreviewPuntos(parseInt(e.target.value))} className="w-full h-2 bg-black rounded-lg appearance-none cursor-pointer accent-[#b91c1c]" />
-              </div>
 
-              <div className="w-full aspect-[0.63] max-h-[500px] bg-gradient-to-b from-[#111] to-[#000] rounded-3xl border border-[#333] shadow-[0_20px_50px_rgba(0,0,0,0.5)] p-6 flex flex-col justify-between relative overflow-hidden transition-all duration-300">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-[#d4af37] opacity-10 blur-[50px] rounded-full"></div>
+              {/* RENDER DE TARJETA ESTILO WALLET CON IMAGENES REALES */}
+              <div 
+                className="w-full aspect-[0.63] max-w-[320px] rounded-[30px] shadow-[0_20px_50px_rgba(0,0,0,0.8)] p-6 flex flex-col justify-between relative overflow-hidden transition-all duration-300 border-[4px] border-[#27272a]"
+                style={{
+                  backgroundImage: `url(${DESTACADA_URL})`,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center'
+                }}
+              >
+                {/* Overlay Oscuro para lectura */}
+                <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]"></div>
+                
+                {/* Cabecera Tarjeta */}
                 <div className="flex justify-between items-start z-10">
-                  <div className="w-12 h-12 bg-black rounded-full border border-[#3f3f46] flex items-center justify-center overflow-hidden">
-                    <span className="text-[8px] text-gray-500">LOGO</span>
+                  <div className="w-14 h-14 bg-black rounded-full border-2 border-[#d4af37] flex items-center justify-center overflow-hidden shadow-lg p-1">
+                    <img src={LOGO_URL} alt="Logo" className="w-full h-full object-contain" />
                   </div>
-                  <div className="text-right">
-                    <p className="text-[10px] text-gray-400 uppercase tracking-widest">La Burrería Club</p>
-                    <p className="text-[#d4af37] font-black text-sm">Pase VIP</p>
+                  <div className="text-right drop-shadow-md">
+                    <p className="text-[10px] text-gray-300 uppercase tracking-widest font-bold">La Burrería Club</p>
+                    <p className="text-[#d4af37] font-black text-lg">Pase VIP</p>
                   </div>
                 </div>
-                <div className="z-10 mt-8">
-                  <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-1">Titular</p>
-                  <p className="text-xl font-bold text-white truncate">{previewNombre}</p>
+
+                {/* Centro Tarjeta */}
+                <div className="z-10 mt-8 drop-shadow-md">
+                  <p className="text-[10px] text-gray-300 uppercase tracking-widest mb-1 font-bold">Titular VIP</p>
+                  <p className="text-2xl font-black text-white truncate">{previewNombre}</p>
                 </div>
-                <div className="z-10 bg-[#18181b]/80 p-4 rounded-2xl border border-[#27272a] flex justify-between items-center mt-6">
+
+                {/* Sellos */}
+                <div className="z-10 bg-black/80 backdrop-blur-md p-5 rounded-2xl border border-[#3f3f46] flex justify-between items-center mt-6 shadow-xl">
                   <div>
-                    <p className="text-[10px] text-gray-500 uppercase tracking-widest">Progreso</p>
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-4xl font-black text-[#b91c1c]">{previewPuntos}</span>
-                      <span className="text-xs text-gray-400">/ 10</span>
+                    <p className="text-[10px] text-gray-400 uppercase tracking-widest font-bold">Progreso</p>
+                    <div className="flex items-baseline gap-1 mt-1">
+                      <span className="text-5xl font-black text-[#d4af37] drop-shadow-[0_0_10px_rgba(212,175,55,0.5)]">{previewPuntos}</span>
+                      <span className="text-sm text-gray-400 font-bold">/ 10</span>
                     </div>
                   </div>
-                  <div className="w-16 h-16 bg-white rounded-lg flex items-center justify-center p-1">
-                    <div className="w-full h-full bg-black flex items-center justify-center"><span className="text-[8px]">QR</span></div>
+                  {/* CÓDIGO QR GENERADO DINÁMICAMENTE */}
+                  <div className="w-20 h-20 bg-white rounded-xl p-1.5 shadow-inner">
+                    <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://laburreriaclub.vercel.app/cliente/${previewId}`} alt="QR Code" className="w-full h-full opacity-90" />
                   </div>
                 </div>
               </div>
+
+              {/* BOTÓN MÁGICO DE DESCARGA */}
+              <button 
+                onClick={descargarPase}
+                disabled={descargando}
+                className={`mt-8 w-full max-w-[320px] py-4 rounded-xl font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2 transition-all shadow-[0_0_20px_rgba(255,255,255,0.1)] border ${descargando ? 'bg-gray-800 text-gray-500 border-gray-700' : 'bg-white text-black hover:bg-gray-200 border-white active:scale-95'}`}
+              >
+                {descargando ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-gray-500 border-t-black rounded-full animate-spin"></div> Generando...
+                  </>
+                ) : (
+                  <>🍎 Descargar Pase Apple</>
+                )}
+              </button>
+
             </div>
           </div>
         </div>
