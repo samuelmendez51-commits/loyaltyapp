@@ -17,7 +17,6 @@ export default function DashboardPro() {
   const [historial, setHistorial] = useState<Historial[]>([])
   const [cargando, setCargando] = useState(true)
 
-  // Estados del Previsualizador
   const [previewPuntos, setPreviewPuntos] = useState(0)
   const [previewNombre, setPreviewNombre] = useState('Socio VIP')
 
@@ -33,12 +32,29 @@ export default function DashboardPro() {
 
   useEffect(() => { cargarDatos() }, [])
 
+  // --- LÓGICA BLINDADA DE PUNTOS ---
   async function ajustarPuntos(id: string, puntosActuales: number, cantidad: number) {
-    const nuevosPuntos = puntosActuales + cantidad
-    if (nuevosPuntos < 0) return
+    let nuevosPuntos = puntosActuales + cantidad
+    if (nuevosPuntos < 0) nuevosPuntos = 0
+    if (nuevosPuntos > 10) nuevosPuntos = 10 // EL TOPE MAESTRO
+
+    if (nuevosPuntos === puntosActuales) return // Si no cambia, no hace nada
+
     await supabase.from('clientes').update({ puntos: nuevosPuntos }).eq('id', id)
     await supabase.from('historial_puntos').insert([{ cliente_id: id, tipo_movimiento: cantidad > 0 ? 'suma' : 'resta', cantidad: Math.abs(cantidad), descripcion: 'Ajuste manual' }])
     cargarDatos()
+  }
+
+  // --- NUEVA FUNCIÓN: CANJEAR PREMIO ---
+  async function canjearPremio(id: string) {
+    if(!confirm('¿Confirmas el canje de la Chavipizza? El contador del cliente volverá a 0.')) return
+    
+    await supabase.from('clientes').update({ puntos: 0 }).eq('id', id)
+    await supabase.from('historial_puntos').insert([{ cliente_id: id, tipo_movimiento: 'canje', cantidad: 10, descripcion: 'Premio Canjeado' }])
+    cargarDatos()
+    
+    // Opcional: Reiniciar la previsualización si estaba viéndolo
+    setPreviewPuntos(0)
   }
 
   async function eliminarCliente(id: string) {
@@ -66,10 +82,9 @@ export default function DashboardPro() {
           </Link>
         </div>
 
-        {/* ESTRUCTURA DE 2 COLUMNAS */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
-          {/* COLUMNA IZQUIERDA: GESTIÓN (Toma 2 espacios) */}
+          {/* COLUMNA IZQUIERDA: GESTIÓN */}
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-[#18181b]/90 backdrop-blur-md rounded-[25px] border border-[#27272a] shadow-2xl overflow-hidden">
               <div className="flex border-b border-[#3f3f46] bg-black/40">
@@ -103,15 +118,24 @@ export default function DashboardPro() {
                                 <div className="text-xs text-[#71717a] font-mono">{cliente.telefono || 'Sin teléfono'}</div>
                               </td>
                               <td className="px-6 py-4 text-center">
-                                <span className="inline-flex items-center gap-1 bg-[#b91c1c]/10 text-[#b91c1c] px-3 py-1 rounded-full font-black text-sm border border-[#b91c1c]/20">
+                                <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full font-black text-sm border ${cliente.puntos === 10 ? 'bg-[#d4af37]/20 text-[#d4af37] border-[#d4af37]/40 shadow-[0_0_10px_rgba(212,175,55,0.3)]' : 'bg-[#b91c1c]/10 text-[#b91c1c] border-[#b91c1c]/20'}`}>
                                   {cliente.puntos} ★
                                 </span>
                               </td>
                               <td className="px-6 py-4">
-                                <div className="flex justify-end gap-2">
-                                  <button onClick={() => ajustarPuntos(cliente.id, cliente.puntos, -1)} className="w-8 h-8 rounded-lg bg-[#18181b] border border-[#3f3f46] hover:bg-gray-800 transition-colors">➖</button>
-                                  <button onClick={() => ajustarPuntos(cliente.id, cliente.puntos, 1)} className="w-8 h-8 rounded-lg bg-[#b91c1c]/10 border border-[#b91c1c]/30 text-[#b91c1c] hover:bg-[#b91c1c]/20 transition-colors">➕</button>
-                                  <button onClick={() => eliminarCliente(cliente.id)} className="w-8 h-8 rounded-lg bg-red-900/20 text-red-500 hover:bg-red-500 hover:text-white transition-colors border border-red-900/50">🗑️</button>
+                                <div className="flex justify-end gap-2 items-center">
+                                  {/* BOTONES CONDICIONALES */}
+                                  {cliente.puntos === 10 ? (
+                                    <button onClick={() => canjearPremio(cliente.id)} className="h-8 px-4 rounded-lg bg-green-600 hover:bg-green-500 text-white font-bold text-[10px] uppercase tracking-wider animate-pulse border border-green-400 shadow-[0_0_15px_rgba(34,197,94,0.4)] transition-all">
+                                      🎁 CANJEAR PREMIO
+                                    </button>
+                                  ) : (
+                                    <>
+                                      <button onClick={() => ajustarPuntos(cliente.id, cliente.puntos, -1)} className="w-8 h-8 rounded-lg bg-[#18181b] border border-[#3f3f46] hover:bg-gray-800 transition-colors">➖</button>
+                                      <button onClick={() => ajustarPuntos(cliente.id, cliente.puntos, 1)} className="w-8 h-8 rounded-lg bg-[#b91c1c]/10 border border-[#b91c1c]/30 text-[#b91c1c] hover:bg-[#b91c1c]/20 transition-colors">➕</button>
+                                    </>
+                                  )}
+                                  <button onClick={() => eliminarCliente(cliente.id)} className="w-8 h-8 rounded-lg bg-red-900/20 text-red-500 hover:bg-red-500 hover:text-white transition-colors border border-red-900/50 ml-2">🗑️</button>
                                 </div>
                               </td>
                             </tr>
@@ -120,20 +144,40 @@ export default function DashboardPro() {
                       </table>
                     </div>
                   )}
-                  {/* ... (La pestaña de auditoria se mantiene igual internamente) ... */}
+
+                  {/* PESTAÑA AUDITORIA */}
+                  {pestaña === 'auditoria' && (
+                    <div className="p-8 space-y-4">
+                      {historial.length === 0 ? <p className="text-center text-[#71717a] font-sans py-10">Historial limpio.</p> : null}
+                      {historial.map((mov) => (
+                        <div key={mov.id} className="flex justify-between items-center bg-[#000000]/50 p-5 rounded-2xl border border-[#27272a] hover:border-[#3f3f46] transition-colors font-sans">
+                          <div>
+                            <p className="text-white font-bold text-base">{mov.clientes?.nombre}</p>
+                            <p className="text-[#a1a1aa] text-xs mt-1 font-mono">{new Date(mov.created_at).toLocaleString()}</p>
+                          </div>
+                          <div className={`font-black text-lg px-4 py-2 rounded-xl border flex items-center justify-center min-w-[60px] ${
+                            mov.tipo_movimiento === 'suma' ? 'bg-[#b91c1c]/10 text-[#b91c1c] border-[#b91c1c]/30 shadow-[0_0_10px_rgba(185,28,28,0.2)]' : 
+                            mov.tipo_movimiento === 'canje' ? 'bg-green-500/10 text-green-500 border-green-500/30 shadow-[0_0_10px_rgba(34,197,94,0.2)]' :
+                            'bg-[#27272a] text-[#a1a1aa] border-[#3f3f46]'
+                          }`}>
+                            {mov.tipo_movimiento === 'suma' ? '+' : mov.tipo_movimiento === 'canje' ? '🎁 ' : '-'}{mov.cantidad}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           </div>
 
-          {/* COLUMNA DERECHA: PREVISUALIZADOR LIVE (Sticky para que siempre se vea) */}
+          {/* COLUMNA DERECHA: PREVISUALIZADOR LIVE */}
           <div className="lg:col-span-1">
             <div className="bg-[#18181b]/90 backdrop-blur-md rounded-[25px] border border-[#27272a] shadow-2xl p-6 sticky top-8">
               <h2 className="text-xs uppercase tracking-[0.2em] font-black text-[#a1a1aa] mb-6 flex items-center justify-between">
                 Live Preview <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
               </h2>
               
-              {/* SLIDER INTERACTIVO */}
               <div className="mb-8 bg-black/50 p-4 rounded-xl border border-[#3f3f46]">
                 <label className="text-[10px] uppercase text-[#71717a] font-bold flex justify-between mb-2">
                   <span>Simulador de Sellos</span>
@@ -142,11 +186,8 @@ export default function DashboardPro() {
                 <input type="range" min="0" max="10" value={previewPuntos} onChange={(e) => setPreviewPuntos(parseInt(e.target.value))} className="w-full h-2 bg-black rounded-lg appearance-none cursor-pointer accent-[#b91c1c]" />
               </div>
 
-              {/* RENDER DE TARJETA ESTILO WALLET */}
               <div className="w-full aspect-[0.63] max-h-[500px] bg-gradient-to-b from-[#111] to-[#000] rounded-3xl border border-[#333] shadow-[0_20px_50px_rgba(0,0,0,0.5)] p-6 flex flex-col justify-between relative overflow-hidden transition-all duration-300">
                 <div className="absolute top-0 right-0 w-32 h-32 bg-[#d4af37] opacity-10 blur-[50px] rounded-full"></div>
-                
-                {/* Cabecera Tarjeta */}
                 <div className="flex justify-between items-start z-10">
                   <div className="w-12 h-12 bg-black rounded-full border border-[#3f3f46] flex items-center justify-center overflow-hidden">
                     <span className="text-[8px] text-gray-500">LOGO</span>
@@ -156,14 +197,10 @@ export default function DashboardPro() {
                     <p className="text-[#d4af37] font-black text-sm">Pase VIP</p>
                   </div>
                 </div>
-
-                {/* Centro Tarjeta */}
                 <div className="z-10 mt-8">
                   <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-1">Titular</p>
                   <p className="text-xl font-bold text-white truncate">{previewNombre}</p>
                 </div>
-
-                {/* Sellos */}
                 <div className="z-10 bg-[#18181b]/80 p-4 rounded-2xl border border-[#27272a] flex justify-between items-center mt-6">
                   <div>
                     <p className="text-[10px] text-gray-500 uppercase tracking-widest">Progreso</p>
@@ -173,15 +210,13 @@ export default function DashboardPro() {
                     </div>
                   </div>
                   <div className="w-16 h-16 bg-white rounded-lg flex items-center justify-center p-1">
-                    <div className="w-full h-full bg-black flex items-center justify-center"><span className="text-[8px]">QR MOCK</span></div>
+                    <div className="w-full h-full bg-black flex items-center justify-center"><span className="text-[8px]">QR</span></div>
                   </div>
                 </div>
               </div>
-
             </div>
           </div>
         </div>
-
       </div>
     </main>
   )

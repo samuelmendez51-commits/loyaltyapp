@@ -2,12 +2,24 @@ import { NextResponse } from 'next/server'
 // @ts-ignore
 import { Template } from '@walletpass/pass-js'
 
+// --- ESCUDO ANTI-VERCEL PARA CERTIFICADOS ---
+// Esta función limpia la variable para que Apple la reconozca perfectamente
+function formatPem(pemStr: string | undefined) {
+  if (!pemStr) return '';
+  return pemStr
+    .replace(/^["']|["']$/g, '') // Elimina comillas fantasmas que Vercel pueda agregar
+    .replace(/\\n/g, '\n')       // Fuerza los saltos de línea reales
+    .trim();                     // Elimina espacios muertos
+}
+
 // --- CONFIGURACIÓN DE SEGURIDAD ---
 const PASS_TYPE_IDENTIFIER = process.env.APPLE_PASS_TYPE_IDENTIFIER;
 const TEAM_IDENTIFIER = process.env.APPLE_TEAM_ID;
-const SIGNER_KEY = process.env.APPLE_SIGNER_KEY; 
-const SIGNER_CERT = process.env.APPLE_SIGNER_CERT; 
-const WWDR_CERT = process.env.APPLE_WWDR_CERT;
+
+// Aquí aplicamos el escudo a tus 3 certificados
+const SIGNER_KEY = formatPem(process.env.APPLE_SIGNER_KEY); 
+const SIGNER_CERT = formatPem(process.env.APPLE_SIGNER_CERT); 
+const WWDR_CERT = formatPem(process.env.APPLE_WWDR_CERT);
 
 export async function POST(req: Request) {
   try {
@@ -34,19 +46,19 @@ export async function POST(req: Request) {
       labelColor: '#d4af37',
     });
 
-    // 2. GEOPUSH (El Gancho)
+    // 2. GEOPUSH (El Radar de Notificaciones)
     template.locations = [{
       latitude: 19.421583,
       longitude: -102.067222,
       relevantText: "¡Estás cerca! Pasa por tu Chavipizza a La Burrería."
     }];
 
-    // 3. Inyectar Certificados
-    template.setCertificate(SIGNER_CERT.replace(/\\n/g, '\n'));
-    template.setPrivateKey(SIGNER_KEY.replace(/\\n/g, '\n'), process.env.APPLE_SIGNER_PASSWORD || '');
-    template.setWWDR(WWDR_CERT.replace(/\\n/g, '\n'));
+    // 3. Inyectar Certificados (Ya purificados)
+    template.setCertificate(SIGNER_CERT);
+    template.setPrivateKey(SIGNER_KEY, process.env.APPLE_SIGNER_PASSWORD || '');
+    template.setWWDR(WWDR_CERT);
 
-    // 4. Inyectar Imágenes (Solución Anti-Vercel Crash)
+    // 4. Inyectar Imágenes (Descarga remota segura)
     try {
       const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://laburreriaclub.vercel.app';
       const iconRes = await fetch(`${baseUrl}/logo.png`);
