@@ -2,9 +2,18 @@ import { NextResponse } from 'next/server'
 // @ts-ignore
 import { Template } from '@walletpass/pass-js'
 
+// --- LA ASPIRADORA CRIPTOGRÁFICA EXTREMA ---
 function formatPem(pemStr: string | undefined) {
   if (!pemStr) return '';
-  return pemStr.replace(/^["']|["']$/g, '').replace(/\\n/g, '\n').trim();
+  // 1. Quitamos comillas iniciales/finales
+  let clean = pemStr.replace(/^["']|["']$/g, '');
+  // 2. Reemplazamos los \n literales por saltos reales
+  clean = clean.replace(/\\n/g, '\n');
+  // 3. Destruimos los retornos de carro de Windows (\r) que OpenSSL odia
+  clean = clean.replace(/\r/g, '');
+  // 4. Limpiamos espacios en blanco al inicio y al final de CADA línea
+  clean = clean.split('\n').map(line => line.trim()).join('\n');
+  return clean.trim();
 }
 
 const PASS_TYPE_IDENTIFIER = process.env.APPLE_PASS_TYPE_IDENTIFIER;
@@ -44,7 +53,7 @@ export async function POST(req: Request) {
     if (signerPassword.length > 0) {
       template.setPrivateKey(SIGNER_KEY, signerPassword);
     } else {
-      template.setPrivateKey(SIGNER_KEY); // Ahora sí, entra sin contraseña fantasma
+      template.setPrivateKey(SIGNER_KEY); // Entra limpio y sin contraseña fantasma
     }
 
     // --- MAGIA DE IMÁGENES ---
