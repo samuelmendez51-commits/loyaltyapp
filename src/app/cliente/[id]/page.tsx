@@ -28,13 +28,26 @@ export default function TarjetaLealtadFinal() {
     cargarDatos()
   }, [id])
 
+  // Helpers para obtener la URL base correcta
+  const getBaseUrl = () => {
+    if (typeof window !== 'undefined') return window.location.origin
+    if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL
+    return 'http://localhost:3000'
+  }
+
   const generarPaseGoogle = async () => {
     setGenerandoGoogle(true)
     try {
-      const res = await fetch('/api/wallet/google', {
+      // Uso de URL absoluta para evitar problemas de rutas relativas
+      const apiUrl = `${getBaseUrl()}/api/wallet/google`
+      const res = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clienteId: cliente.id })
+        body: JSON.stringify({ 
+          clienteId: cliente.id,
+          nombre: cliente.nombre,
+          puntos: cliente.puntos
+        })
       })
       const data = await res.json()
       if (data.url) {
@@ -53,32 +66,43 @@ export default function TarjetaLealtadFinal() {
   const generarPaseApple = async () => {
     setGenerandoApple(true)
     try {
-      const res = await fetch('/api/wallet/apple', {
+      // Uso de URL absoluta
+      const apiUrl = `${getBaseUrl()}/api/wallet/apple`
+      const res = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ clienteId: cliente.id, nombre: cliente.nombre, puntos: cliente.puntos })
       })
 
-      const contentType = res.headers.get('Content-Type')
-      if (contentType && contentType.includes('application/vnd.apple.pkpass')) {
-        const blob = await res.blob()
-        const url = window.URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = 'LaBurreriaVIP.pkpass'
-        a.click()
-        window.URL.revokeObjectURL(url)
-      } else {
-        const data = await res.json()
-        if (data.simulacion) {
-          alert(data.mensaje)
+      // Manejo robusto de la respuesta binaria
+      if (res.ok) {
+        const contentType = res.headers.get('Content-Type')
+        if (contentType && contentType.includes('application/vnd.apple.pkpass')) {
+          const blob = await res.blob()
+          const url = window.URL.createObjectURL(blob)
+          const a = document.createElement('a')
+          a.href = url
+          a.download = `LaBurreriaVIP-${cliente.id.substring(0,8)}.pkpass`
+          document.body.appendChild(a) // Necesario en algunos navegadores
+          a.click()
+          window.URL.revokeObjectURL(url)
+          document.body.removeChild(a)
         } else {
-          alert('Error al generar pase de Apple: ' + data.error)
+          // Si no es pkpass, asumimos que es el JSON de simulación
+          const data = await res.json()
+          if (data.simulacion) {
+            alert(data.mensaje)
+          } else {
+             alert('Error al generar pase de Apple: ' + (data.error || 'Respuesta inválida'))
+          }
         }
+      } else {
+        const errData = await res.json()
+        alert('Error del servidor: ' + (errData.error || res.statusText))
       }
     } catch (error) {
       console.error('Error Apple Wallet:', error)
-      alert('Error de conexión con servidores de Apple.')
+      alert('Error de red al conectar con el servidor.')
     } finally {
       setGenerandoApple(false)
     }
@@ -126,7 +150,7 @@ export default function TarjetaLealtadFinal() {
           </h1>
         </div>
 
-        {/* SISTEMA DE SELLOS (Manteniendo tu brillo espectacular) */}
+        {/* SISTEMA DE SELLOS */}
         <div className="p-8 bg-black/50 border-y border-[var(--border-subtle)] relative">
           <div className="grid grid-cols-5 gap-y-6 gap-x-3 place-items-center relative z-10">
             {[...Array(sellosTotales)].map((_, i) => {
@@ -169,7 +193,7 @@ export default function TarjetaLealtadFinal() {
           </p>
         </div>
 
-        {/* BOTONES DE WALLET NATIVOS (Diseño Premium Stacked) */}
+        {/* BOTONES DE WALLET NATIVOS */}
         <div className="flex flex-col gap-4 px-8 pb-10">
           
           {/* BOTÓN APPLE WALLET */}

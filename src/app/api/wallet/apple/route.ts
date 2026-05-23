@@ -78,8 +78,9 @@ export async function POST(req: Request) {
 
     // 6. Enviar Buffer
     const passBuffer = await pass.asBuffer();
-    
-    return new NextResponse(passBuffer, {
+    const passArray = new Uint8Array(passBuffer);
+
+    return new NextResponse(passArray, {
       status: 200,
       headers: {
         'Content-Type': 'application/vnd.apple.pkpass',

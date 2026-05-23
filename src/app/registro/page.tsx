@@ -97,13 +97,17 @@ export default function RegistroCliente() {
       style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}
     >
       
-      {/* EL LOGO COMO MARCA DE AGUA */}
+      {/* EL LOGO COMO MARCA DE AGUA (Corregido) */}
       <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none z-0 flex items-center justify-center">
-        <div className="absolute w-[350px] h-[350px] bg-[#ffffff] opacity-[0.12] blur-[80px] rounded-full"></div>
+        {/* Resplandor trasero */}
+        <div className="absolute w-[350px] h-[350px] bg-[#dc2626] opacity-[0.05] blur-[80px] rounded-full"></div>
+        {/* La clave aquí es "mix-blend-lighten" o "mix-blend-screen" 
+          Si tu logo tiene fondo blanco, esto lo vuelve transparente contra el negro.
+        */}
         <img 
           src="/logo.png" 
           alt="Watermark Logo" 
-          className="relative w-[500px] h-[500px] object-contain opacity-[0.4] z-10" 
+          className="relative w-[500px] h-[500px] object-contain opacity-20 mix-blend-lighten grayscale hover:grayscale-0 transition-all duration-1000 z-10" 
         />
       </div>
 

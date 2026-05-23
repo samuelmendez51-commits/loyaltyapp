@@ -27,8 +27,11 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="es" className={`${inter.variable} ${playfair.variable}`}>
-      <body className="bg-[#050505] text-white font-sans antialiased selection:bg-[#b91c1c]/40 selection:text-white min-h-screen flex flex-col">
+    <html lang="es" className={`${inter.variable} ${playfair.variable}`} style={{ backgroundColor: '#050505' }}>
+      <body 
+        className="bg-[#050505] text-white font-sans antialiased selection:bg-[#b91c1c]/40 selection:text-white min-h-screen flex flex-col"
+        style={{ backgroundColor: '#050505', margin: 0, color: '#ffffff' }}
+      >
         
         {/* Efecto de luz difusa de fondo (Atmósfera Hemlock/Sakura) */}
         <div className="fixed top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-[#b91c1c] blur-[150px] opacity-10 pointer-events-none z-0"></div>
