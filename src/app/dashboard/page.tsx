@@ -22,14 +22,13 @@ export default function DashboardPro() {
   const [previewNombre, setPreviewNombre] = useState('Socio VIP')
   
   const [descargandoApple, setDescargandoApple] = useState(false)
-  const [os, setOs] = useState('unknown') // Para detectar iOS o Android
+  const [os, setOs] = useState('unknown')
 
   const LOGO_URL = "https://hjaeireljkcvjnigfhzb.supabase.co/storage/v1/object/public/assets/logo.png"
   const DESTACADA_URL = "https://hjaeireljkcvjnigfhzb.supabase.co/storage/v1/object/public/assets/destacada.jpg"
 
   useEffect(() => { 
     cargarDatos() 
-    // Detectar el dispositivo al cargar
     if (typeof navigator !== 'undefined') {
       if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) setOs('ios')
       else if (/Android/i.test(navigator.userAgent)) setOs('android')
@@ -120,18 +119,18 @@ export default function DashboardPro() {
 
   return (
     <main className="min-h-screen p-4 sm:p-8 bg-[#050505] text-white font-sans">
-      <div className="max-w-[1600px] mx-auto space-y-8">
+      <div className="max-w-400 mx-auto space-y-8">
         
         {/* HEADER */}
         <div className="flex flex-col sm:flex-row justify-between items-center gap-6">
           <div>
             <h1 className="text-4xl sm:text-5xl font-black italic mb-1">
-              La Burrería <span className="text-[#d4af37] font-sans text-3xl not-italic tracking-tighter bg-clip-text text-transparent bg-gradient-to-b from-[#d4af37] to-[#9ca3af]">CLUB</span>
+              La Burrería <span className="font-sans text-3xl not-italic tracking-tighter bg-clip-text text-transparent bg-linear-to-b from-[#d4af37] to-[#9ca3af]">CLUB</span>
             </h1>
             <p className="text-[#a1a1aa] text-xs uppercase tracking-[0.3em] font-bold">Panel Administrativo</p>
           </div>
           <Link href="/registro">
-            <button className="bg-gradient-to-r from-[#dc2626] to-[#991b1b] text-white font-black uppercase tracking-widest py-3 px-6 rounded-xl transition-all shadow-[0_0_20px_rgba(220,38,38,0.4)] hover:scale-105 active:scale-95 text-xs flex items-center gap-2 border border-[#ef4444]/50">
+            <button className="bg-linear-to-r from-[#dc2626] to-[#991b1b] text-white font-black uppercase tracking-widest py-3 px-6 rounded-xl transition-all shadow-[0_0_20px_rgba(220,38,38,0.4)] hover:scale-105 active:scale-95 text-xs flex items-center gap-2 border border-[#ef4444]/50">
               ➕ Nuevo VIP
             </button>
           </Link>
@@ -146,7 +145,7 @@ export default function DashboardPro() {
                 {['clientes', 'auditoria'].map((tab) => (
                   <button key={tab} onClick={() => setPestaña(tab)} className={`flex-1 py-5 px-4 font-bold uppercase tracking-widest text-[11px] transition-all relative ${ pestaña === tab ? 'text-white' : 'text-[#71717a] hover:text-[#a1a1aa]'}`}>
                     {tab}
-                    {pestaña === tab && <div className="absolute bottom-0 left-0 w-full h-[2px] bg-[#b91c1c] shadow-[0_-2px_10px_rgba(185,28,28,0.8)]"></div>}
+                    {pestaña === tab && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-[#b91c1c] shadow-[0_-2px_10px_rgba(185,28,28,0.8)]"></div>}
                   </button>
                 ))}
               </div>
@@ -211,7 +210,7 @@ export default function DashboardPro() {
               </h2>
 
               <div 
-                className="w-full aspect-[0.63] max-w-[320px] rounded-[30px] shadow-[0_20px_50px_rgba(0,0,0,0.8)] p-6 flex flex-col justify-between relative overflow-hidden transition-all duration-300 border-[4px] border-[#27272a] bg-cover bg-center"
+                className="w-full aspect-[0.63] max-w-[320px] rounded-[30px] shadow-[0_20px_50px_rgba(0,0,0,0.8)] p-6 flex flex-col justify-between relative overflow-hidden transition-all duration-300 border-4 border-[#27272a] bg-cover bg-center"
                 style={{ backgroundImage: `url('${DESTACADA_URL}')` }}
               >
                 <div className="absolute inset-0 bg-black/50 backdrop-blur-[1px]"></div>
@@ -245,10 +244,10 @@ export default function DashboardPro() {
                 </div>
               </div>
 
-              {/* BOTONES INTELIGENTES (Aparecen según el dispositivo) */}
+              {/* BOTONES INTELIGENTES */}
               <div className="mt-8 w-full max-w-[320px] space-y-4">
                 
-                {/* BOTÓN APPLE WALLET (Se muestra en iOS o Desktop) */}
+                {/* BOTÓN APPLE WALLET */}
                 {(os === 'ios' || os === 'desktop') && (
                   <button 
                     onClick={descargarPaseApple}
@@ -269,7 +268,7 @@ export default function DashboardPro() {
                   </button>
                 )}
 
-                {/* BOTÓN GOOGLE WALLET (Se muestra en Android o Desktop) */}
+                {/* BOTÓN GOOGLE WALLET */}
                 {(os === 'android' || os === 'desktop') && (
                   <button 
                     onClick={descargarPaseGoogle}

@@ -2,17 +2,25 @@ import { NextResponse } from 'next/server'
 // @ts-ignore
 import { Template } from '@walletpass/pass-js'
 
-// --- LA ASPIRADORA CRIPTOGRÁFICA EXTREMA ---
 function formatPem(pemStr: string | undefined) {
   if (!pemStr) return '';
-  // 1. Quitamos comillas iniciales/finales
-  let clean = pemStr.replace(/^["']|["']$/g, '');
-  // 2. Reemplazamos los \n literales por saltos reales
-  clean = clean.replace(/\\n/g, '\n');
-  // 3. Destruimos los retornos de carro de Windows (\r) que OpenSSL odia
-  clean = clean.replace(/\r/g, '');
-  // 4. Limpiamos espacios en blanco al inicio y al final de CADA línea
-  clean = clean.split('\n').map(line => line.trim()).join('\n');
+  
+  let clean = pemStr.replace(/^["']|["']$/g, '').replace(/\\n/g, '\n').replace(/\r/g, '');
+
+  if (clean.split('\n').length > 3) {
+    return clean.trim();
+  }
+
+  const match = clean.match(/(-----BEGIN .*?-----)(.*?)(-----END .*?-----)/);
+  if (match) {
+    const header = match[1];
+    const body = match[2].replace(/\s+/g, '');
+    const footer = match[3];
+
+    const chunks = body.match(/.{1,64}/g) || [];
+    return `${header}\n${chunks.join('\n')}\n${footer}`;
+  }
+
   return clean.trim();
 }
 
@@ -45,18 +53,8 @@ export async function POST(req: Request) {
     }];
 
     template.setCertificate(SIGNER_CERT);
-    
-    // --- EL ROMPECANDADOS: Limpieza extrema de la contraseña ---
-    let signerPassword = process.env.APPLE_SIGNER_PASSWORD || '';
-    signerPassword = signerPassword.replace(/^["']|["']$/g, '').trim();
+    template.setPrivateKey(SIGNER_KEY);
 
-    if (signerPassword.length > 0) {
-      template.setPrivateKey(SIGNER_KEY, signerPassword);
-    } else {
-      template.setPrivateKey(SIGNER_KEY); // Entra limpio y sin contraseña fantasma
-    }
-
-    // --- MAGIA DE IMÁGENES ---
     try {
       const LOGO_URL = "https://hjaeireljkcvjnigfhzb.supabase.co/storage/v1/object/public/assets/logo.png";
       const DESTACADA_URL = "https://hjaeireljkcvjnigfhzb.supabase.co/storage/v1/object/public/assets/destacada.jpg";
@@ -80,7 +78,8 @@ export async function POST(req: Request) {
       console.error("No se pudieron inyectar las imágenes al pase.", e);
     }
 
-    template.headerFields.add({ key: 'puntos', label: 'SELLOS', value: String(puntos || 0), textAlignment: 'pkTextAlignmentRight' });
+    // ¡BAM! Arreglado el PKTextAlignmentRight
+    template.headerFields.add({ key: 'puntos', label: 'SELLOS', value: String(puntos || 0), textAlignment: 'PKTextAlignmentRight' });
     template.primaryFields.add({ key: 'cliente', label: 'SOCIO VIP', value: nombre });
     template.secondaryFields.add({ key: 'id', label: 'ID DE SOCIO', value: clienteId.substring(0, 8) });
 
@@ -89,16 +88,10 @@ export async function POST(req: Request) {
       authenticationToken: process.env.APPLE_PASS_AUTH_TOKEN || 'secure_token_123456789',
     });
 
-    pass.barcodes = [{
-      format: 'PKBarcodeFormatQR',
-      message: `https://laburreriaclub.vercel.app/cliente/${clienteId}`, 
-      messageEncoding: 'iso-8859-1',
-      altText: `ID: ${clienteId.substring(0, 8)}`,
-    }];
-
     const passBuffer = await pass.asBuffer();
 
-    return new NextResponse(passBuffer, {
+    // ¡BAM! Callamos a TypeScript diciéndole que pase el buffer sin quejarse
+    return new NextResponse(passBuffer as any, {
       status: 200,
       headers: {
         'Content-Type': 'application/vnd.apple.pkpass',
