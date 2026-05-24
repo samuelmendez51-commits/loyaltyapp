@@ -2,32 +2,18 @@ import { NextResponse } from 'next/server'
 // @ts-ignore
 import { Template } from '@walletpass/pass-js'
 
-function formatPem(pemStr: string | undefined) {
-  if (!pemStr) return '';
-  
-  let clean = pemStr.replace(/^["']|["']$/g, '').replace(/\\n/g, '\n').replace(/\r/g, '');
+// 1. PEGA AQUÍ TU LLAVE MAESTRA (La de llave_maestra.key)
+const SIGNER_KEY = `-----BEGIN PRIVATE KEY-----
+(Borra esto y pega aquí todo el cuerpo de tu llave maestra)
+-----END PRIVATE KEY-----`;
 
-  if (clean.split('\n').length > 3) {
-    return clean.trim();
-  }
-
-  const match = clean.match(/(-----BEGIN .*?-----)(.*?)(-----END .*?-----)/);
-  if (match) {
-    const header = match[1];
-    const body = match[2].replace(/\s+/g, '');
-    const footer = match[3];
-
-    const chunks = body.match(/.{1,64}/g) || [];
-    return `${header}\n${chunks.join('\n')}\n${footer}`;
-  }
-
-  return clean.trim();
-}
+// 2. PEGA AQUÍ TU CERTIFICADO (El de certificado_burreria.pem)
+const SIGNER_CERT = `-----BEGIN CERTIFICATE-----
+(Borra esto y pega aquí todo el cuerpo de tu certificado)
+-----END CERTIFICATE-----`;
 
 const PASS_TYPE_IDENTIFIER = process.env.APPLE_PASS_TYPE_IDENTIFIER;
 const TEAM_IDENTIFIER = process.env.APPLE_TEAM_ID;
-const SIGNER_KEY = formatPem(process.env.APPLE_SIGNER_KEY); 
-const SIGNER_CERT = formatPem(process.env.APPLE_SIGNER_CERT); 
 
 export async function POST(req: Request) {
   try {
@@ -52,9 +38,11 @@ export async function POST(req: Request) {
       relevantText: "¡Estás cerca! Pasa por tu Chavipizza a La Burrería."
     }];
 
+    // Inyectamos las llaves directas (Sin variables de entorno, sin Vercel molestando)
     template.setCertificate(SIGNER_CERT);
     template.setPrivateKey(SIGNER_KEY);
 
+    // --- MAGIA DE IMÁGENES ---
     try {
       const LOGO_URL = "https://hjaeireljkcvjnigfhzb.supabase.co/storage/v1/object/public/assets/logo.png";
       const DESTACADA_URL = "https://hjaeireljkcvjnigfhzb.supabase.co/storage/v1/object/public/assets/destacada.jpg";
@@ -78,7 +66,6 @@ export async function POST(req: Request) {
       console.error("No se pudieron inyectar las imágenes al pase.", e);
     }
 
-    // ¡BAM! Arreglado el PKTextAlignmentRight
     template.headerFields.add({ key: 'puntos', label: 'SELLOS', value: String(puntos || 0), textAlignment: 'PKTextAlignmentRight' });
     template.primaryFields.add({ key: 'cliente', label: 'SOCIO VIP', value: nombre });
     template.secondaryFields.add({ key: 'id', label: 'ID DE SOCIO', value: clienteId.substring(0, 8) });
@@ -90,7 +77,6 @@ export async function POST(req: Request) {
 
     const passBuffer = await pass.asBuffer();
 
-    // ¡BAM! Callamos a TypeScript diciéndole que pase el buffer sin quejarse
     return new NextResponse(passBuffer as any, {
       status: 200,
       headers: {
