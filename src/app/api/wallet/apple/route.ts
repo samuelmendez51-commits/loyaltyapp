@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server'
 // @ts-ignore
 import { Template } from '@walletpass/pass-js'
 
-// 1. TU LLAVE MAESTRA (Ya sin duplicados)
 const SIGNER_KEY = `-----BEGIN PRIVATE KEY-----
 MIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQCVbSqTGHKhk1uk
 mPSDUi58U8PIo7KZpVCQxlW1N3VF69gp0uQkdkcTeZGVEhCM6DrVay9fb2HMYlXw
@@ -32,7 +31,6 @@ UdGuw8xv9dK4fCBXbLEP8F2M7nXzIUlWTmPoQS5LjGdoKq5lK5W9NGg78HO1zJZu
 DiwrugDPatu4KRuN0WK87TJeJw==
 -----END PRIVATE KEY-----`;
 
-// 2. EL CERTIFICADO LIMPIO
 const SIGNER_CERT = `-----BEGIN CERTIFICATE-----
 MIIGGjCCBQKgAwIBAgIQJEz86++dmd8xtTG3btOFvzANBgkqhkiG9w0BAQsFADB1
 MUQwQgYDVQQDDDtBcHBsZSBXb3JsZHdpZGUgRGV2ZWxvcGVyIFJlbGF0aW9ucyBD
@@ -69,8 +67,9 @@ tyTnsK+hPqJ7eLZgN/Ye1tEwXRZflMjsxNgoMgQUJqVaHR+HSl5Ht+sKXTcSZknh
 RLAYAd+bHKXx6qT5AcXnhSMShni/jpNriAoOtEGP
 -----END CERTIFICATE-----`;
 
-const PASS_TYPE_IDENTIFIER = process.env.APPLE_PASS_TYPE_IDENTIFIER;
-const TEAM_IDENTIFIER = process.env.APPLE_TEAM_ID;
+// IDs Extraídos directamente de tu Certificado (¡A prueba de fallos!)
+const PASS_TYPE_IDENTIFIER = "pass.com.laburreria.vip";
+const TEAM_IDENTIFIER = "R8K4HJ594Q";
 
 export async function POST(req: Request) {
   try {
@@ -79,8 +78,8 @@ export async function POST(req: Request) {
     if (!clienteId || !nombre) return NextResponse.json({ error: 'Faltan datos' }, { status: 400 })
 
     const template = new Template('storeCard', {
-      passTypeIdentifier: PASS_TYPE_IDENTIFIER!,
-      teamIdentifier: TEAM_IDENTIFIER!,
+      passTypeIdentifier: PASS_TYPE_IDENTIFIER,
+      teamIdentifier: TEAM_IDENTIFIER,
       organizationName: 'La Burrería Club',
       description: 'Pase VIP de Fidelidad',
       logoText: 'La Burrería',

@@ -24,9 +24,10 @@ export async function POST(req: Request) {
       })
     }
 
-    // 2. IDENTIFICADORES ÚNICOS (Blindados contra mayúsculas y caracteres raros)
+    // 2. IDENTIFICADORES ÚNICOS
     const classId = `${issuerId}.lealtad_v1`
     const objectId = `${issuerId}.${id.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase()}`
+    const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://loyaltyapp.vercel.app'
 
     // 3. ESTRUCTURA DE LA TARJETA
     const payload = {
@@ -34,7 +35,7 @@ export async function POST(req: Request) {
       aud: 'google',
       typ: 'savetowallet',
       iat: Math.floor(Date.now() / 1000),
-      origins: [process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'],
+      origins: [SITE_URL, 'http://localhost:3000'],
       payload: {
         loyaltyObjects: [{
           id: objectId,
@@ -44,7 +45,7 @@ export async function POST(req: Request) {
           accountName: nombre,
           barcode: {
             type: "QR_CODE",
-            value: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/cliente/${id}`,
+            value: `${SITE_URL}/cliente/${id}`,
             alternateText: `ID: ${id.substring(0, 8)}`
           },
           loyaltyPoints: {
