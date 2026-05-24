@@ -34,6 +34,11 @@ export default function DashboardMaestroPro() {
   const [previewPuntos, setPreviewPuntos] = useState(0)
   const [previewNombre, setPreviewNombre] = useState('Socio VIP')
 
+  // --- ESTADOS DE LAS WALLETS ---
+  const [descargandoApple, setDescargandoApple] = useState(false)
+  const [descargandoGoogle, setDescargandoGoogle] = useState(false)
+  const [os, setOs] = useState('unknown')
+
   // --- CONFIGURACIONES DINÁMICAS (WHATSAPP, GEOCERCAS & PUSH) ---
   const [telefonoWhatsApp, setTelefonoWhatsApp] = useState('521234567890')
   const [radioGeocerca, setRadioGeocerca] = useState(150) // metros
@@ -47,51 +52,36 @@ export default function DashboardMaestroPro() {
 
   useEffect(() => {
     cargarDatos()
+    // Detección del Sistema Operativo para los botones
+    if (typeof navigator !== 'undefined') {
+      if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) setOs('ios')
+      else if (/Android/i.test(navigator.userAgent)) setOs('android')
+      else setOs('desktop')
+    }
   }, [])
 
   async function cargarDatos() {
     setCargando(true)
     
-    // 1. Cargar Clientes Activos
-    const { data: dataClientes } = await supabase
-      .from('clientes')
-      .select('*')
-      .order('created_at', { ascending: false })
-
+    const { data: dataClientes } = await supabase.from('clientes').select('*').order('created_at', { ascending: false })
     if (dataClientes) {
       setClientes(dataClientes)
-      if (dataClientes.length > 0) {
+      if (dataClientes.length > 0 && !previewId) {
         setPreviewId(dataClientes[0].id)
         setPreviewNombre(dataClientes[0].nombre)
         setPreviewPuntos(dataClientes[0].puntos)
       }
     }
 
-    // 2. Cargar Historial con relaciones
-    const { data: dataHistorial } = await supabase
-      .from('historial_puntos')
-      .select('*, clientes(nombre)')
-      .order('created_at', { ascending: false })
-      .limit(50)
-
+    const { data: dataHistorial } = await supabase.from('historial_puntos').select('*, clientes(nombre)').order('created_at', { ascending: false }).limit(50)
     if (dataHistorial) {
       setHistorial(dataHistorial as any)
-
-      // Calcular Métricas del Día (Filtro por fecha actual)
       const hoyStr = new Date().toISOString().split('T')[0]
-      
-      const sumaSellosHoy = dataHistorial
-        .filter((h: any) => h.created_at.startsWith(hoyStr) && h.tipo_movimiento === 'suma')
-        .reduce((acc: number, cur: any) => acc + cur.cantidad, 0)
-
-      const sumaCanjesHoy = dataHistorial
-        .filter((h: any) => h.tipo_movimiento === 'canje' || h.descripcion?.includes('CANJEAD'))
-        .length
-
+      const sumaSellosHoy = dataHistorial.filter((h: any) => h.created_at.startsWith(hoyStr) && h.tipo_movimiento === 'suma').reduce((acc: number, cur: any) => acc + cur.cantidad, 0)
+      const sumaCanjesHoy = dataHistorial.filter((h: any) => h.tipo_movimiento === 'canje' || h.descripcion?.includes('CANJEAD')).length
       setSellosHoy(sumaSellosHoy)
       setPremiosCanjeados(sumaCanjesHoy)
     }
-
     setCargando(false)
   }
 
@@ -102,12 +92,7 @@ export default function DashboardMaestroPro() {
     if (nuevosPuntos === puntosActuales) return
 
     await supabase.from('clientes').update({ puntos: nuevosPuntos }).eq('id', id)
-    await supabase.from('historial_puntos').insert([{ 
-      cliente_id: id, 
-      tipo_movimiento: cantidad > 0 ? 'suma' : 'resta', 
-      cantidad: Math.abs(cantidad), 
-      descripcion: 'Ajuste manual administrativo' 
-    }])
+    await supabase.from('historial_puntos').insert([{ cliente_id: id, tipo_movimiento: cantidad > 0 ? 'suma' : 'resta', cantidad: Math.abs(cantidad), descripcion: 'Ajuste manual administrativo' }])
     
     if (id === previewId) setPreviewPuntos(nuevosPuntos)
     cargarDatos()
@@ -123,7 +108,56 @@ export default function DashboardMaestroPro() {
     alert(`🚀 Alerta Push Masiva Enviada con Éxito a los ${clientes.length} pases activos:\n\n"${mensajePush}"`)
   }
 
-  // Filtrar clientes a punto de ganar premio (8 o 9 estrellas)
+  // --- MOTORES DE WALLET RECUPERADOS ---
+  async function descargarPaseApple() {
+    if (!previewId) return alert("Selecciona un cliente de la lista");
+    setDescargandoApple(true)
+    try {
+      const res = await fetch('/api/wallet/apple', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clienteId: previewId, nombre: previewNombre, puntos: previewPuntos })
+      });
+      if (!res.ok) throw new Error("Fallo en servidor de Apple");
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `LaBurreriaVIP-${previewId.substring(0,8)}.pkpass`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (e) {
+      alert("Error al generar el pase de Apple. Revisa Vercel Logs.");
+    } finally {
+      setDescargandoApple(false)
+    }
+  }
+
+  async function descargarPaseGoogle() {
+    if (!previewId) return alert("Selecciona un cliente de la lista");
+    setDescargandoGoogle(true);
+    try {
+      const res = await fetch('/api/wallet/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: previewId, nombre: previewNombre, puntos: previewPuntos })
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.open(data.url, '_blank');
+      } else {
+        throw new Error(data.error || "Fallo en la URL de Google");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Error al generar el pase de Google Wallet.");
+    } finally {
+      setDescargandoGoogle(false);
+    }
+  }
+
   const clientesAlLimite = clientes.filter(c => c.puntos === 8 || c.puntos === 9)
 
   return (
@@ -199,7 +233,7 @@ export default function DashboardMaestroPro() {
                   </div>
                 </div>
 
-                {/* SEGMENTACIÓN: CLIENTES AL LÍMITE (RETENCIÓN CRÍTICA) */}
+                {/* SEGMENTACIÓN: CLIENTES AL LÍMITE */}
                 <div className="bg-[#18181b]/90 border border-[#27272a] rounded-[25px] p-6 shadow-2xl">
                   <h3 className="text-sm uppercase tracking-widest font-black text-[#d4af37] mb-4 flex items-center gap-2">
                     🎯 Clientes a un paso del Premio ({clientesAlLimite.length})
@@ -405,48 +439,120 @@ export default function DashboardMaestroPro() {
 
           </div>
 
-          {/* COLUMNA DERECHA: PREVISUALIZADOR LIVE INDEPENDIENTE (1 COL) */}
+          {/* COLUMNA DERECHA INTELIGENTE (1 COL) */}
           <div className="lg:col-span-1">
-            <div className="bg-[#18181b]/90 backdrop-blur-md rounded-[25px] border border-[#27272a] shadow-2xl p-6 sticky top-8 flex flex-col items-center">
-              <h2 className="text-xs uppercase tracking-[0.2em] font-black text-[#a1a1aa] mb-6 w-full flex items-center justify-between">
-                Vista Previa VIP <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-              </h2>
+            
+            {/* VISTA PREVIA (SOLO EN MÉTRICAS Y CLIENTES) */}
+            {(pestaña === 'clientes' || pestaña === 'metricas') && (
+              <div className="bg-[#18181b]/90 backdrop-blur-md rounded-[25px] border border-[#27272a] shadow-2xl p-6 sticky top-8 flex flex-col items-center animate-fade-in">
+                <h2 className="text-xs uppercase tracking-[0.2em] font-black text-[#a1a1aa] mb-6 w-full flex items-center justify-between">
+                  Vista Previa VIP <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                </h2>
 
-              <div 
-                className="w-full aspect-[0.63] max-w-[320px] rounded-[30px] shadow-[0_20px_50px_rgba(0,0,0,0.8)] p-6 flex flex-col justify-between relative overflow-hidden border-4 border-[#27272a] bg-cover bg-center"
-                style={{ backgroundImage: `url('${LOGO_URL}')` }}
-              >
-                <div className="absolute inset-0 bg-black/70 backdrop-blur-[1px]"></div>
-                
-                <div className="flex justify-between items-start z-10">
-                  <div className="w-12 h-12 bg-black rounded-full border-2 border-[#d4af37] flex items-center justify-center overflow-hidden p-1">
-                    <span className="text-xl">🌯</span>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[9px] text-white uppercase tracking-widest font-black">La Burrería</p>
-                    <p className="text-[#d4af37] font-black text-sm">Pase VIP</p>
-                  </div>
-                </div>
-
-                <div className="z-10 drop-shadow-xl">
-                  <p className="text-[9px] text-zinc-400 uppercase tracking-widest mb-0.5">Socio Activo</p>
-                  <p className="text-xl font-black text-white truncate">{previewNombre}</p>
-                </div>
-
-                <div className="z-10 bg-black/80 backdrop-blur-sm p-4 rounded-xl border border-zinc-800 flex justify-between items-center shadow-xl">
-                  <div>
-                    <p className="text-[9px] text-zinc-500 uppercase font-bold">Progreso</p>
-                    <div className="flex items-baseline gap-0.5">
-                      <span className="text-3xl font-black text-[#d4af37]">{previewPuntos}</span>
-                      <span className="text-xs text-zinc-500 font-bold">/ 10</span>
+                <div 
+                  className="w-full aspect-[0.63] max-w-[320px] rounded-[30px] shadow-[0_20px_50px_rgba(0,0,0,0.8)] p-6 flex flex-col justify-between relative overflow-hidden border-4 border-[#27272a] bg-cover bg-center"
+                  style={{ backgroundImage: `url('${LOGO_URL}')` }}
+                >
+                  <div className="absolute inset-0 bg-black/70 backdrop-blur-[1px]"></div>
+                  
+                  <div className="flex justify-between items-start z-10">
+                    <div className="w-12 h-12 bg-black rounded-full border-2 border-[#d4af37] flex items-center justify-center overflow-hidden p-1">
+                      <span className="text-xl">🌯</span>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[9px] text-white uppercase tracking-widest font-black">La Burrería</p>
+                      <p className="text-[#d4af37] font-black text-sm">Pase VIP</p>
                     </div>
                   </div>
-                  <div className="w-14 h-14 bg-white rounded-lg p-1">
-                    <img src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${previewId}`} alt="QR" className="w-full h-full opacity-90" />
+
+                  <div className="z-10 drop-shadow-xl">
+                    <p className="text-[9px] text-zinc-400 uppercase tracking-widest mb-0.5">Socio Activo</p>
+                    <p className="text-xl font-black text-white truncate">{previewNombre}</p>
+                  </div>
+
+                  <div className="z-10 bg-black/80 backdrop-blur-sm p-4 rounded-xl border border-zinc-800 flex justify-between items-center shadow-xl">
+                    <div>
+                      <p className="text-[9px] text-zinc-500 uppercase font-bold">Progreso</p>
+                      <div className="flex items-baseline gap-0.5">
+                        <span className="text-3xl font-black text-[#d4af37]">{previewPuntos}</span>
+                        <span className="text-xs text-zinc-500 font-bold">/ 10</span>
+                      </div>
+                    </div>
+                    <div className="w-14 h-14 bg-white rounded-lg p-1">
+                      <img src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${previewId}`} alt="QR" className="w-full h-full opacity-90" />
+                    </div>
                   </div>
                 </div>
+
+                {/* BOTONES WALLET NATIVOS (SVGs) */}
+                <div className="mt-8 w-full max-w-[320px] space-y-4">
+                  {(os === 'ios' || os === 'desktop') && (
+                    <button 
+                      onClick={descargarPaseApple}
+                      disabled={descargandoApple}
+                      className={`w-full flex items-center justify-center transition-all ${descargandoApple ? 'opacity-50' : 'hover:scale-[1.03] active:scale-95'}`}
+                    >
+                      {descargandoApple ? (
+                        <div className="h-14 w-full bg-zinc-900 rounded-xl flex items-center justify-center border border-zinc-800">
+                           <span className="text-xs font-bold text-white animate-pulse uppercase tracking-widest">Generando...</span>
+                        </div>
+                      ) : (
+                        <img src="/apple-wallet.svg" alt="Añadir a Apple Wallet" className="h-14 w-auto object-contain drop-shadow-lg" />
+                      )}
+                    </button>
+                  )}
+
+                  {(os === 'android' || os === 'desktop') && (
+                    <button 
+                      onClick={descargarPaseGoogle}
+                      disabled={descargandoGoogle}
+                      className={`w-full flex items-center justify-center transition-all ${descargandoGoogle ? 'opacity-50' : 'hover:scale-[1.03] active:scale-95'}`}
+                    >
+                      {descargandoGoogle ? (
+                        <div className="h-14 w-full bg-zinc-900 rounded-xl flex items-center justify-center border border-zinc-800">
+                           <span className="text-xs font-bold text-white animate-pulse uppercase tracking-widest">Firmando...</span>
+                        </div>
+                      ) : (
+                        <img src="/google-wallet.svg" alt="Añadir a Google Wallet" className="h-14 w-auto object-contain drop-shadow-lg" />
+                      )}
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* GESTOR DE ARCHIVOS (SOLO EN MENÚ) */}
+            {pestaña === 'menu' && (
+              <div className="bg-[#18181b]/90 backdrop-blur-md rounded-[25px] border border-[#27272a] shadow-2xl p-6 sticky top-8 flex flex-col items-center text-center animate-fade-in">
+                <h2 className="text-xs uppercase tracking-[0.2em] font-black text-[#a1a1aa] mb-6 w-full flex items-center justify-between">
+                  Gestor de Archivos <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
+                </h2>
+                <div className="w-full aspect-square border-2 border-dashed border-zinc-700 rounded-2xl flex flex-col items-center justify-center p-6 hover:border-[#dc2626] hover:bg-white/5 transition-all cursor-pointer group">
+                  <span className="text-5xl mb-4 group-hover:scale-110 transition-transform drop-shadow-md">📁</span>
+                  <p className="text-sm font-bold text-white mb-1">Subir Menú (PDF/IMG)</p>
+                  <p className="text-[10px] text-zinc-500">Haz clic o arrastra tu archivo aquí</p>
+                </div>
+                <p className="text-[10px] text-zinc-500 mt-6 leading-relaxed">Los archivos subidos se alojarán automáticamente en tu Bucket de Supabase Storage para no consumir recursos del servidor.</p>
+              </div>
+            )}
+
+            {/* RADAR GPS (SOLO EN GEOCERCAS) */}
+            {pestaña === 'geocercas' && (
+              <div className="bg-[#18181b]/90 backdrop-blur-md rounded-[25px] border border-[#27272a] shadow-2xl p-6 sticky top-8 flex flex-col items-center text-center animate-fade-in">
+                <h2 className="text-xs uppercase tracking-[0.2em] font-black text-[#a1a1aa] mb-6 w-full flex items-center justify-between">
+                  Radar Satelital <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                </h2>
+                <div className="w-full aspect-square bg-black/50 rounded-2xl border border-zinc-800 flex items-center justify-center relative overflow-hidden">
+                  {/* Círculo de radar animado */}
+                  <div className="absolute w-32 h-32 bg-green-500/20 rounded-full animate-ping"></div>
+                  <div className="absolute w-16 h-16 bg-green-500/40 rounded-full"></div>
+                  <span className="text-5xl z-10 drop-shadow-lg">📍</span>
+                </div>
+                <p className="text-xs text-zinc-400 mt-6 font-bold">Radio de Perímetro: {radioGeocerca}m</p>
+                <p className="text-[10px] text-zinc-500 mt-2 leading-relaxed">Las tarjetas de tus clientes despertarán automáticamente al entrar en esta zona geográfica.</p>
+              </div>
+            )}
+
           </div>
 
         </div>
