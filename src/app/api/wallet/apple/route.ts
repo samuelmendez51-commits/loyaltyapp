@@ -2,14 +2,71 @@ import { NextResponse } from 'next/server'
 // @ts-ignore
 import { Template } from '@walletpass/pass-js'
 
-// 1. PEGA AQUÍ TU LLAVE MAESTRA (La de llave_maestra.key)
+// 1. TU LLAVE MAESTRA (Ya sin duplicados)
 const SIGNER_KEY = `-----BEGIN PRIVATE KEY-----
-(Borra esto y pega aquí todo el cuerpo de tu llave maestra)
+MIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQCVbSqTGHKhk1uk
+mPSDUi58U8PIo7KZpVCQxlW1N3VF69gp0uQkdkcTeZGVEhCM6DrVay9fb2HMYlXw
+etK/aCla4YCbupDIAQabId0nD/+vR2LlOBCi8b48s66lD+aBxUg/QZFkCEceEDAn
+XLM6mm7NwoimAWLT7tD0923yDiOUG3UQPcwYPzQCqTwMY7v23WsF6YndCCQQswRR
+at2Rw+IP4dqG3y0/HIiAhzQadO2jMkZs5QYP7VAyhNQ9FAqU2GdgGlggxBrOlLHl
+KK/jax425vGvOJrKY+e/MiiTLLZRE490kSpTBKmiMf0hxVfvSggdqJBIs0Pnmueq
+6Kt8gbFXAgMBAAECggEAFKuecpe0r8ZB10yeB8EpaLhxAm3RVIYfqs9M5uhuOBxu
+cXwDZEnaU4bYd+MhAqT+EoIlHPy8Q3jXmOXHW9lYXdfeTGyWqkbTYkgLyY4MhB40
+v4RYb3n6eMzbBr64LSZxyTz+6Z69hm/zLAFw/P/aU8CqhNr3OrMJboGrJgtaVO/w
+kqpW2O87KYKIFnkvS7KbzA4sl59eo1Tl0PVSPN1FU51LW4CoIMz9LwyUf1e2irPd
+QHderR0718R1fB5lP9RsGzMfC0mXPfLOFhhVwzPKHxVKatlid5POAoEnjVp2sPt8
+8NS1buaA+6Pa+v8JHkwaLvFil42zdcqX3qD6H5lnEQKBgQDNlozwyNLiBZ1wo084
+seWle5rhG4BFp9XAhv30tPEdbmPXm3uKVtvCHRjjxQ8Ajcq/71cYSDSrdTUuamQK
+JE68k6ito5yXkDWXmRg7mWvZlTChGjZhRsM27F7vBAe9m1vJnEr0WjAO8Cwg91Lb
+ERC2roI1UvHyRUNzud22U7uwMQKBgQC6ESlPS1rKjYA9e2OwXSptBO5dJAG6DDNf
+QF3TNoe3Pp5ZavocxOCGy6xMoviaB2kUaNHVDIaCI32mSWcpPd/Hym/5ZvlxFLNR
+CM3Irn/AMeNNa5DV/aU2BbghBSx0C4hOnsJFcEYZsPWI/ZdDroAWZs7s1Ej0Wbnz
+luIwa0XgBwKBgQCnpKlfO1ODTXLZw8G5CI+sBoQAJg3OPxL1gN6baeTny/mMelQe
+Nb/TpSiDq1AVcoovQvrxaQfR/KyWIdlbz8mIypuUpELv8H9TFFsHVo70iUxzQk2v
+uyU6pzquisnJGmOZnmIcqWJg/AXwB92/l0XawaiZ1P5IQaTEPH8Hy3XUMQKBgQCS
+s+U2N9ulyFtMHnVDILHKsxCdLz6NSgFXIJDZby0iNaT0K3x4ImJE5WE8K2KHT0By
+bxLCP9Xt1b3D1iwYQEioZdxTb/VMS132jlJx3+OpzavB5wWTMyGHroq2vjWGaXFX
+S6Uwyoz6xKNTF16kZnlnMDgGUnoS7ovGmzhLpMi7EQKBgQCs6aCKlKWObCOpceT3
+Mtsmue7iemyOcmopns/DANF6Tl064nYdhab2D+VzpVLcfswk6YIR1/Jeo9mmu1g2
+UdGuw8xv9dK4fCBXbLEP8F2M7nXzIUlWTmPoQS5LjGdoKq5lK5W9NGg78HO1zJZu
+DiwrugDPatu4KRuN0WK87TJeJw==
 -----END PRIVATE KEY-----`;
 
-// 2. PEGA AQUÍ TU CERTIFICADO (El de certificado_burreria.pem)
+// 2. EL CERTIFICADO LIMPIO
 const SIGNER_CERT = `-----BEGIN CERTIFICATE-----
-(Borra esto y pega aquí todo el cuerpo de tu certificado)
+MIIGGjCCBQKgAwIBAgIQJEz86++dmd8xtTG3btOFvzANBgkqhkiG9w0BAQsFADB1
+MUQwQgYDVQQDDDtBcHBsZSBXb3JsZHdpZGUgRGV2ZWxvcGVyIFJlbGF0aW9ucyBD
+ZXJ0aWZpY2F0aW9uIEF1dGhvcml0eTELMAkGA1UECwwCRzQxEzARBgNVBAoMCkFw
+cGxlIEluYy4xCzAJBgNVBAYTAlVTMB4XDTI2MDUxOTIyMDM1NVoXDTI3MDYxODIy
+MDM1NFowgZMxJzAlBgoJkiaJk/IsZAEBDBdwYXNzLmNvbS5sYWJ1cnJlcmlhLnZp
+cDEuMCwGA1UEAwwlUGFzcyBUeXBlIElEOiBwYXNzLmNvbS5sYWJ1cnJlcmlhLnZp
+cDETMBEGA1UECwwKUjhLNEhKNTk0UTEWMBQGA1UECgwNU2FtdWVsIE1lbmRlejEL
+MAkGA1UEBhMCVVMwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDTD8Gq
+C5+zYbJ27sKLkrfUVJorVsWFfVqyQoCoQDxj3juS/zicXXM4qEjMfvdm9oKKCAAi
+s9PNd2o0kJ9o6cRgOAbQo0JPDqVgC0kxHGFYR7JWIFGfhQO/8EnT5XVVmwxxEXqT
+1Yj2QDlWVoiwFryRpUzzZGrOTAbcFcZOWRya7NndgyM8BvGQeOJ9YPo9VDsPhmm1
+7TjDb4WIKKJULiYblNDn8wK7a7h7pvWy7VOIf5xiDvCX6zVQL5XhK1RDIhEqnT7f
+6Y0Z8vA+cFdis81vnyArS5dfozsrFvtpdzCmxn6Yhw8brRMk1z0cDJkJ/sC8hcpw
+VmlIx6dj0rHbrPy/AgMBAAGjggKFMIICgTAMBgNVHRMBAf8EAjAAMB8GA1UdIwQY
+MBaAFFvZ+h3nmhoLo5l2IlCGPpHIW3eoMHAGCCsGAQUFBwEBBGQwYjAtBggrBgEF
+BQcwAoYhaHR0cDovL2NlcnRzLmFwcGxlLmNvbS93d2RyZzQuZGVyMDEGCCsGAQUF
+BzABhiVodHRwOi8vb2NzcC5hcHBsZS5jb20vb2NzcDAzLXd3ZHJnNDA0MIIBHgYD
+VR0gBIIBFTCCAREwggENBgkqhkiG92NkBQEwgf8wgcMGCCsGAQUFBwICMIG2DIGz
+UmVsaWFuY2Ugb24gdGhpcyBjZXJ0aWZpY2F0ZSBieSBhbnkgcGFydHkgYXNzdW1l
+cyBhY2NlcHRhbmNlIG9mIHRoZSB0aGVuIGFwcGxpY2FibGUgc3RhbmRhcmQgdGVy
+bXMgYW5kIGNvbmRpdGlvbnMgb2YgdXNlLCBjZXJ0aWZpY2F0ZSBwb2xpY3kgYW5k
+IGNlcnRpZmljYXRpb24gcHJhY3RpY2Ugc3RhdGVtZW50cy4wNwYIKwYBBQUHAgEW
+K2h0dHBzOi8vd3d3LmFwcGxlLmNvbS9jZXJ0aWZpY2F0ZWF1dGhvcml0eS8wHgYD
+VR0lBBcwFQYIKwYBBQUHAwIGCSqGSIb3Y2QEDjAyBgNVHR8EKzApMCegJaAjhiFo
+dHRwOi8vY3JsLmFwcGxlLmNvbS93d2RyZzQtNS5jcmwwHQYDVR0OBBYEFEpt8rDd
+ucAMgyxPwPkecj/SN4cZMA4GA1UdDwEB/wQEAwIHgDAnBgoqhkiG92NkBgEQBBkM
+F3Bhc3MuY29tLmxhYnVycmVyaWEudmlwMBAGCiqGSIb3Y2QGAwIEAgUAMA0GCSqG
+SIb3DQEBCwUAA4IBAQDOrt4jlwM9QoGLKYgd1WJI/SAvwxtqHKi4iZnjzDfe63UB
+BXvSG7Z8tqDbmWYRBPq6zujqAoJ2GD06EHctIdzmnwChCGm/4dJsARSsgOKWAMat
+8Nx3YmVFVReqyP6zU5cGBBfDWecrXSmtNws2mD8V7mM73cozbg+RJ31950t810rX
+tyTnsK+hPqJ7eLZgN/Ye1tEwXRZflMjsxNgoMgQUJqVaHR+HSl5Ht+sKXTcSZknh
+8CWmCYXTaguzsKILJJuqudBqKzsG4FkhQqHSm4/qk1gHDMTY6WilLflyPha89vD/
+RLAYAd+bHKXx6qT5AcXnhSMShni/jpNriAoOtEGP
 -----END CERTIFICATE-----`;
 
 const PASS_TYPE_IDENTIFIER = process.env.APPLE_PASS_TYPE_IDENTIFIER;
@@ -38,11 +95,9 @@ export async function POST(req: Request) {
       relevantText: "¡Estás cerca! Pasa por tu Chavipizza a La Burrería."
     }];
 
-    // Inyectamos las llaves directas (Sin variables de entorno, sin Vercel molestando)
     template.setCertificate(SIGNER_CERT);
     template.setPrivateKey(SIGNER_KEY);
 
-    // --- MAGIA DE IMÁGENES ---
     try {
       const LOGO_URL = "https://hjaeireljkcvjnigfhzb.supabase.co/storage/v1/object/public/assets/logo.png";
       const DESTACADA_URL = "https://hjaeireljkcvjnigfhzb.supabase.co/storage/v1/object/public/assets/destacada.jpg";
