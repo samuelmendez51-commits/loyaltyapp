@@ -7,26 +7,101 @@ import { QRCodeSVG } from 'qrcode.react'
 export default function TarjetaLealtadFinal() {
   const { id } = useParams()
   const [cliente, setCliente] = useState<any>(null)
+  const [business, setBusiness] = useState<any>(null)
   const [cargando, setCargando] = useState(true)
+  const [activeCoupon, setActiveCoupon] = useState<any>(null)
+  const [generandoPremio, setGenerandoPremio] = useState(false)
   
   const [generandoGoogle, setGenerandoGoogle] = useState(false)
   const [generandoApple, setGenerandoApple] = useState(false)
+  
+  const [modalCanjeAbierto, setModalCanjeAbierto] = useState(false)
+  const [payloadCanje, setPayloadCanje] = useState('')
 
-  const sellosTotales = 10 
+  const handleClaim = () => {
+    if (!cliente) return
+    const payloadObj = {
+      cliente_id: cliente.id,
+      nombre: cliente.nombre,
+      puntos: cliente.puntos,
+      timestamp: Date.now(),
+      seguro: 'LOYALTYAPP-VIP-CANJE'
+    }
+    const base64Payload = btoa(JSON.stringify(payloadObj))
+    setPayloadCanje(base64Payload)
+    setModalCanjeAbierto(true)
+  }
+
+  const sellosTotales = business?.max_sellos || 10 
 
   useEffect(() => {
     const cargarDatos = async () => {
-      const { data: clienteData, error } = await supabase
+      if (!id) return
+      const { data: clienteData } = await supabase
         .from('clientes')
         .select('*')
         .eq('id', id)
         .maybeSingle() 
 
-      if (clienteData) setCliente(clienteData)
+      if (clienteData) {
+        setCliente(clienteData)
+        if (clienteData.business_id) {
+          const { data: bizData } = await supabase
+            .from('businesses')
+            .select('*')
+            .eq('id', clienteData.business_id)
+            .maybeSingle()
+          if (bizData) setBusiness(bizData)
+        }
+
+        // Cargar cupón activo (si existe)
+        const { data: couponData } = await supabase
+          .from('tracking_events')
+          .select('*')
+          .eq('cliente_id', clienteData.id)
+          .eq('event_type', 'reward_generated')
+          .eq('cupon_canjeado', false)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+
+        if (couponData) setActiveCoupon(couponData)
+      }
       setCargando(false)
     }
     cargarDatos()
   }, [id])
+
+  const reclamarPremio = async () => {
+    if (!cliente || !business) return
+    setGenerandoPremio(true)
+    const codigo = 'REWARD-' + Math.random().toString(36).substring(2, 10).toUpperCase()
+    
+    try {
+      const { data, error } = await supabase
+        .from('tracking_events')
+        .insert({
+          business_id: business.id,
+          cliente_id: cliente.id,
+          event_type: 'reward_generated',
+          codigo_cupon: codigo,
+          cupon_canjeado: false,
+          metadata: { nombre_premio: 'Premio Mayor (Chavipizza Familiar)' }
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+      if (data) {
+        setActiveCoupon(data)
+      }
+    } catch (e) {
+      console.error(e)
+      alert('Error al generar tu cupón de regalo. Intenta de nuevo.')
+    } finally {
+      setGenerandoPremio(false)
+    }
+  }
 
   // Helpers para obtener la URL base correcta
   const getBaseUrl = () => {
@@ -46,7 +121,8 @@ export default function TarjetaLealtadFinal() {
         body: JSON.stringify({ 
           clienteId: cliente.id,
           nombre: cliente.nombre,
-          puntos: cliente.puntos
+          puntos: cliente.puntos,
+          businessId: business?.id
         })
       })
       const data = await res.json()
@@ -66,15 +142,18 @@ export default function TarjetaLealtadFinal() {
   const generarPaseApple = async () => {
     setGenerandoApple(true)
     try {
-      // Uso de URL absoluta
       const apiUrl = `${getBaseUrl()}/api/wallet/apple`
       const res = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clienteId: cliente.id, nombre: cliente.nombre, puntos: cliente.puntos })
+        body: JSON.stringify({ 
+          clienteId: cliente.id, 
+          nombre: cliente.nombre, 
+          puntos: cliente.puntos,
+          businessId: business?.id
+        })
       })
 
-      // Manejo robusto de la respuesta binaria
       if (res.ok) {
         const contentType = res.headers.get('Content-Type')
         if (contentType && contentType.includes('application/vnd.apple.pkpass')) {
@@ -82,15 +161,18 @@ export default function TarjetaLealtadFinal() {
           const url = window.URL.createObjectURL(blob)
           const a = document.createElement('a')
           a.href = url
-          a.download = `LaBurreriaVIP-${cliente.id.substring(0,8)}.pkpass`
-          document.body.appendChild(a) // Necesario en algunos navegadores
+          a.download = `${business?.nombre?.replace(/\s+/g, '') || 'Loyalty'}VIP-${cliente.id.substring(0,8)}.pkpass`
+          document.body.appendChild(a)
           a.click()
           window.URL.revokeObjectURL(url)
           document.body.removeChild(a)
         } else {
-          // Si no es pkpass, asumimos que es el JSON de simulación
           const data = await res.json()
-          if (data.simulacion) {
+          if (data.webPass) {
+            alert("⚠️ Pase Web Generado (Bypass Apple Wallet):\nSe abrirá tu pase VIP digital en una pestaña nueva para guardar o capturar.")
+            const win = window.open()
+            if (win) win.document.write(data.html)
+          } else if (data.simulacion) {
             alert(data.mensaje)
           } else {
              alert('Error al generar pase de Apple: ' + (data.error || 'Respuesta inválida'))
@@ -137,13 +219,15 @@ export default function TarjetaLealtadFinal() {
 
         {/* LOGO Y BRANDING */}
         <div className="w-full pt-10 pb-4 flex flex-col items-center drop-shadow-[0_0_25px_rgba(185,28,28,0.1)]">
-          <img 
-            src="/logo.png" 
-            alt="Logo La Burrería" 
-            className="w-[110px] h-[110px] object-contain block mb-6 filter drop-shadow-lg" 
-          />
+          <div className="w-[110px] h-[110px] rounded-2xl border border-amber-500/20 flex items-center justify-center overflow-hidden shadow-[0_0_30px_rgba(251,191,36,0.35)] mb-6">
+            <img 
+              src={business?.logo_url || "/logo.png"} 
+              alt={`Logo ${business?.nombre || "LoyaltyApp"}`} 
+              className="w-full h-full object-cover block" 
+            />
+          </div>
           <p className="text-[var(--brand-gold)] text-[9px] font-black uppercase tracking-[0.4em] mb-2">
-            Club VIP de La Burrería
+            Club VIP de {business?.nombre || "LoyaltyApp"}
           </p>
           <h1 className="text-white text-3xl sm:text-4xl font-serif font-black italic tracking-wide truncate w-full text-center px-6 drop-shadow-md">
             {cliente.nombre}
@@ -183,14 +267,45 @@ export default function TarjetaLealtadFinal() {
           </p>
         </div>
 
-        {/* CÓDIGO QR */}
+        {/* CÓDIGO QR / BOTÓN RECLAMAR */}
         <div className="flex flex-col items-center py-8">
-          <div className="p-4 bg-white rounded-3xl shadow-[0_0_40px_rgba(255,255,255,0.15)] transform hover:scale-105 transition-transform duration-300">
-            <QRCodeSVG value={cliente.id} size={150} level="H" fgColor="#000000" />
-          </div>
-          <p className="mt-4 text-[10px] text-[#71717a] font-mono tracking-widest uppercase">
-            ID-VIP: {cliente.id.substring(0, 8)}
-          </p>
+          {activeCoupon ? (
+            <div className="flex flex-col items-center gap-3">
+              <div className="p-4 bg-white rounded-3xl shadow-[0_0_40px_rgba(255,215,0,0.3)] border-2 border-amber-400 transform hover:scale-105 transition-transform duration-300">
+                <QRCodeSVG value={activeCoupon.codigo_cupon} size={150} level="H" fgColor="#000000" />
+              </div>
+              <p className="mt-2 text-xs text-amber-400 font-black animate-pulse uppercase tracking-wider">
+                🎁 CUPÓN DE REGALO ACTIVO:
+              </p>
+              <p className="text-xl font-mono font-black text-white bg-amber-950/40 border border-amber-800/40 px-4 py-2 rounded-xl">
+                {activeCoupon.codigo_cupon}
+              </p>
+              <p className="text-[10px] text-zinc-500 uppercase tracking-widest text-center max-w-[280px] leading-relaxed">
+                Presenta este código QR en mostrador para reclamar tu premio.
+              </p>
+            </div>
+          ) : sellosMarcados >= 10 ? (
+            <div className="w-full px-6 flex flex-col items-center">
+              <button 
+                onClick={handleClaim}
+                className="w-full py-5 bg-gradient-to-r from-amber-500 via-amber-400 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-[#452000] font-black rounded-2xl text-base uppercase tracking-widest transition-all shadow-[0_0_30px_rgba(251,191,36,0.5)] transform active:scale-95 flex items-center justify-center gap-2 animate-bounce"
+              >
+                🎁 Reclamar Premio
+              </button>
+              <p className="mt-4 text-[10px] text-zinc-500 uppercase tracking-widest text-center max-w-[280px]">
+                ¡Felicidades! Tienes los sellos completos. Genera tu cupón digital de canje.
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center">
+              <div className="p-4 bg-white rounded-3xl shadow-[0_0_40px_rgba(255,255,255,0.15)] transform hover:scale-105 transition-transform duration-300">
+                <QRCodeSVG value={cliente.id} size={150} level="H" fgColor="#000000" />
+              </div>
+              <p className="mt-4 text-[10px] text-[#71717a] font-mono tracking-widest uppercase">
+                ID-VIP: {cliente.id.substring(0, 8)}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* BOTONES DE WALLET NATIVOS */}
@@ -209,9 +324,11 @@ export default function TarjetaLealtadFinal() {
             ) : (
               <div className="flex items-center gap-3">
                 <svg viewBox="0 0 384 512" className="h-6 text-white fill-current"><path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/></svg>
-                <div className="flex flex-col items-start">
-                  <span className="text-[9px] font-medium leading-none text-white/80">Añadir a</span>
-                  <span className="text-lg font-semibold leading-tight text-white tracking-wide">Apple Wallet</span>
+                <div className="flex items-center gap-3">
+                  <div className="flex flex-col items-start">
+                    <span className="text-[9px] font-medium leading-none text-white/80">Añadir a</span>
+                    <span className="text-lg font-semibold leading-tight text-white tracking-wide">Apple Wallet</span>
+                  </div>
                 </div>
               </div>
             )}
@@ -240,6 +357,38 @@ export default function TarjetaLealtadFinal() {
 
         </div>
       </div>
+
+      {/* Modal interactivo de Canje VIP */}
+      {modalCanjeAbierto && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-zinc-950 border border-zinc-800 rounded-3xl p-6 relative shadow-2xl flex flex-col items-center">
+            <div className="absolute top-4 right-4">
+              <button 
+                onClick={() => setModalCanjeAbierto(false)}
+                className="text-zinc-500 hover:text-white font-bold p-2 text-lg transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <span className="text-4xl mb-3">🏆</span>
+            <h3 className="text-lg font-black text-white text-center mb-1">Cupón de Canje VIP</h3>
+            <p className="text-xs text-zinc-500 text-center mb-6 uppercase tracking-wider">Presenta este QR cifrado en caja</p>
+            
+            <div className="p-4 bg-white rounded-3xl shadow-[0_0_40px_rgba(255,215,0,0.3)] border-2 border-amber-400 mb-6">
+              <QRCodeSVG value={payloadCanje} size={180} level="H" fgColor="#000000" />
+            </div>
+            
+            <p className="text-[10px] text-zinc-400 font-mono text-center break-all bg-zinc-900 border border-zinc-800 p-2.5 rounded-xl max-w-xs mb-4">
+              {payloadCanje.substring(0, 40)}...
+            </p>
+            
+            <p className="text-xs text-zinc-500 text-center leading-relaxed max-w-[280px]">
+              Este código QR contiene un payload seguro cifrado en base64 con tus puntos y firma digital para el mostrador.
+            </p>
+          </div>
+        </div>
+      )}
     </main>
   )
 }

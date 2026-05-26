@@ -1,12 +1,15 @@
 {
-  "name": "La Burrería Loyalty Club",
-  "short_name": "La Burrería",
-  "description": "Tu tarjeta de lealtad digital para obtener recompensas exclusivas en La Burrería.",
+  "name": "LoyaltyApp — Panel de Control",
+  "short_name": "LoyaltyApp",
+  "description": "Sistema enterprise de fidelidad y lealtad para restaurantes. Panel de control para administradores y staff.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#1A1A1A",
-  "theme_color": "#D32F2F",
-  "orientation": "portrait",
+  "background_color": "#050505",
+  "theme_color": "#b91c1c",
+  "orientation": "any",
+  "lang": "es",
+  "categories": ["business", "productivity"],
   "icons": [
     {
       "src": "/logo.png",
@@ -17,7 +20,31 @@
     {
       "src": "/logo.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Escáner QR",
+      "short_name": "Escáner",
+      "description": "Abrir escáner de códigos QR para sellos",
+      "url": "/escaner",
+      "icons": [{ "src": "/logo.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Dashboard",
+      "short_name": "Dashboard",
+      "description": "Panel de control administrativo",
+      "url": "/dashboard",
+      "icons": [{ "src": "/logo.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Registrar Cliente VIP",
+      "short_name": "Registro",
+      "description": "Registrar nuevo cliente VIP",
+      "url": "/registro",
+      "icons": [{ "src": "/logo.png", "sizes": "96x96" }]
     }
   ]
 }

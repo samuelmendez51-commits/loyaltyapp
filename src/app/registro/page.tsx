@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 
@@ -17,6 +17,24 @@ export default function RegistroCliente() {
   
   const [registrando, setRegistrando] = useState(false)
   const [mensaje, setMensaje] = useState({ texto: '', tipo: '' })
+  
+  const [business, setBusiness] = useState<any>(null)
+
+  useEffect(() => {
+    const cargarNegocio = async () => {
+      const getCookieVal = (name: string) => document.cookie.match(new RegExp(`${name}=([^;]+)`))?.[1] || ''
+      const bizId = getCookieVal('session_business_id')
+      if (bizId) {
+        const { data } = await supabase
+          .from('businesses')
+          .select('*')
+          .eq('id', bizId)
+          .maybeSingle()
+        if (data) setBusiness(data)
+      }
+    }
+    cargarNegocio()
+  }, [])
 
   const registrarCliente = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -40,6 +58,10 @@ export default function RegistroCliente() {
       fechaEnsamblada = `${anio}-${mesFormateado}-${diaFormateado}`
     }
 
+    const getCookieVal = (name: string) => document.cookie.match(new RegExp(`${name}=([^;]+)`))?.[1] || ''
+    const businessId = getCookieVal('session_business_id') || null
+    const branchId = getCookieVal('session_branch_id') || null
+
     try {
       const { data, error } = await supabase
         .from('clientes')
@@ -49,7 +71,8 @@ export default function RegistroCliente() {
           email: email.trim() || null, 
           fecha_nacimiento: fechaEnsamblada,
           puntos: 0,
-          sucursal_origen_id: null // Se llenará dinámicamente cuando actives sucursales
+          business_id: businessId,
+          branch_id: branchId
         }])
         .select()
 
@@ -101,13 +124,10 @@ export default function RegistroCliente() {
       <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none z-0 flex items-center justify-center">
         {/* Resplandor trasero */}
         <div className="absolute w-[350px] h-[350px] bg-[#dc2626] opacity-[0.05] blur-[80px] rounded-full"></div>
-        {/* La clave aquí es "mix-blend-lighten" o "mix-blend-screen" 
-          Si tu logo tiene fondo blanco, esto lo vuelve transparente contra el negro.
-        */}
         <img 
-          src="/logo.png" 
-          alt="Watermark Logo" 
-          className="relative w-[500px] h-[500px] object-contain opacity-20 mix-blend-lighten grayscale hover:grayscale-0 transition-all duration-1000 z-10" 
+          src={business?.logo_url || "/logo.png"} 
+          alt={`Logo Watermark`} 
+          className="relative w-[400px] h-[400px] object-cover rounded-3xl opacity-20 mix-blend-lighten grayscale hover:grayscale-0 transition-all duration-1000 z-10" 
         />
       </div>
 
@@ -121,14 +141,14 @@ export default function RegistroCliente() {
           <h1 className="text-3xl font-black uppercase italic tracking-tighter text-[#ffffff]">
             Registro <span className="text-[#dc2626] underline decoration-4 underline-offset-4">VIP</span>
           </h1>
-          <p className="text-[#f59e0b] text-[10px] font-black uppercase tracking-[0.3em] mt-3">
-            Únete a nuestro club
+          <p className="text-[#ef4444] text-[10px] font-black uppercase tracking-[0.3em] mt-3">
+            Únete al club de {business?.nombre || "LoyaltyApp"}
           </p>
         </div>
 
         {/* CONTENEDOR DE FORMULARIO CON EFECTO CRISTAL */}
         <div className="bg-[#18181b]/90 backdrop-blur-md rounded-[25px] p-8 shadow-[0_20px_40px_rgba(0,0,0,0.8)] border border-[#27272a] relative overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-[#dc2626] via-[#f59e0b] to-[#dc2626]"></div>
+          <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-[#dc2626] via-[#ef4444] to-[#dc2626]"></div>
 
           <p className="text-[#a1a1aa] text-xs text-center mb-6 tracking-widest uppercase font-bold">
             Ingresa tus datos para generar tu tarjeta digital

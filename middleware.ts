@@ -3,50 +3,64 @@ import type { NextRequest } from 'next/server'
 
 export function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname
-  
-  // Obtenemos la credencial secreta (Cookie)
   const rol = request.cookies.get('session_rol')?.value
 
-  // Dejamos pasar libremente las rutas públicas (imágenes, API de Next, el Login, etc.)
-  if (
-    path.startsWith('/login') || 
-    path.startsWith('/api') || 
-    path.startsWith('/_next') || 
-    path === '/favicon.ico' || 
-    path.endsWith('.png') || 
-    path.endsWith('.jpg')
-  ) {
-    // Si ya estás logueado e intentas entrar al login, te manda a tu área de trabajo
-    if (path === '/login' && rol) {
-      return NextResponse.redirect(new URL(rol === 'admin' ? '/dashboard' : '/escaner', request.url))
+  const esPublica = (
+    path.startsWith('/api') ||
+    path.startsWith('/_next') ||
+    path === '/favicon.ico' ||
+    path.endsWith('.png') ||
+    path.endsWith('.jpg') ||
+    path.endsWith('.svg') ||
+    path.endsWith('.webp') ||
+    path === '/manifest.json' ||
+    path === '/service-worker.js'
+  )
+  if (esPublica) return NextResponse.next()
+
+  const esMenuPublico = /^\/[a-z0-9-]+\/menu/.test(path)
+  if (esMenuPublico) return NextResponse.next()
+
+  if (path.startsWith('/suspended')) return NextResponse.next()
+
+  if (path.startsWith('/login')) {
+    if (rol) {
+      if (rol === 'superadmin') return NextResponse.redirect(new URL('/superadmin', request.url))
+      if (rol === 'admin_comercio') return NextResponse.redirect(new URL('/dashboard', request.url))
+      return NextResponse.redirect(new URL('/escaner', request.url))
     }
     return NextResponse.next()
   }
 
-  // REGLA 1: Si no tienes credencial y quieres entrar a cualquier lado, ¡Expulsado al Login!
   if (!rol) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  // REGLA 2: Si la raíz del sitio (/) es visitada, mandarlo a su área de trabajo
   if (path === '/') {
-    return NextResponse.redirect(new URL(rol === 'admin' ? '/dashboard' : '/escaner', request.url))
+    if (rol === 'superadmin') return NextResponse.redirect(new URL('/superadmin', request.url))
+    if (rol === 'admin_comercio') return NextResponse.redirect(new URL('/dashboard', request.url))
+    return NextResponse.redirect(new URL('/escaner', request.url))
   }
 
-  // REGLA 3: Seguridad de Staff (Cajeros)
-  if (rol === 'staff') {
-    // Si un cajero intenta ser curioso y meterse al dashboard, lo regresamos al escáner
-    if (path.startsWith('/dashboard')) {
+  if (path.startsWith('/superadmin')) {
+    if (rol !== 'superadmin') {
+      return NextResponse.redirect(new URL('/login?error=unauthorized', request.url))
+    }
+    return NextResponse.next()
+  }
+
+  if (path.startsWith('/dashboard')) {
+    if (rol === 'empleado') {
       return NextResponse.redirect(new URL('/escaner', request.url))
     }
+    return NextResponse.next()
   }
 
-  // Si pasaste todas las pruebas, te deja cargar la página
   return NextResponse.next()
 }
 
 export const config = {
   matcher: [
-    '/((?!api|_next/static|_next/image|favicon.ico|.*\\.png$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.png$|.*\\.svg$|.*\\.jpg$|.*\\.webp$).*)',
   ],
 }

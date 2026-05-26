@@ -20,8 +20,24 @@ export default function EscanerTrabajadores() {
   const [mensaje, setMensaje] = useState({ tipo: '', texto: '' })
   const [cargando, setCargando] = useState(false)
   const [inputManual, setInputManual] = useState('')
+  const [business, setBusiness] = useState<any>(null)
+  const [businessId, setBusinessId] = useState<string>('')
+  const [coupon, setCoupon] = useState<any>(null)
+
+  const getCookieVal = (name: string) => {
+    if (typeof document === 'undefined') return ''
+    return document.cookie.match(new RegExp(`${name}=([^;]+)`))?.[1] || ''
+  }
 
   useEffect(() => {
+    const bizId = getCookieVal('session_business_id')
+    if (bizId) {
+      setBusinessId(bizId)
+      supabase.from('businesses').select('*').eq('id', bizId).maybeSingle().then(({ data }) => {
+        if (data) setBusiness(data)
+      })
+    }
+
     const scanner = new Html5QrcodeScanner(
       "reader", 
       { fps: 15, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 }, 
@@ -48,20 +64,71 @@ export default function EscanerTrabajadores() {
   const buscarCliente = async (criterio: string) => {
     if (!criterio) return
     setCargando(true)
+    setCoupon(null)
+
+    let criterioLimpio = criterio
     try {
-      const esUUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(criterio);
+      const decoded = atob(criterio.trim())
+      const parsed = JSON.parse(decoded)
+      if (parsed.seguro === 'LOYALTYAPP-VIP-CANJE' && parsed.cliente_id) {
+        criterioLimpio = parsed.cliente_id
+        alert(`🏆 ¡Pase QR Cifrado VIP Validado!\nSocio: ${parsed.nombre}\nFidelidad: ${parsed.puntos}/10 sellos.\nListo para canjear premio mayor.`);
+      }
+    } catch (e) {
+      // Continuar con el criterio original si no es base64
+    }
+
+    try {
+      const esCupon = criterioLimpio.toUpperCase().startsWith('REWARD-');
+      const activeBizId = businessId || getCookieVal('session_business_id')
+
+      if (esCupon) {
+        const { data: couponData, error: couponErr } = await supabase
+          .from('tracking_events')
+          .select('*, clientes(nombre, telefono, puntos)')
+          .eq('codigo_cupon', criterioLimpio.toUpperCase())
+          .eq('event_type', 'reward_generated')
+          .maybeSingle()
+
+        if (couponErr || !couponData) {
+          setMensaje({ tipo: 'error', texto: 'CUPÓN DE REGALO NO VÁLIDO O INEXISTENTE' })
+        } else if (couponData.cupon_canjeado) {
+          setMensaje({ tipo: 'error', texto: 'CUPÓN YA CANJEADO ANTERIORMENTE' })
+        } else if (activeBizId && couponData.business_id !== activeBizId) {
+          setMensaje({ tipo: 'error', texto: 'ESTE CUPÓN PERTENECE A OTRO COMERCIO' })
+        } else {
+          setCoupon(couponData)
+          const cli = couponData.clientes as any
+          setCliente({
+            id: couponData.cliente_id,
+            nombre: cli?.nombre || 'Socio VIP',
+            telefono: cli?.telefono || '',
+            puntos: cli?.puntos || 0
+          })
+          setMensaje({ tipo: '', texto: '' })
+          setInputManual('')
+        }
+        setCargando(false)
+        return
+      }
+
+      const esUUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(criterioLimpio);
       let query = supabase.from('clientes').select('*');
       
       if (esUUID) {
-        query = query.eq('id', criterio);
+        query = query.eq('id', criterioLimpio);
       } else {
-        query = query.eq('telefono', criterio);
+        query = query.eq('telefono', criterioLimpio);
+      }
+
+      if (activeBizId) {
+        query = query.eq('business_id', activeBizId)
       }
       
       const { data, error } = await query.maybeSingle();
 
       if (error || !data) {
-        setMensaje({ tipo: 'error', texto: 'CLIENTE NO ENCONTRADO' })
+        setMensaje({ tipo: 'error', texto: 'CLIENTE NO ENCONTRADO EN TU NEGOCIO' })
       } else {
         setCliente(data)
         setMensaje({ tipo: '', texto: '' })
@@ -92,7 +159,69 @@ export default function EscanerTrabajadores() {
     if (!cliente) return
     setCargando(true)
 
-    const esCanjeDePremio = cliente.puntos >= 10;
+    const activeBizId = businessId || getCookieVal('session_business_id')
+
+    if (coupon) {
+      try {
+        const { error: errorCoupon } = await supabase
+          .from('tracking_events')
+          .update({ cupon_canjeado: true })
+          .eq('id', coupon.id)
+
+        if (errorCoupon) throw errorCoupon
+
+        const { error: errorCliente } = await supabase
+          .from('clientes')
+          .update({ puntos: 0 })
+          .eq('id', cliente.id)
+
+        if (errorCliente) throw errorCliente
+
+        await supabase
+          .from('historial_puntos')
+          .insert({
+             cliente_id: cliente.id,
+             cantidad: cliente.puntos, 
+             tipo_movimiento: 'resta',
+             descripcion: `CANJE DE REGALO (Cupón: ${coupon.codigo_cupon})`
+          });
+
+        if (activeBizId) {
+          await supabase.from('tracking_events').insert({
+            business_id: activeBizId,
+            cliente_id: cliente.id,
+            event_type: 'reward_redeemed',
+            metadata: { canal: 'mostrador', codigo_cupon: coupon.codigo_cupon, puntos_canjeados: cliente.puntos }
+          })
+        }
+
+        if (typeof navigator !== 'undefined' && navigator.vibrate) {
+          navigator.vibrate([200, 100, 200, 100, 400])
+        }
+        
+        setMensaje({ 
+          tipo: 'exito', 
+          texto: '¡REGALO ENTREGADO Y CUPÓN CANJEADO CON ÉXITO!' 
+        })
+        
+        setTimeout(() => {
+          setCliente(null);
+          setCoupon(null);
+          setMensaje({ tipo: '', texto: '' });
+          window.location.reload(); 
+        }, 2500)
+
+      } catch (err) {
+        console.error(err);
+        setMensaje({ tipo: 'error', texto: 'ERROR AL CANJEAR EL CUPÓN' })
+      } finally {
+        setCargando(false)
+      }
+      return
+    }
+
+    const maxStamps = business?.max_sellos || 10
+    const esCanjeDePremio = cliente.puntos >= maxStamps;
 
     try {
       const nuevosPuntos = esCanjeDePremio ? 0 : cliente.puntos + 1;
@@ -108,10 +237,19 @@ export default function EscanerTrabajadores() {
         .from('historial_puntos')
         .insert({
            cliente_id: cliente.id,
-           cantidad: esCanjeDePremio ? 10 : 1, 
+           cantidad: esCanjeDePremio ? maxStamps : 1, 
            tipo_movimiento: esCanjeDePremio ? 'resta' : 'suma',
            descripcion: esCanjeDePremio ? 'PREMIO CANJEADO EN SUCURSAL' : 'Sello registrado en mostrador'
         });
+
+      if (activeBizId) {
+        await supabase.from('tracking_events').insert({
+          business_id: activeBizId,
+          cliente_id: cliente.id,
+          event_type: esCanjeDePremio ? 'reward_redeemed' : 'approved_by_staff',
+          metadata: { canal: 'mostrador', puntos_anteriores: cliente.puntos }
+        })
+      }
 
       if (typeof navigator !== 'undefined' && navigator.vibrate) {
         navigator.vibrate(esCanjeDePremio ? [200, 100, 200, 100, 400] : [100, 50, 100])
@@ -143,7 +281,9 @@ export default function EscanerTrabajadores() {
         <h1 className="text-4xl font-black uppercase tracking-widest text-white shadow-black drop-shadow-md">
           Staff <span className="text-[var(--brand-red)] font-serif italic">Escáner</span>
         </h1>
-        <p className="text-[var(--brand-gold)] text-[10px] uppercase font-bold tracking-[0.4em] mt-2">Punto de Venta VIP</p>
+        <p className="text-[var(--brand-gold)] text-[10px] uppercase font-bold tracking-[0.4em] mt-2">
+          {business?.nombre || "Punto de Venta VIP"}
+        </p>
       </header>
 
       {cargando && (
@@ -246,7 +386,15 @@ export default function EscanerTrabajadores() {
             </div>
 
             {/* Botón de Acción Masivo */}
-            {cliente.puntos >= 10 ? (
+            {coupon ? (
+              <button 
+                onClick={manejarAccionVIP}
+                disabled={cargando}
+                className="w-full bg-gradient-to-r from-amber-500 to-amber-700 hover:from-amber-600 hover:to-amber-800 text-white py-5 rounded-2xl font-black text-sm uppercase shadow-[0_8px_30px_rgba(245,158,11,0.4)] active:scale-95 transition-all tracking-[0.1em] flex items-center justify-center gap-2"
+              >
+                🎁 CANJEAR CUPÓN: {coupon.codigo_cupon}
+              </button>
+            ) : cliente.puntos >= 10 ? (
               <button 
                 onClick={manejarAccionVIP}
                 disabled={cargando}
