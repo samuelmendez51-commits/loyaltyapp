@@ -2,12 +2,11 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Eye, EyeOff } from 'lucide-react'
+import { Eye, EyeOff, Loader2 } from 'lucide-react'
 
 export default function LoginPage() {
   const [modo, setModo] = useState<'email' | 'pin' | 'registro'>('email')
-  
-  // Login
+
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -16,8 +15,7 @@ export default function LoginPage() {
   const [cargando, setCargando] = useState(false)
   const [error, setError] = useState('')
   const [installPrompt, setInstallPrompt] = useState<any>(null)
-  
-  // Registro SaaS
+
   const [regNombre, setRegNombre] = useState('')
   const [regEmail, setRegEmail] = useState('')
   const [regPin, setRegPin] = useState('')
@@ -26,8 +24,7 @@ export default function LoginPage() {
   const [regSlug, setRegSlug] = useState('')
 
   const [subdomainBranding, setSubdomainBranding] = useState<{ nombre: string; logo: string } | null>(null)
-  
-  // Capturar evento de PWA y jalar Branding de Subdominio
+
   useEffect(() => {
     const handlePrompt = (e: any) => {
       e.preventDefault()
@@ -49,7 +46,7 @@ export default function LoginPage() {
             if (data) {
               setSubdomainBranding({
                 nombre: data.nombre,
-                logo: data.logo_url || '✨'
+                logo: data.logo_url || ''
               })
             }
           })
@@ -87,7 +84,7 @@ export default function LoginPage() {
     setError('')
 
     try {
-      if (email === (process.env.NEXT_PUBLIC_SUPERADMIN_EMAIL || 'superadmin@loyaltyapp.com') 
+      if (email === (process.env.NEXT_PUBLIC_SUPERADMIN_EMAIL || 'superadmin@loyaltyapp.com')
           && password === '0000') {
         setCookies('superadmin', 'Super Admin', '', '', 'root')
         const target = obtenerRedireccionUrl('superadmin', '')
@@ -107,7 +104,7 @@ export default function LoginPage() {
       if (dbError) throw dbError
 
       if (!data) {
-        setError('Credenciales incorrectas')
+        setError('Credenciales incorrectas. Verifica tu email y contraseña.')
         setCargando(false)
         return
       }
@@ -124,7 +121,7 @@ export default function LoginPage() {
       setTimeout(() => { window.location.href = target }, 300)
       setCargando(false)
     } catch (err: any) {
-      setError(err.message || 'Error de conexión o autenticación.')
+      setError(err.message || 'Error de conexión. Intenta de nuevo.')
       setCargando(false)
     }
   }
@@ -171,7 +168,7 @@ export default function LoginPage() {
       setTimeout(() => { window.location.href = target }, 300)
       setCargando(false)
     } catch (err: any) {
-      setError(err.message || 'Error de conexión con el PIN.')
+      setError(err.message || 'Error de conexión.')
       setCargando(false)
     }
   }
@@ -179,7 +176,7 @@ export default function LoginPage() {
   const registrarNegocioSaaS = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!regNombre.trim() || !regEmail.trim() || !regPin.trim() || !regNegocio.trim() || !regSlug.trim()) {
-      return setError('Llene todos los campos del registro')
+      return setError('Llena todos los campos del registro')
     }
     if (regPin.trim().length < 6 || regPin.trim().length > 16) {
       return setError('La contraseña debe tener entre 6 y 16 caracteres')
@@ -190,7 +187,7 @@ export default function LoginPage() {
 
     try {
       const slugFormateado = regSlug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '')
-      
+
       const { data: existente } = await supabase
         .from('businesses')
         .select('id')
@@ -198,7 +195,7 @@ export default function LoginPage() {
         .maybeSingle()
 
       if (existente) {
-        throw new Error('La página / subdominio de negocio ya está ocupado por otra marca')
+        throw new Error('El subdominio de negocio ya está ocupado por otra marca')
       }
 
       const fin = new Date()
@@ -241,33 +238,22 @@ export default function LoginPage() {
 
       if (errUser || !user) throw errUser || new Error('No se pudo registrar la cuenta admin')
 
-      await supabase.from('menu_groups').insert({
-        business_id: biz.id,
-        nombre: 'General',
-        descripcion: 'Platillos principales',
-        orden: 1
-      })
-
       await supabase.from('credit_transactions').insert({
         business_id: biz.id,
         tipo: 'demo',
         creditos: 12,
         meses: 12,
         monto_mxn: 0,
-        notas: 'Regalo de Onboarding SaaS: 12 créditos (1 año de servicio gratis)',
+        notas: 'Regalo de Onboarding: 12 créditos (1 año de servicio gratis)',
         creado_por: 'self_onboarding'
       })
 
       setCookies('admin_comercio', user.nombre, biz.id, '', user.id)
-      
-      alert(`🎉 ¡Negocio registrado con éxito absoluto!\nPágina creada en: loyaltyapp.vercel.app/${slugFormateado}`)
-      
-      setTimeout(() => {
-        window.location.href = `/${slugFormateado}/dashboard`
-      }, 300)
+      alert(`🎉 ¡Negocio registrado con éxito!\nPágina: loyaltyapp.vercel.app/${slugFormateado}/dashboard`)
+      setTimeout(() => { window.location.href = `/${slugFormateado}/dashboard` }, 300)
 
     } catch (err: any) {
-      setError(err.message || 'Error durante el registro SaaS')
+      setError(err.message || 'Error durante el registro')
       setCargando(false)
     }
   }
@@ -275,53 +261,51 @@ export default function LoginPage() {
   const formatearSlug = (val: string) => {
     const limpia = val.toLowerCase().replace(/[^a-z0-9-]/g, '')
     setRegSlug(limpia)
-    if (val && !regNegocio) {
-      setRegNegocio(val)
-    }
+    if (val && !regNegocio) setRegNegocio(val)
   }
 
-  return (
-    <main className="min-h-screen bg-[#0a0a0a] flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans">
-      {/* Luces de fondo premium */}
-      <div className="fixed top-[-10%] left-1/4 w-96 h-96 bg-red-900/10 rounded-full blur-[120px] pointer-events-none" />
-      <div className="fixed bottom-[-10%] right-1/4 w-96 h-96 bg-red-950/15 rounded-full blur-[120px] pointer-events-none" />
+  const TABS = [
+    { id: 'email', label: 'Email' },
+    { id: 'pin', label: 'PIN Rápido' },
+    { id: 'registro', label: 'Registrarse' },
+  ]
 
-      <div className="w-full max-w-md relative z-10 space-y-6">
-        {/* Logo / Branding */}
-        <div className="text-center">
-          <div className="w-20 h-20 bg-gradient-to-br from-zinc-800 to-zinc-950 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-[0_0_40px_rgba(255,255,255,0.05)] border border-zinc-700/20 overflow-hidden">
+  return (
+    <main className="min-h-screen bg-[#fafafa] flex flex-col items-center justify-center p-4 font-sans">
+
+      <div className="w-full max-w-[400px] space-y-8 animate-fadeIn">
+
+        {/* ── Logo y Branding ── */}
+        <div className="text-center space-y-4">
+          <div className="w-[72px] h-[72px] mx-auto rounded-2xl overflow-hidden shadow-md border border-[#e4e4e7] bg-white flex items-center justify-center">
             {subdomainBranding?.logo ? (
-              subdomainBranding.logo.startsWith('http') || subdomainBranding.logo.startsWith('/') || subdomainBranding.logo.startsWith('data:') ? (
+              subdomainBranding.logo.startsWith('http') || subdomainBranding.logo.startsWith('/') ? (
                 <img src={subdomainBranding.logo} alt="" className="w-full h-full object-cover" />
               ) : (
-                <span className="text-4xl">{subdomainBranding.logo}</span>
+                <span className="text-3xl">{subdomainBranding.logo}</span>
               )
             ) : (
-              <span className="text-4xl">✨</span>
+              <img src="/logo.png" alt="LoyaltyApp" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display='none' }} />
             )}
           </div>
-          <h1 className="text-4xl font-black text-white font-sans tracking-tighter italic">
-            {subdomainBranding?.nombre || 'LoyaltyApp'}
-          </h1>
-          <p className="text-[10px] text-zinc-550 uppercase tracking-widest font-black mt-2">
-            {subdomainBranding?.nombre ? `Panel de Acceso de ${subdomainBranding.nombre}` : 'SaaS de Fidelización Multi-Tenant · V12'}
-          </p>
+          <div>
+            <h1 className="text-2xl font-bold text-[#09090b] tracking-tight">
+              {subdomainBranding?.nombre || 'LoyaltyApp'}
+            </h1>
+            <p className="text-sm text-[#71717a] mt-1">
+              {subdomainBranding ? `Portal de acceso — ${subdomainBranding.nombre}` : 'Sistema de Fidelización Enterprise'}
+            </p>
+          </div>
         </div>
 
-        {/* Selector de modo */}
-        <div className="flex bg-zinc-900/60 border border-zinc-800 rounded-2xl p-1">
-          {[
-            { id: 'email', label: 'Email Login' },
-            { id: 'pin', label: 'PIN Rápido' },
-            { id: 'registro', label: 'Registrarse' }
-          ].map(tab => (
+        {/* ── Selector de modo (tabs minimalistas) ── */}
+        <div className="flex border-b border-[#e4e4e7]">
+          {TABS.map(tab => (
             <button
               key={tab.id}
-              onClick={() => { setModo(tab.id as any); setError('') }}
-              className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
-                modo === tab.id 
-                  ? 'bg-zinc-850 text-red-500 border border-zinc-700 shadow-sm' 
-                  : 'text-zinc-500 hover:text-zinc-300'
+              onClick={() => { setModo(tab.id as any); setError(''); setPin('') }}
+              className={`nav-tab flex-1 pb-3 pt-1 text-sm transition-all ${
+                modo === tab.id ? 'active' : ''
               }`}
             >
               {tab.label}
@@ -329,26 +313,31 @@ export default function LoginPage() {
           ))}
         </div>
 
-        <div className="bg-[#121212] border border-zinc-900 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-4">
-          
-          {/* MODO: LOGIN CON EMAIL */}
+        {/* ── Card Principal ── */}
+        <div className="bg-white rounded-2xl shadow-[0_2px_20px_rgba(0,0,0,0.07)] border border-[#f0f0f0] p-8 space-y-5">
+
+          {/* MODO: EMAIL */}
           {modo === 'email' && (
-            <form onSubmit={loginConEmail} className="space-y-4 animate-in fade-in duration-200">
-              <div className="space-y-2">
-                <label className="text-[10px] text-zinc-500 uppercase tracking-widest font-black block">Email de Administrador</label>
+            <form onSubmit={loginConEmail} className="space-y-5 animate-fadeIn">
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">
+                  Email de Administrador
+                </label>
                 <input
                   id="username"
                   type="email"
                   autoComplete="username"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
-                  className="w-full bg-black/50 border border-zinc-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-red-600 transition-colors"
+                  className="input-clean"
                   placeholder="admin@minegocio.com"
                   required
                 />
               </div>
-              <div className="space-y-2">
-                <label className="text-[10px] text-zinc-550 uppercase tracking-widest font-black block">Contraseña / PIN</label>
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">
+                  Contraseña / PIN
+                </label>
                 <div className="relative">
                   <input
                     id="current-password"
@@ -356,17 +345,17 @@ export default function LoginPage() {
                     autoComplete="current-password"
                     value={password}
                     onChange={e => setPassword(e.target.value)}
-                    className="w-full bg-black/50 border border-zinc-800 rounded-xl px-4 py-3 pr-12 text-white text-sm focus:outline-none focus:border-red-600 transition-colors"
+                    className="input-clean pr-12"
                     placeholder="••••••••"
                     required
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#a1a1aa] hover:text-[#52525b] transition-colors"
                     tabIndex={-1}
                   >
-                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
                   </button>
                 </div>
               </div>
@@ -374,38 +363,41 @@ export default function LoginPage() {
               <label className="flex items-center gap-3 cursor-pointer group">
                 <div
                   onClick={() => setRecordarme(!recordarme)}
-                  className={`w-10 h-6 rounded-full transition-all cursor-pointer flex items-center ${
-                    recordarme ? 'bg-red-600 justify-end' : 'bg-zinc-800 justify-start'
+                  className={`w-9 h-5 rounded-full transition-all cursor-pointer flex items-center shrink-0 ${
+                    recordarme ? 'bg-[#dc2626] justify-end' : 'bg-[#e4e4e7] justify-start'
                   }`}
                 >
-                  <div className="w-4 h-4 bg-white rounded-full mx-1 shadow-sm" />
+                  <div className="w-3.5 h-3.5 bg-white rounded-full mx-0.5 shadow-sm" />
                 </div>
-                <span className="text-[10px] text-zinc-500 group-hover:text-zinc-400 transition-colors uppercase tracking-wider font-bold">
+                <span className="text-xs text-[#71717a] group-hover:text-[#52525b] transition-colors">
                   Recordarme en este dispositivo (24h)
                 </span>
               </label>
 
               {error && (
-                <p className="text-red-400 text-xs font-bold text-center bg-red-950/20 border border-red-900/30 rounded-lg py-2">
+                <div className="bg-red-50 border border-red-100 rounded-xl p-3 text-sm text-red-600 text-center font-medium">
                   {error}
-                </p>
+                </div>
               )}
 
               <button
                 type="submit"
                 disabled={cargando}
-                className="w-full bg-gradient-to-r from-red-600 to-red-800 text-white font-black py-4 rounded-xl uppercase tracking-widest text-xs transition-all hover:brightness-110 disabled:opacity-50 shadow-lg shadow-red-950/40"
+                className="btn-primary w-full py-3.5 text-sm"
               >
-                {cargando ? 'Accediendo...' : 'Ingresar al Portal'}
+                {cargando ? (
+                  <><Loader2 size={16} className="animate-spin" /> Verificando...</>
+                ) : 'Iniciar Sesión'}
               </button>
             </form>
           )}
 
-          {/* MODO: LOGIN CON PIN */}
+          {/* MODO: PIN */}
           {modo === 'pin' && (
-            <div className="space-y-6 animate-in fade-in duration-200">
+            <div className="space-y-6 animate-fadeIn">
               <div className="text-center">
-                <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-black">Ingresa tu PIN Rápido de 4 dígitos</p>
+                <p className="text-sm font-semibold text-[#09090b]">PIN de Acceso Rápido</p>
+                <p className="text-xs text-[#71717a] mt-1">Ingresa tu código de 4 dígitos</p>
               </div>
               <input
                 type="password"
@@ -419,78 +411,78 @@ export default function LoginPage() {
                   if (v.length >= 4) loginConPin(v)
                 }}
                 disabled={cargando}
-                className={`w-full bg-black border-2 rounded-2xl text-center text-4xl tracking-[0.5em] py-4 text-white font-mono focus:outline-none transition-colors ${
-                  error ? 'border-red-900/50' : 'border-zinc-800 focus:border-red-600'
+                className={`w-full bg-[#fafafa] border-2 rounded-2xl text-center text-4xl tracking-[0.6em] py-5 text-[#09090b] font-mono focus:outline-none transition-colors ${
+                  error ? 'border-red-300 bg-red-50' : 'border-[#e4e4e7] focus:border-[#dc2626]'
                 }`}
                 placeholder="••••"
               />
               {error && (
-                <p className="text-red-400 text-xs font-bold text-center">{error}</p>
+                <p className="text-red-500 text-sm text-center font-medium">{error}</p>
               )}
               {cargando && (
                 <div className="flex justify-center">
-                  <div className="w-6 h-6 border-2 border-zinc-800 border-t-red-600 rounded-full animate-spin" />
+                  <Loader2 className="w-6 h-6 text-[#dc2626] animate-spin" />
                 </div>
               )}
             </div>
           )}
 
-          {/* MODO: REGISTRO SAAS SELF-SERVICE */}
+          {/* MODO: REGISTRO SaaS */}
           {modo === 'registro' && (
-            <form onSubmit={registrarNegocioSaaS} className="space-y-4 animate-in fade-in duration-200">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <form onSubmit={registrarNegocioSaaS} className="space-y-4 animate-fadeIn">
+              <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <label className="text-[9px] text-zinc-500 uppercase font-black block">Tu Nombre Completo</label>
+                  <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">Tu Nombre</label>
                   <input
                     type="text"
                     value={regNombre}
                     onChange={e => setRegNombre(e.target.value)}
-                    className="w-full bg-black/50 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-red-600 transition-colors"
-                    placeholder="Ej: Pedro Infante"
+                    className="input-clean text-sm"
+                    placeholder="Pedro Infante"
                     required
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[9px] text-zinc-500 uppercase font-black block">Email / Usuario</label>
+                  <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">Email</label>
                   <input
                     type="email"
                     value={regEmail}
                     onChange={e => setRegEmail(e.target.value)}
-                    className="w-full bg-black/50 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-red-600 transition-colors"
-                    placeholder="Ej: pedro@restaurante.com"
+                    className="input-clean text-sm"
+                    placeholder="pedro@negocio.com"
                     required
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <label className="text-[9px] text-zinc-500 uppercase font-black block">Nombre del Negocio</label>
+                  <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">Negocio</label>
                   <input
                     type="text"
                     value={regNegocio}
                     onChange={e => setRegNegocio(e.target.value)}
-                    className="w-full bg-black/50 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-red-600 transition-colors"
-                    placeholder="Ej: La Burrería"
+                    className="input-clean text-sm"
+                    placeholder="La Burrería"
                     required
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[9px] text-zinc-500 uppercase font-black block">Contraseña (6-16 chars)</label>
+                  <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">Contraseña</label>
                   <div className="relative">
                     <input
                       type={showRegPin ? 'text' : 'password'}
                       maxLength={16}
                       value={regPin}
                       onChange={e => setRegPin(e.target.value)}
-                      className="w-full bg-black/50 border border-zinc-800 rounded-xl px-3 py-2.5 pr-10 text-xs text-white focus:outline-none focus:border-red-600 transition-colors"
+                      className="input-clean text-sm pr-9"
                       placeholder="Mín. 6 caracteres"
                       required
                     />
                     <button
                       type="button"
                       onClick={() => setShowRegPin(!showRegPin)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors"
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#a1a1aa] hover:text-[#52525b]"
                       tabIndex={-1}
                     >
                       {showRegPin ? <EyeOff size={14} /> : <Eye size={14} />}
@@ -500,65 +492,64 @@ export default function LoginPage() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[9px] text-zinc-500 uppercase font-black block">Subdominio / Slug de tu página</label>
+                <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">Slug / Subdominio</label>
                 <input
                   type="text"
                   value={regSlug}
                   onChange={e => formatearSlug(e.target.value)}
-                  className="w-full bg-black/50 border border-zinc-800 rounded-xl px-4 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-red-600 transition-colors"
-                  placeholder="Ej: laburreria"
+                  className="input-clean text-sm font-mono"
+                  placeholder="laburreria"
                   required
                 />
-                
                 {regSlug && (
-                  <p className="text-[9px] text-red-400 font-mono mt-1 select-all break-all">
-                    🌐 Tu portal de control será:<br/>
-                    <strong>loyaltyapp.vercel.app/{regSlug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '')}/dashboard</strong>
+                  <p className="text-xs text-[#71717a] font-mono mt-1">
+                    🌐 <strong>loyaltyapp.vercel.app/{regSlug}/dashboard</strong>
                   </p>
                 )}
               </div>
 
-              {error && (
-                <p className="text-red-400 text-xs font-bold text-center bg-red-950/20 border border-red-900/30 rounded-lg py-2">
-                  {error}
-                </p>
-              )}
-
-              <div className="bg-red-950/20 border border-red-900/30 rounded-xl p-3.5 text-[9px] uppercase tracking-wider space-y-1">
-                <div className="flex justify-between font-bold text-zinc-400">
-                  <span>Regalo de Bienvenida B2B:</span>
-                  <span className="text-red-400">1 Año Gratis</span>
+              <div className="bg-[#fafafa] border border-[#e4e4e7] rounded-xl p-3 text-xs space-y-1">
+                <div className="flex justify-between text-[#52525b] font-medium">
+                  <span>Regalo de Bienvenida:</span>
+                  <span className="text-[#dc2626] font-bold">1 Año Gratis</span>
                 </div>
-                <div className="flex justify-between font-bold text-zinc-400">
-                  <span>Créditos SaaS Cargados:</span>
-                  <span className="text-red-400">12 Créditos</span>
+                <div className="flex justify-between text-[#52525b] font-medium">
+                  <span>Créditos SaaS:</span>
+                  <span className="text-[#dc2626] font-bold">12 Créditos</span>
                 </div>
               </div>
+
+              {error && (
+                <div className="bg-red-50 border border-red-100 rounded-xl p-3 text-sm text-red-600 text-center font-medium">
+                  {error}
+                </div>
+              )}
 
               <button
                 type="submit"
                 disabled={cargando}
-                className="w-full bg-gradient-to-r from-red-600 to-red-800 text-white font-black py-4 rounded-xl uppercase tracking-widest text-xs transition-all hover:brightness-110 disabled:opacity-50 shadow-lg shadow-red-950/40"
+                className="btn-primary w-full py-3.5 text-sm"
               >
-                {cargando ? 'Desplegando tu SaaS...' : '🚀 Registrar mi Negocio'}
+                {cargando ? (
+                  <><Loader2 size={16} className="animate-spin" /> Desplegando...</>
+                ) : '🚀 Registrar mi Negocio'}
               </button>
             </form>
           )}
-
         </div>
 
-        {/* Botón PWA */}
+        {/* ── Botón PWA ── */}
         {installPrompt && (
           <button
             onClick={() => installPrompt.prompt()}
-            className="w-full border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-white font-bold py-3.5 rounded-2xl text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-2 bg-[#121212]/50"
+            className="w-full border border-[#e4e4e7] hover:border-[#d4d4d8] text-[#52525b] hover:text-[#09090b] font-medium py-3 rounded-xl text-sm transition-all flex items-center justify-center gap-2 bg-white hover:shadow-sm"
           >
-            <span>⬇️</span> Descargar App de Escritorio Standalone
+            <span>⬇️</span> Instalar App
           </button>
         )}
 
-        <p className="text-center text-zinc-700 text-[9px] uppercase tracking-widest">
-          LoyaltyApp Enterprise · SaaS Multi-Tenant V10
+        <p className="text-center text-[#a1a1aa] text-xs">
+          LoyaltyApp Enterprise · SaaS Multi-Tenant
         </p>
       </div>
     </main>

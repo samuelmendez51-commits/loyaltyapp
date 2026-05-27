@@ -1,45 +1,23 @@
 import { NextResponse } from 'next/server'
-// @ts-ignore
-import { Template } from '@walletpass/pass-js'
 import { createClient } from '@supabase/supabase-js'
 import fs from 'fs'
 import path from 'path'
 
+// ── Importación CommonJS estricta para evitar conflictos ESM/CJS ──────────────
+// @ts-ignore
+const { PKPass } = require('passkit-generator')
+
+// ── Supabase ──────────────────────────────────────────────────────────────────
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://hjaeireljkcvjnigfhzb.supabase.co'
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhqYWVpcmVsamtjdmpuaWdmaHpiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MDA4NjIsImV4cCI6MjA5NDI3Njg2Mn0.vB76RwGG_4VgDKC8RAllkH7HZgWQB4JWcUtq7Z6svas'
-
 const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
-let SIGNER_KEY = `-----BEGIN PRIVATE KEY-----
-MIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQCVbSqTGHKhk1uk
-mPSDUi58U8PIo7KZpVCQxlW1N3VF69gp0uQkdkcTeZGVEhCM6DrVay9fb2HMYlXw
-etK/aCla4YCbupDIAQabId0nD/+vR2LlOBCi8b48s66lD+aBxUg/QZFkCEceEDAn
-XLM6mm7NwoimAWLT7tD0923yDiOUG3UQPcwYPzQCqTwMY7v23WsF6YndCCQQswRR
-at2Rw+IP4dqG3y0/HIiAhzQadO2jMkZs5QYP7VAyhNQ9FAqU2GdgGlggxBrOlLHl
-KK/jax425vGvOJrKY+e/MiiTLLZRE490kSpTBKmiMf0hxVfvSggdqJBIs0Pnmueq
-6Kt8gbFXAgMBAAECggEAFKuecpe0r8ZB10yeB8EpaLhxAm3RVIYfqs9M5uhuOBxu
-cXwDZEnaU4bYd+MhAqT+EoIlHPy8Q3jXmOXHW9lYXdfeTGyWqkbTYkgLyY4MhB40
-v4RYb3n6eMzbBr64LSZxyTz+6Z69hm/zLAFw/P/aU8CqhNr3OrMJboGrJgtaVO/w
-kqpW2O87KYKIFnkvS7KbzA4sl59eo1Tl0PVSPN1FU51LW4CoIMz9LwyUf1e2irPd
-QHderR0718R1fB5lP9RsGzMfC0mXPfLOFhhVwzPKHxVKatlid5POAoEnjVp2sPt8
-8NS1buaA+6Pa+v8JHkwaLvFil42zdcqX3qD6H5lnEQKBgQDNlozwyNLiBZ1wo084
-seWle5rhG4BFp9XAhv30tPEdbmPXm3uKVtvCHRjjxQ8Ajcq/71cYSDSrdTUuamQK
-JE68k6ito5yXkDWXmRg7mWvZlTChGjZhRsM27F7vBAe9m1vJnEr0WjAO8Cwg91Lb
-ERC2roI1UvHyRUNzud22U7uwMQKBgQC6ESlPS1rKjYA9e2OwXSptBO5dJAG6DDNf
-QF3TNoe3Pp5ZavocxOCGy6xMoviaB2kUaNHVDIaCI32mSWcpPd/Hym/5ZvlxFLNR
-CM3Irn/AMeNNa5DV/aU2BbghBSx0C4hOnsJFcEYZsPWI/ZdDroAWZs7s1Ej0Wbnz
-luIwa0XgBwKBgQCnpKlfO1ODTXLZw8G5CI+sBoQAJg3OPxL1gN6baeTny/mMelQe
-Nb/TpSiDq1AVcoovQvrxaQfR/KyWIdlbz8mIypuUpELv8H9TFFsHVo70iUxzQk2v
-uyU6pzquisnJGmOZnmIcqWJg/AXwB92/l0XawaiZ1P5IQaTEPH8Hy3XUMQKBgQCS
-s+U2N9ulyFtMHnVDILHKsxCdLz6NSgFXIJDZby0iNaT0K3x4ImJE5WE8K2KHT0By
-bxLCP9Xt1b3D1iwYQEioZdxTb/VMS132jlJx3+OpzavB5wWTMyGHroq2vjWGaXFX
-S6Uwyoz6xKNTF16kZnlnMDgGUnoS7ovGmzhLpMi7EQKBgQCs6aCKlKWObCOpceT3
-Mtsmue7iemyOcmopns/DANF6Tl064nYdhab2D+VzpVLcfswk6YIR1/Jeo9mmu1g2
-UdGuw8xv9dK4fCBXbLEP8F2M7nXzIUlWTmPoQS5LjGdoKq5lK5W9NGg78HO1zJZu
-DiwrugDPatu4KRuN0WK87TJeJw==
------END PRIVATE KEY-----`;
+// ── Identificadores Apple ─────────────────────────────────────────────────────
+const PASS_TYPE_IDENTIFIER = 'pass.com.laburreria.vip'
+const TEAM_IDENTIFIER = 'R8K4HJ594Q'
 
-let SIGNER_CERT = `-----BEGIN CERTIFICATE-----
+// ── Certificados hardcodeados (fallback de último recurso) ────────────────────
+const CERT_FALLBACK = `-----BEGIN CERTIFICATE-----
 MIIGGjCCBQKgAwIBAgIQJEz86++dmd8xtTG3btOFvzANBgkqhkiG9w0BAQsFADB1
 MUQwQgYDVQQDDDtBcHBsZSBXb3JsZHdpZGUgRGV2ZWxvcGVyIFJlbGF0aW9ucyBD
 ZXJ0aWZpY2F0aW9uIEF1dGhvcml0eTELMAkGA1UECwwCRzQxEzARBgNVBAoMCkFw
@@ -73,226 +51,300 @@ BXvSG7Z8tqDbmWYRBPq6zujqAoJ2GD06EHctIdzmnwChCGm/4dJsARSsgOKWAMat
 tyTnsK+hPqJ7eLZgN/Ye1tEwXRZflMjsxNgoMgQUJqVaHR+HSl5Ht+sKXTcSZknh
 8CWmCYXTaguzsKILJJuqudBqKzsG4FkhQqHSm4/qk1gHDMTY6WilLflyPha89vD/
 RLAYAd+bHKXx6qT5AcXnhSMShni/jpNriAoOtEGP
------END CERTIFICATE-----`;
+-----END CERTIFICATE-----`
 
-// IDs Extraídos directamente de tu Certificado (¡A prueba de fallos!)
-const PASS_TYPE_IDENTIFIER = "pass.com.laburreria.vip";
-const TEAM_IDENTIFIER = "R8K4HJ594Q";
+const KEY_FALLBACK = `-----BEGIN PRIVATE KEY-----
+MIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQCVbSqTGHKhk1uk
+mPSDUi58U8PIo7KZpVCQxlW1N3VF69gp0uQkdkcTeZGVEhCM6DrVay9fb2HMYlXw
+etK/aCla4YCbupDIAQabId0nD/+vR2LlOBCi8b48s66lD+aBxUg/QZFkCEceEDAn
+XLM6mm7NwoimAWLT7tD0923yDiOUG3UQPcwYPzQCqTwMY7v23WsF6YndCCQQswRR
+at2Rw+IP4dqG3y0/HIiAhzQadO2jMkZs5QYP7VAyhNQ9FAqU2GdgGlggxBrOlLHl
+KK/jax425vGvOJrKY+e/MiiTLLZRE490kSpTBKmiMf0hxVfvSggdqJBIs0Pnmueq
+6Kt8gbFXAgMBAAECggEAFKuecpe0r8ZB10yeB8EpaLhxAm3RVIYfqs9M5uhuOBxu
+cXwDZEnaU4bYd+MhAqT+EoIlHPy8Q3jXmOXHW9lYXdfeTGyWqkbTYkgLyY4MhB40
+v4RYb3n6eMzbBr64LSZxyTz+6Z69hm/zLAFw/P/aU8CqhNr3OrMJboGrJgtaVO/w
+kqpW2O87KYKIFnkvS7KbzA4sl59eo1Tl0PVSPN1FU51LW4CoIMz9LwyUf1e2irPd
+QHderR0718R1fB5lP9RsGzMfC0mXPfLOFhhVwzPKHxVKatlid5POAoEnjVp2sPt8
+8NS1buaA+6Pa+v8JHkwaLvFil42zdcqX3qD6H5lnEQKBgQDNlozwyNLiBZ1wo084
+seWle5rhG4BFp9XAhv30tPEdbmPXm3uKVtvCHRjjxQ8Ajcq/71cYSDSrdTUuamQK
+JE68k6ito5yXkDWXmRg7mWvZlTChGjZhRsM27F7vBAe9m1vJnEr0WjAO8Cwg91Lb
+ERC2roI1UvHyRUNzud22U7uwMQKBgQC6ESlPS1rKjYA9e2OwXSptBO5dJAG6DDNf
+QF3TNoe3Pp5ZavocxOCGy6xMoviaB2kUaNHVDIaCI32mSWcpPd/Hym/5ZvlxFLNR
+CM3Irn/AMeNNa5DV/aU2BbghBSx0C4hOnsJFcEYZsPWI/ZdDroAWZs7s1Ej0Wbnz
+luIwa0XgBwKBgQCnpKlfO1ODTXLZw8G5CI+sBoQAJg3OPxL1gN6baeTny/mMelQe
+Nb/TpSiDq1AVcoovQvrxaQfR/KyWIdlbz8mIypuUpELv8H9TFFsHVo70iUxzQk2v
+uyU6pzquisnJGmOZnmIcqWJg/AXwB92/l0XawaiZ1P5IQaTEPH8Hy3XUMQKBgQCS
+s+U2N9ulyFtMHnVDILHKsxCdLz6NSgFXIJDZby0iNaT0K3x4ImJE5WE8K2KHT0By
+bxLCP9Xt1b3D1iwYQEioZdxTb/VMS132jlJx3+OpzavB5wWTMyGHroq2vjWGaXFX
+S6Uwyoz6xKNTF16kZnlnMDgGUnoS7ovGmzhLpMi7EQKBgQCs6aCKlKWObCOpceT3
+Mtsmue7iemyOcmopns/DANF6Tl064nYdhab2D+VzpVLcfswk6YIR1/Jeo9mmu1g2
+UdGuw8xv9dK4fCBXbLEP8F2M7nXzIUlWTmPoQS5LjGdoKq5lK5W9NGg78HO1zJZu
+DiwrugDPatu4KRuN0WK87TJeJw==
+-----END PRIVATE KEY-----`
 
+// ── Función: leer certificados con lógica híbrida ─────────────────────────────
+function leerCertificados(): { signerCert: string; signerKey: string; wwdrCert: string } {
+  let signerCert = CERT_FALLBACK
+  let signerKey = KEY_FALLBACK
+  let wwdrCert = ''
+
+  // Paso 1: Intentar leer archivos físicos del filesystem (dev local)
+  try {
+    const passPemPath = path.resolve(process.cwd(), 'pass.pem')
+    if (fs.existsSync(passPemPath)) {
+      signerCert = fs.readFileSync(passPemPath, 'utf8')
+      console.log('[AppleWallet] ✅ Certificado cargado desde pass.pem (filesystem)')
+    }
+  } catch (e: any) { console.warn('[AppleWallet] No se pudo leer pass.pem:', e.message) }
+
+  try {
+    const llavePemPath = path.resolve(process.cwd(), 'llave.pem')
+    if (fs.existsSync(llavePemPath)) {
+      signerKey = fs.readFileSync(llavePemPath, 'utf8')
+      console.log('[AppleWallet] ✅ Llave privada cargada desde llave.pem (filesystem)')
+    } else {
+      // Probar alternativas de nombre
+      const alts = ['llave_maestra.key', 'LlaveBurreria.key', 'llave_clasica.pem', 'llave_burreria.key']
+      for (const alt of alts) {
+        const altPath = path.resolve(process.cwd(), alt)
+        if (fs.existsSync(altPath)) {
+          signerKey = fs.readFileSync(altPath, 'utf8')
+          console.log(`[AppleWallet] ✅ Llave cargada desde ${alt}`)
+          break
+        }
+      }
+    }
+  } catch (e: any) { console.warn('[AppleWallet] No se pudo leer llave.pem:', e.message) }
+
+  try {
+    const wwdrPath = path.resolve(process.cwd(), 'wwdr.pem')
+    if (fs.existsSync(wwdrPath)) {
+      wwdrCert = fs.readFileSync(wwdrPath, 'utf8')
+      console.log('[AppleWallet] ✅ WWDR cargado desde wwdr.pem (filesystem)')
+    }
+  } catch (e: any) { console.warn('[AppleWallet] No se pudo leer wwdr.pem:', e.message) }
+
+  // Paso 2: Si no hay archivos físicos, intentar variables de entorno Base64 (Vercel)
+  if (!wwdrCert && process.env.APPLE_WWDR_CERT) {
+    try {
+      wwdrCert = Buffer.from(process.env.APPLE_WWDR_CERT, 'base64').toString('utf8')
+      console.log('[AppleWallet] ✅ WWDR cargado desde variable APPLE_WWDR_CERT (Base64 env)')
+    } catch (e: any) { console.warn('[AppleWallet] Error decodificando APPLE_WWDR_CERT:', e.message) }
+  }
+
+  if (process.env.APPLE_SIGNER_CERT) {
+    try {
+      const decoded = Buffer.from(process.env.APPLE_SIGNER_CERT, 'base64').toString('utf8')
+      if (decoded.includes('BEGIN CERTIFICATE')) {
+        signerCert = decoded
+        console.log('[AppleWallet] ✅ Certificado cargado desde APPLE_SIGNER_CERT (Base64 env)')
+      }
+    } catch (e: any) { console.warn('[AppleWallet] Error decodificando APPLE_SIGNER_CERT:', e.message) }
+  }
+
+  if (process.env.APPLE_SIGNER_KEY) {
+    try {
+      const decoded = Buffer.from(process.env.APPLE_SIGNER_KEY, 'base64').toString('utf8')
+      if (decoded.includes('BEGIN')) {
+        signerKey = decoded
+        console.log('[AppleWallet] ✅ Llave cargada desde APPLE_SIGNER_KEY (Base64 env)')
+      }
+    } catch (e: any) { console.warn('[AppleWallet] Error decodificando APPLE_SIGNER_KEY:', e.message) }
+  }
+
+  return { signerCert, signerKey, wwdrCert }
+}
+
+// ── HANDLER PRINCIPAL ─────────────────────────────────────────────────────────
 export async function POST(req: Request) {
   try {
     const { clienteId, nombre, puntos, businessId } = await req.json()
+    console.log('[AppleWallet] POST recibido:', { clienteId, nombre, puntos })
 
-    if (!clienteId || !nombre) return NextResponse.json({ error: 'Faltan datos' }, { status: 400 })
-
-    // Carga dinámica de certificados físicos desde la raíz de forma absoluta (Vercel-proof)
-    try {
-      const keyPath = path.resolve(process.cwd(), 'llave_maestra.key')
-      if (fs.existsSync(keyPath)) {
-        SIGNER_KEY = fs.readFileSync(keyPath, 'utf8')
-      }
-      const certPath = path.resolve(process.cwd(), 'pass.pem')
-      if (fs.existsSync(certPath)) {
-        SIGNER_CERT = fs.readFileSync(certPath, 'utf8')
-      }
-    } catch (e: any) {
-      console.warn("Fallo al leer llaves físicas, usando fallback estático:", e.message)
+    if (!clienteId || !nombre) {
+      return NextResponse.json({ error: 'Faltan datos obligatorios' }, { status: 400 })
     }
 
     // Cargar datos del negocio si están presentes
     let business: any = null
     if (businessId) {
-      const { data } = await supabase
-        .from('businesses')
-        .select('*')
-        .eq('id', businessId)
-        .maybeSingle()
-      if (data) business = data
-    }
-
-    const template = new Template('storeCard', {
-      passTypeIdentifier: PASS_TYPE_IDENTIFIER,
-      teamIdentifier: TEAM_IDENTIFIER,
-      organizationName: business ? `${business.nombre} Club` : 'La Burrería Club',
-      description: business ? `Pase VIP de Fidelidad de ${business.nombre}` : 'Pase VIP de Fidelidad',
-      logoText: business ? business.nombre : 'La Burrería',
-      backgroundColor: '#0a0a0a',
-      foregroundColor: '#ffffff',
-      labelColor: '#d4af37',
-    });
-
-    if (business && business.latitude && business.longitude) {
-      template.locations = [{
-        latitude: Number(business.latitude),
-        longitude: Number(business.longitude),
-        relevantText: `¡Estás cerca! Visita ${business.nombre} y acumula sellos.`
-      }];
-    } else {
-      template.locations = [{
-        latitude: 19.421583,
-        longitude: -102.067222,
-        relevantText: "¡Estás cerca! Pasa por tu Chavipizza a La Burrería."
-      }];
-    }
-
-    try {
-      template.setCertificate(SIGNER_CERT);
-      template.setPrivateKey(SIGNER_KEY);
-
       try {
-        const LOGO_URL = business?.logo_url || "";
-        const DESTACADA_URL = business?.banner_url || "https://hjaeireljkcvjnigfhzb.supabase.co/storage/v1/object/public/assets/destacada.jpg";
+        const { data } = await supabase
+          .from('businesses')
+          .select('*')
+          .eq('id', businessId)
+          .maybeSingle()
+        if (data) business = data
+      } catch (e: any) {
+        console.warn('[AppleWallet] No se pudo cargar negocio:', e.message)
+      }
+    }
 
-        const fetches = [];
-        if (LOGO_URL && (LOGO_URL.startsWith('http') || LOGO_URL.startsWith('/') || LOGO_URL.startsWith('data:'))) {
-          fetches.push(fetch(LOGO_URL).then(res => res.ok ? res.arrayBuffer() : null).catch(() => null));
-        } else {
-          fetches.push(Promise.resolve(null));
-        }
-        fetches.push(fetch(DESTACADA_URL).then(res => res.ok ? res.arrayBuffer() : null).catch(() => null));
+    // Leer certificados con lógica híbrida
+    const { signerCert, signerKey, wwdrCert } = leerCertificados()
 
-        const [iconBufferRaw, stripBufferRaw] = await Promise.all(fetches);
-
-        if (iconBufferRaw) {
-          const iconBuffer = Buffer.from(iconBufferRaw);
-          template.images.add('icon', iconBuffer); 
-          template.images.add('logo', iconBuffer); 
+    // Construir el PKPass usando passkit-generator (CJS)
+    try {
+      const passOptions: any = {
+        model: {
+          formatVersion: 1,
+          passTypeIdentifier: PASS_TYPE_IDENTIFIER,
+          teamIdentifier: TEAM_IDENTIFIER,
+          organizationName: business ? `${business.nombre} Club` : 'La Burrería Club',
+          description: business ? `Pase VIP de Fidelidad — ${business.nombre}` : 'Pase VIP de Fidelidad La Burrería',
+          logoText: business ? business.nombre : 'La Burrería',
+          foregroundColor: 'rgb(9, 9, 11)',
+          backgroundColor: 'rgb(255, 255, 255)',
+          labelColor: 'rgb(220, 38, 38)',
+          storeCard: {
+            headerFields: [
+              { key: 'sellos', label: 'SELLOS', value: String(puntos || 0), textAlignment: 'PKTextAlignmentRight' }
+            ],
+            primaryFields: [
+              { key: 'cliente', label: 'SOCIO VIP', value: nombre }
+            ],
+            secondaryFields: [
+              { key: 'id', label: 'ID DE SOCIO', value: clienteId.substring(0, 8) },
+              { key: 'negocio', label: 'NEGOCIO', value: business?.nombre || 'La Burrería' }
+            ],
+            backFields: [
+              { key: 'info', label: 'CÓMO ACUMULAR', value: 'Presenta tu código QR en cada visita para acumular sellos y ganar premios.' },
+              { key: 'contacto', label: 'CONTACTO', value: business?.telefono_whatsapp ? `+${business.telefono_whatsapp}` : 'Consulta al cajero' }
+            ]
+          },
+          barcode: {
+            message: clienteId,
+            format: 'PKBarcodeFormatQR',
+            messageEncoding: 'iso-8859-1',
+            altText: `ID: ${clienteId.substring(0, 8)}`
+          }
+        },
+        certificates: {
+          wwdr: wwdrCert || undefined,
+          signerCert: signerCert,
+          signerKey: {
+            keyFile: signerKey,
+            passphrase: ''
+          }
         }
-        
-        if (stripBufferRaw) {
-          const stripBuffer = Buffer.from(stripBufferRaw);
-          template.images.add('strip', stripBuffer); 
-        }
-      } catch (e) {
-        console.error("No se pudieron inyectar las imágenes al pase.", e);
       }
 
-      template.headerFields.add({ key: 'puntos', label: 'SELLOS', value: String(puntos || 0), textAlignment: 'PKTextAlignmentRight' });
-      template.primaryFields.add({ key: 'cliente', label: 'SOCIO VIP', value: nombre });
-      template.secondaryFields.add({ key: 'id', label: 'ID DE SOCIO', value: clienteId.substring(0, 8) });
+      // Agregar geolocalización si disponible
+      if (business?.latitude && business?.longitude) {
+        passOptions.model.locations = [{
+          latitude: Number(business.latitude),
+          longitude: Number(business.longitude),
+          relevantText: `¡Estás cerca! Visita ${business.nombre} y acumula sellos.`
+        }]
+      } else {
+        passOptions.model.locations = [{
+          latitude: 19.421583,
+          longitude: -102.067222,
+          relevantText: '¡Estás cerca! Pasa por La Burrería.'
+        }]
+      }
 
-      const pass = template.createPass({
+      const pass = await PKPass.from(passOptions, {
         serialNumber: clienteId,
-        authenticationToken: process.env.APPLE_PASS_AUTH_TOKEN || 'secure_token_123456789',
-      });
+        webServiceURL: process.env.NEXT_PUBLIC_SITE_URL,
+        authenticationToken: process.env.APPLE_PASS_AUTH_TOKEN || 'secure_token_laburreria_2026',
+      })
 
-      const passBuffer = await pass.asBuffer();
+      // Agregar imágenes si disponibles
+      try {
+        const logoUrl = business?.logo_url
+        if (logoUrl && (logoUrl.startsWith('http') || logoUrl.startsWith('/'))) {
+          const logoRes = await fetch(logoUrl)
+          if (logoRes.ok) {
+            const logoBuffer = Buffer.from(await logoRes.arrayBuffer())
+            pass.addBuffer('icon.png', logoBuffer)
+            pass.addBuffer('icon@2x.png', logoBuffer)
+            pass.addBuffer('logo.png', logoBuffer)
+            pass.addBuffer('logo@2x.png', logoBuffer)
+          }
+        }
+      } catch (imgErr: any) {
+        console.warn('[AppleWallet] No se pudieron cargar imágenes:', imgErr.message)
+      }
 
+      const passBuffer = pass.getAsBuffer()
+
+      console.log('[AppleWallet] ✅ Pase .pkpass generado exitosamente para:', clienteId)
       return new NextResponse(passBuffer as any, {
         status: 200,
         headers: {
           'Content-Type': 'application/vnd.apple.pkpass',
-          'Content-Disposition': `attachment; filename="VIP-${clienteId}.pkpass"`,
+          'Content-Disposition': `attachment; filename="${(business?.nombre || 'VIP').replace(/\s+/g, '')}-${clienteId.substring(0, 8)}.pkpass"`,
         },
-      });
-    } catch (e: any) {
-      console.warn("Fallo la generación del archivo .pkpass. Generando fallback de pase Web...", e.message);
-      
-      const logoText = business ? business.nombre : 'La Burrería';
-      const logoEmoji = business?.logo_url && !business.logo_url.startsWith('http') ? business.logo_url : '✨';
-      const starsHtml = Array.from({ length: 10 }).map((_, idx) => idx < (puntos || 0) ? `
-        <svg viewBox="0 0 24 24" style="width: 2rem; height: 2rem; color: #f59e0b; fill: currentColor; filter: drop-shadow(0 0 8px rgba(245,158,11,0.6));">
-          <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
-        </svg>
-      ` : `
-        <svg viewBox="0 0 24 24" style="width: 2rem; height: 2rem; color: #27272a; fill: currentColor;">
-          <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" stroke="#27272a" stroke-width="1.5" />
-        </svg>
-      `).join('');
+      })
+
+    } catch (passError: any) {
+      console.warn('[AppleWallet] Error generando .pkpass (generando pase web de respaldo):', passError.message)
+
+      // ── Fallback: Pase Web Premium ─────────────────────────────────────────
+      const logoText = business ? business.nombre : 'La Burrería'
+      const starsHtml = Array.from({ length: 10 }).map((_, idx) =>
+        idx < (puntos || 0)
+          ? `<div style="width:32px;height:32px;background:linear-gradient(135deg,#FFD700,#FDB931);border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 0 12px rgba(255,215,0,0.5);"><span style="color:#452000;font-size:1.1rem;font-weight:900;">★</span></div>`
+          : `<div style="width:32px;height:32px;border:2px dashed #e4e4e7;border-radius:50%;display:flex;align-items:center;justify-content:center;"><span style="color:#d4d4d8;font-size:1rem;">★</span></div>`
+      ).join('')
 
       const htmlContent = `<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pase VIP Digital - ${logoText}</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <title>Pase VIP — ${logoText}</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;700;900&display=swap');
-    body {
-      font-family: 'Outfit', sans-serif;
-      background: #050505;
-      color: #fff;
-    }
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap');
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', sans-serif; background: #fafafa; color: #09090b; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 1.5rem; }
+    .card { background: white; border: 1px solid #e4e4e7; border-radius: 24px; padding: 2rem; max-width: 360px; width: 100%; box-shadow: 0 10px 40px rgba(0,0,0,0.08); }
+    .badge { background: #fef2f2; color: #dc2626; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; padding: 4px 10px; border-radius: 999px; border: 1px solid #fecaca; }
+    .name { font-size: 1.6rem; font-weight: 900; letter-spacing: -0.03em; margin: 1rem 0 0.25rem; }
+    .stamps { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; padding: 1.25rem; background: #fafafa; border-radius: 16px; margin: 1.25rem 0; }
+    .qr-wrap { background: white; border: 1px solid #e4e4e7; border-radius: 12px; padding: 0.75rem; display: inline-block; }
+    .tip { margin-top: 1.5rem; text-align: center; font-size: 12px; color: #71717a; line-height: 1.6; }
+    .tip strong { color: #dc2626; }
   </style>
 </head>
-<body class="min-h-screen flex flex-col items-center justify-center p-4">
-  <div class="fixed top-0 left-1/4 w-96 h-96 bg-red-955/20 rounded-full blur-[120px] pointer-events-none"></div>
-  <div class="fixed bottom-0 right-1/4 w-96 h-96 bg-amber-955/20 rounded-full blur-[120px] pointer-events-none"></div>
-
-  <div class="w-full max-w-sm bg-zinc-950 border border-zinc-800 rounded-[28px] overflow-hidden shadow-[0_0_50px_rgba(212,175,55,0.15)] flex flex-col relative p-6">
-    <div class="absolute inset-0 bg-gradient-to-br from-red-955/20 via-transparent to-amber-955/10 pointer-events-none"></div>
-    
-    <!-- Top Header -->
-    <div class="flex justify-between items-center mb-8 relative z-10">
-      <div class="flex items-center gap-3">
-        <div class="w-10 h-10 bg-zinc-900 border border-zinc-800 rounded-xl flex items-center justify-center text-xl shadow-lg">
-          ${logoEmoji}
-        </div>
-        <div>
-          <h2 class="text-xs font-black uppercase tracking-widest text-zinc-500">${logoText}</h2>
-          <p class="text-[9px] uppercase tracking-wider text-amber-500 font-bold">Tarjeta de Fidelidad</p>
-        </div>
+<body>
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
+      <div>
+        <p style="font-size:11px;color:#71717a;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;">${logoText}</p>
+        <p style="font-size:11px;color:#dc2626;font-weight:700;letter-spacing:0.04em;">Club de Fidelización</p>
       </div>
-      <div class="text-right">
-        <span class="bg-amber-950/50 border border-amber-800/40 text-amber-400 font-black px-3 py-1 rounded-full text-[10px] tracking-wider">
-          PASE VIP
-        </span>
+      <span class="badge">Pase VIP</span>
+    </div>
+    <p style="font-size:11px;color:#a1a1aa;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Titular</p>
+    <h1 class="name">${nombre}</h1>
+    <p style="font-size:11px;color:#a1a1aa;font-family:monospace;">ID: ${clienteId.substring(0, 8)}</p>
+    <div class="stamps">${starsHtml}</div>
+    <p style="text-align:center;font-size:28px;font-weight:900;color:#09090b;margin-bottom:0.25rem;">${puntos || 0}<span style="font-size:14px;color:#a1a1aa;font-weight:600;"> / 10 sellos</span></p>
+    <div style="text-align:center;margin-top:1.25rem;">
+      <div class="qr-wrap">
+        <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${clienteId}&bgcolor=ffffff&color=09090b&margin=0" alt="QR VIP" width="150" height="150" />
       </div>
     </div>
-
-    <!-- Client Name -->
-    <div class="mb-8 relative z-10">
-      <span class="text-[10px] text-zinc-500 uppercase tracking-widest block mb-1">Titular del Pase</span>
-      <h1 class="text-2xl font-black text-white tracking-wide">${nombre}</h1>
-      <span class="text-[10px] text-zinc-600 font-mono">ID: ${clienteId.substring(0, 8)}</span>
-    </div>
-
-    <!-- Stats & Stamps -->
-    <div class="bg-black/60 border border-zinc-800 rounded-2xl p-4 mb-6 relative z-10">
-      <div class="flex justify-between items-center mb-4">
-        <div>
-          <span class="text-[10px] text-zinc-500 uppercase block">Acumulado</span>
-          <span class="text-3xl font-black text-amber-400 font-mono">${puntos} <span class="text-xs text-zinc-600">/ 10</span></span>
-        </div>
-        <div class="text-right">
-          <span class="text-[10px] text-zinc-500 uppercase block">Rango</span>
-          <span class="text-xs font-bold text-white uppercase tracking-wider">Socio Distinguido</span>
-        </div>
-      </div>
-      
-      <!-- Stars Grid -->
-      <div class="flex gap-1.5 justify-center">
-        ${starsHtml}
-      </div>
-    </div>
-
-    <!-- QR Code Scan Section -->
-    <div class="flex flex-col items-center justify-center pt-2 relative z-10 border-t border-zinc-900">
-      <div class="bg-white p-3 rounded-2xl shadow-2xl mb-3">
-        <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${clienteId}" alt="QR VIP" class="w-28 h-28" />
-      </div>
-      <p class="text-[9px] text-zinc-500 uppercase tracking-widest text-center">Escanea en caja para acumular y canjear premios</p>
-    </div>
-  </div>
-
-  <!-- Instruction Tip -->
-  <div class="mt-6 text-center text-zinc-500 text-xs max-w-xs space-y-2 relative z-10">
-    <p class="font-bold text-amber-400">💡 Tip de Instalación:</p>
-    <p>Toma una captura de pantalla o añade esta página a tus marcadores/favoritos para acceder a tu pase VIP en cualquier momento.</p>
+    <p class="tip">📸 Guarda esta página en tus favoritos o toma una captura de pantalla para acceder a tu pase VIP en cualquier momento.<br><br><strong>Muestra el QR en caja para acumular sellos.</strong></p>
   </div>
 </body>
-</html>`;
+</html>`
 
-      return NextResponse.json({ 
-        webPass: true, 
-        html: htmlContent, 
-        mensaje: "Pase Web Generado correctamente en formato offline de contingencia." 
-      });
+      return NextResponse.json({
+        webPass: true,
+        html: htmlContent,
+        mensaje: 'Pase Web generado correctamente como respaldo.'
+      })
     }
 
   } catch (error: any) {
-    console.error('API Apple Wallet Error Detallado:', error);
+    console.error('[AppleWallet] Error crítico en POST handler:', {
+      message: error.message,
+      stack: error.stack,
+      code: error.code,
+    })
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }

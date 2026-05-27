@@ -1,19 +1,13 @@
 import './globals.css'
 import type { Metadata, Viewport } from 'next'
-import { Inter, Playfair_Display } from 'next/font/google'
-
+import { Inter } from 'next/font/google'
 import Script from 'next/script'
 
 const inter = Inter({
   subsets: ['latin'],
   variable: '--font-inter',
   display: 'swap',
-})
-
-const playfair = Playfair_Display({
-  subsets: ['latin'],
-  variable: '--font-playfair',
-  display: 'swap',
+  weight: ['300', '400', '500', '600', '700', '800', '900'],
 })
 
 export const metadata: Metadata = {
@@ -22,31 +16,30 @@ export const metadata: Metadata = {
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
-    statusBarStyle: 'black-translucent',
+    statusBarStyle: 'default',
     title: 'LoyaltyApp',
   },
 }
 
 export const viewport: Viewport = {
-  themeColor: '#b91c1c',
+  themeColor: '#ffffff',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es" className={`${inter.variable} ${playfair.variable}`} style={{ backgroundColor: '#050505' }}>
+    <html lang="es" className={inter.variable} style={{ backgroundColor: '#ffffff' }}>
       <head>
         <link rel="manifest" href="/manifest.json" />
-        <meta name="theme-color" content="#b91c1c" />
+        <meta name="theme-color" content="#ffffff" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="LoyaltyApp" />
         <link rel="apple-touch-icon" href="/logo.png" />
       </head>
       <body
-        className="bg-[#050505] text-white font-sans antialiased selection:bg-red-900/40 selection:text-white min-h-screen flex flex-col"
-        style={{ backgroundColor: '#050505', margin: 0, color: '#ffffff' }}
+        className="bg-white text-[#09090b] font-sans antialiased min-h-screen flex flex-col"
+        style={{ backgroundColor: '#ffffff', margin: 0, color: '#09090b' }}
       >
-        {/* Registro del Service Worker */}
         <Script id="register-sw" strategy="afterInteractive">
           {`
             if ('serviceWorker' in navigator) {
@@ -59,12 +52,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           `}
         </Script>
 
-        {/* Atmósfera de fondo */}
-        <div className="fixed top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-red-900 blur-[150px] opacity-[0.07] pointer-events-none z-0" />
-        <div className="fixed bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-amber-900 blur-[150px] opacity-[0.04] pointer-events-none z-0" />
-
-        {/* Contenedor principal */}
-        <div className="relative z-10 flex-1 flex flex-col">
+        <div className="relative flex-1 flex flex-col">
           {children}
         </div>
       </body>

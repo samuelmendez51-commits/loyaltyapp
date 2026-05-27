@@ -3,21 +3,24 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import { Loader2, UserPlus, CheckCircle2 } from 'lucide-react'
+
+// UUID fijo para la sucursal de registro por defecto
+const SUCURSAL_REGISTRO_ID = '00000000-0000-0000-0000-000000000001'
 
 export default function RegistroCliente() {
   const router = useRouter()
   const [nombre, setNombre] = useState('')
   const [telefono, setTelefono] = useState('')
   const [email, setEmail] = useState('')
-  
-  // Nuevos estados para el selector de fecha 3 Ruedas
+
+  // Selector de fecha de nacimiento (3 selectores)
   const [dia, setDia] = useState('')
   const [mes, setMes] = useState('')
   const [anio, setAnio] = useState('')
-  
+
   const [registrando, setRegistrando] = useState(false)
   const [mensaje, setMensaje] = useState({ texto: '', tipo: '' })
-  
   const [business, setBusiness] = useState<any>(null)
 
   useEffect(() => {
@@ -25,11 +28,7 @@ export default function RegistroCliente() {
       const getCookieVal = (name: string) => document.cookie.match(new RegExp(`${name}=([^;]+)`))?.[1] || ''
       const bizId = getCookieVal('session_business_id')
       if (bizId) {
-        const { data } = await supabase
-          .from('businesses')
-          .select('*')
-          .eq('id', bizId)
-          .maybeSingle()
+        const { data } = await supabase.from('businesses').select('*').eq('id', bizId).maybeSingle()
         if (data) setBusiness(data)
       }
     }
@@ -40,18 +39,18 @@ export default function RegistroCliente() {
     e.preventDefault()
     if (!nombre.trim()) return
 
-    // Validación de teléfono (Exactamente 10 dígitos)
+    // Validación de teléfono (10 dígitos)
     const telefonoLimpio = telefono.replace(/\D/g, '')
     if (telefonoLimpio.length !== 10) {
-      setMensaje({ texto: 'El teléfono debe tener 10 dígitos.', tipo: 'error' })
+      setMensaje({ texto: 'El teléfono debe tener exactamente 10 dígitos.', tipo: 'error' })
       return
     }
 
     setRegistrando(true)
     setMensaje({ texto: '', tipo: '' })
 
-    // Ensamblaje de la fecha de nacimiento (YYYY-MM-DD)
-    let fechaEnsamblada = null
+    // Ensamblaje de fecha de nacimiento (YYYY-MM-DD)
+    let fechaEnsamblada: string | null = null
     if (dia && mes && anio) {
       const diaFormateado = dia.padStart(2, '0')
       const mesFormateado = mes.padStart(2, '0')
@@ -65,28 +64,30 @@ export default function RegistroCliente() {
     try {
       const { data, error } = await supabase
         .from('clientes')
-        .insert([{ 
-          nombre: nombre.trim(), 
-          telefono: telefonoLimpio, 
-          email: email.trim() || null, 
+        .insert([{
+          nombre: nombre.trim(),
+          telefono: telefonoLimpio,
+          email: email.trim() || null,
           fecha_nacimiento: fechaEnsamblada,
           puntos: 0,
           business_id: businessId,
-          branch_id: branchId
+          branch_id: branchId,
+          sucursal_registro_id: SUCURSAL_REGISTRO_ID,
         }])
         .select()
 
       if (error) {
-        console.error("Error al registrar:", error)
+        console.error('[Registro] Error al registrar:', error)
         if (error.code === '23505') {
-          setMensaje({ 
-            texto: 'Este número de teléfono o correo ya está registrado en el club.', 
-            tipo: 'error' 
+          // Duplicado: teléfono o email ya registrado
+          setMensaje({
+            texto: 'Este número de teléfono o correo ya está registrado en el club. ¿Ya eres socio?',
+            tipo: 'error'
           })
         } else {
-          setMensaje({ 
-            texto: 'Hubo un error al crear la tarjeta. Intenta de nuevo.', 
-            tipo: 'error' 
+          setMensaje({
+            texto: 'Hubo un error al crear la tarjeta. Intenta de nuevo.',
+            tipo: 'error'
           })
         }
       } else if (data && data[0]) {
@@ -95,169 +96,177 @@ export default function RegistroCliente() {
           router.push(`/cliente/${data[0].id}`)
         }, 1500)
       }
-    } catch (err) {
-      console.error("Error inesperado:", err)
-      setMensaje({ texto: 'Error de conexión.', tipo: 'error' })
+    } catch (err: any) {
+      console.error('[Registro] Error inesperado:', err)
+      if (err?.code === '23505') {
+        setMensaje({
+          texto: 'Este número de teléfono o correo ya está registrado en el club.',
+          tipo: 'error'
+        })
+      } else {
+        setMensaje({ texto: 'Error de conexión. Intenta de nuevo.', tipo: 'error' })
+      }
     } finally {
       setRegistrando(false)
     }
   }
 
-  // Generadores para los Selects de Fecha
-  const dias = Array.from({length: 31}, (_, i) => i + 1)
+  const dias = Array.from({ length: 31 }, (_, i) => i + 1)
   const meses = [
-    { num: '1', nombre: 'Ene' }, { num: '2', nombre: 'Feb' }, { num: '3', nombre: 'Mar' },
-    { num: '4', nombre: 'Abr' }, { num: '5', nombre: 'May' }, { num: '6', nombre: 'Jun' },
-    { num: '7', nombre: 'Jul' }, { num: '8', nombre: 'Ago' }, { num: '9', nombre: 'Sep' },
-    { num: '10', nombre: 'Oct' }, { num: '11', nombre: 'Nov' }, { num: '12', nombre: 'Dic' }
+    { num: '1', nombre: 'Enero' }, { num: '2', nombre: 'Febrero' }, { num: '3', nombre: 'Marzo' },
+    { num: '4', nombre: 'Abril' }, { num: '5', nombre: 'Mayo' }, { num: '6', nombre: 'Junio' },
+    { num: '7', nombre: 'Julio' }, { num: '8', nombre: 'Agosto' }, { num: '9', nombre: 'Septiembre' },
+    { num: '10', nombre: 'Octubre' }, { num: '11', nombre: 'Noviembre' }, { num: '12', nombre: 'Diciembre' }
   ]
   const anioActual = new Date().getFullYear()
-  const anios = Array.from({length: 80}, (_, i) => anioActual - i)
+  const anios = Array.from({ length: 80 }, (_, i) => anioActual - i)
+
+  const selectClass = "w-full bg-[#fafafa] border-[1.5px] border-[#e4e4e7] rounded-xl px-3 py-3 text-sm text-[#09090b] focus:outline-none focus:border-[#dc2626] focus:ring-2 focus:ring-red-100 transition-all appearance-none cursor-pointer font-medium"
 
   return (
-    <main 
-      className="min-h-screen bg-[#09090b] text-[#ffffff] flex flex-col items-center justify-center p-4 sm:p-8 relative overflow-x-hidden selection:bg-[#dc2626]"
-      style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}
-    >
-      
-      {/* EL LOGO COMO MARCA DE AGUA (Corregido) */}
-      <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none z-0 flex items-center justify-center">
-        {/* Resplandor trasero */}
-        <div className="absolute w-[350px] h-[350px] bg-[#dc2626] opacity-[0.05] blur-[80px] rounded-full"></div>
-        <img 
-          src={business?.logo_url || "/logo.png"} 
-          alt={`Logo Watermark`} 
-          className="relative w-[400px] h-[400px] object-cover rounded-3xl opacity-20 mix-blend-lighten grayscale hover:grayscale-0 transition-all duration-1000 z-10" 
-        />
-      </div>
+    <main className="min-h-screen bg-[#fafafa] flex flex-col items-center justify-center p-4 font-sans">
+      <div className="w-full max-w-md animate-slideUp">
 
-      <div className="w-full max-w-md z-10 relative">
-        
-        {/* HEADER DE LA PÁGINA */}
+        {/* ── Header ── */}
         <div className="text-center mb-8">
-          <div className="w-20 h-20 mx-auto mb-4 bg-[#18181b]/80 backdrop-blur-md rounded-full border border-[#27272a] flex items-center justify-center shadow-[0_0_20px_rgba(220,38,38,0.2)]">
-            <span className="text-3xl">📝</span>
-          </div>
-          <h1 className="text-3xl font-black uppercase italic tracking-tighter text-[#ffffff]">
-            Registro <span className="text-[#dc2626] underline decoration-4 underline-offset-4">VIP</span>
+          {business?.logo_url ? (
+            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl overflow-hidden border border-[#e4e4e7] shadow-sm bg-white">
+              <img src={business.logo_url} alt={business.nombre} className="w-full h-full object-cover" />
+            </div>
+          ) : (
+            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-[#dc2626] flex items-center justify-center shadow-md">
+              <UserPlus className="w-8 h-8 text-white" />
+            </div>
+          )}
+          <h1 className="text-2xl font-bold text-[#09090b] tracking-tight">
+            Únete al Club VIP
           </h1>
-          <p className="text-[#ef4444] text-[10px] font-black uppercase tracking-[0.3em] mt-3">
-            Únete al club de {business?.nombre || "LoyaltyApp"}
+          <p className="text-sm text-[#71717a] mt-1.5">
+            {business?.nombre ? `Club de ${business.nombre}` : 'Programa de Lealtad'} — Registro de Miembro
           </p>
         </div>
 
-        {/* CONTENEDOR DE FORMULARIO CON EFECTO CRISTAL */}
-        <div className="bg-[#18181b]/90 backdrop-blur-md rounded-[25px] p-8 shadow-[0_20px_40px_rgba(0,0,0,0.8)] border border-[#27272a] relative overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-[#dc2626] via-[#ef4444] to-[#dc2626]"></div>
-
-          <p className="text-[#a1a1aa] text-xs text-center mb-6 tracking-widest uppercase font-bold">
-            Ingresa tus datos para generar tu tarjeta digital
-          </p>
-
+        {/* ── Formulario ── */}
+        <div className="bg-white rounded-2xl shadow-[0_2px_20px_rgba(0,0,0,0.06)] border border-[#f0f0f0] p-8">
           <form onSubmit={registrarCliente} className="space-y-5">
-            <div>
-              <label className="block text-[10px] font-black text-[#a1a1aa] uppercase tracking-widest mb-2 ml-1">
-                Nombre Completo
+
+            {/* Nombre */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">
+                Nombre Completo *
               </label>
-              <input 
-                type="text" 
+              <input
+                type="text"
                 value={nombre}
                 onChange={(e) => setNombre(e.target.value)}
                 required
-                className="w-full bg-[#000000] border border-[#3f3f46] rounded-xl px-4 py-3 text-[#ffffff] placeholder-[#52525b] focus:outline-none focus:border-[#dc2626] focus:ring-1 focus:ring-[#dc2626] transition-all text-sm font-bold block caret-[#dc2626]"
-                placeholder="Ej. Juan Pérez"
+                className="input-clean"
+                placeholder="Ej. Juan Pérez García"
               />
             </div>
 
-            <div>
-              <label className="block text-[10px] font-black text-[#a1a1aa] uppercase tracking-widest mb-2 ml-1">
-                Teléfono (10 dígitos)
+            {/* Teléfono */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">
+                Teléfono (10 dígitos) *
               </label>
-              <input 
-                type="tel" 
+              <input
+                type="tel"
                 value={telefono}
                 onChange={(e) => setTelefono(e.target.value)}
                 required
                 maxLength={10}
-                className="w-full bg-[#000000] border border-[#3f3f46] rounded-xl px-4 py-3 text-[#ffffff] placeholder-[#52525b] focus:outline-none focus:border-[#dc2626] focus:ring-1 focus:ring-[#dc2626] transition-all text-sm font-bold block caret-[#dc2626]"
+                className="input-clean"
                 placeholder="Ej. 4521234567"
               />
             </div>
 
-            <div>
-              <label className="block text-[10px] font-black text-[#a1a1aa] uppercase tracking-widest mb-2 ml-1">
-                Email (Opcional)
+            {/* Email */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">
+                Email <span className="text-[#a1a1aa] normal-case font-normal">(Opcional)</span>
               </label>
-              <input 
-                type="email" 
+              <input
+                type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-[#000000] border border-[#3f3f46] rounded-xl px-4 py-3 text-[#ffffff] placeholder-[#52525b] focus:outline-none focus:border-[#dc2626] focus:ring-1 focus:ring-[#dc2626] transition-all text-sm font-bold block caret-[#dc2626]"
+                className="input-clean"
                 placeholder="correo@ejemplo.com"
               />
             </div>
 
-            {/* NUEVO: SELECTOR DE FECHA 3 RUEDAS */}
-            <div>
-              <label className="block text-[10px] font-black text-[#a1a1aa] uppercase tracking-widest mb-2 ml-1">
-                Fecha de Nacimiento (Opcional)
+            {/* Fecha de nacimiento */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">
+                Fecha de Nacimiento <span className="text-[#a1a1aa] normal-case font-normal">(Opcional)</span>
               </label>
               <div className="grid grid-cols-3 gap-2">
-                <select 
-                  value={dia}
-                  onChange={(e) => setDia(e.target.value)}
-                  className="bg-[#000000] border border-[#3f3f46] rounded-xl px-2 py-3 text-[#ffffff] text-sm font-bold focus:outline-none focus:border-[#dc2626] focus:ring-1 focus:ring-[#dc2626]"
-                >
-                  <option value="">Día</option>
-                  {dias.map(d => <option key={d} value={d}>{d}</option>)}
-                </select>
-                
-                <select 
-                  value={mes}
-                  onChange={(e) => setMes(e.target.value)}
-                  className="bg-[#000000] border border-[#3f3f46] rounded-xl px-2 py-3 text-[#ffffff] text-sm font-bold focus:outline-none focus:border-[#dc2626] focus:ring-1 focus:ring-[#dc2626]"
-                >
-                  <option value="">Mes</option>
-                  {meses.map(m => <option key={m.num} value={m.num}>{m.nombre}</option>)}
-                </select>
-
-                <select 
-                  value={anio}
-                  onChange={(e) => setAnio(e.target.value)}
-                  className="bg-[#000000] border border-[#3f3f46] rounded-xl px-2 py-3 text-[#ffffff] text-sm font-bold focus:outline-none focus:border-[#dc2626] focus:ring-1 focus:ring-[#dc2626]"
-                >
-                  <option value="">Año</option>
-                  {anios.map(y => <option key={y} value={y}>{y}</option>)}
-                </select>
+                <div className="relative">
+                  <select
+                    value={dia}
+                    onChange={(e) => setDia(e.target.value)}
+                    className={selectClass}
+                  >
+                    <option value="">Día</option>
+                    {dias.map(d => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                </div>
+                <div className="relative">
+                  <select
+                    value={mes}
+                    onChange={(e) => setMes(e.target.value)}
+                    className={selectClass}
+                  >
+                    <option value="">Mes</option>
+                    {meses.map(m => <option key={m.num} value={m.num}>{m.nombre}</option>)}
+                  </select>
+                </div>
+                <div className="relative">
+                  <select
+                    value={anio}
+                    onChange={(e) => setAnio(e.target.value)}
+                    className={selectClass}
+                  >
+                    <option value="">Año</option>
+                    {anios.map(y => <option key={y} value={y}>{y}</option>)}
+                  </select>
+                </div>
               </div>
             </div>
 
+            {/* Mensaje de estado */}
             {mensaje.texto && (
-              <div className={`p-3 rounded-lg text-xs font-bold uppercase tracking-wider text-center border ${
-                mensaje.tipo === 'exito' ? 'bg-green-900/30 text-green-400 border-green-800/50' : 'bg-red-900/30 text-red-400 border-red-800/50'
+              <div className={`p-3.5 rounded-xl text-sm font-medium text-center border flex items-center gap-2 justify-center ${
+                mensaje.tipo === 'exito'
+                  ? 'bg-green-50 text-green-700 border-green-200'
+                  : 'bg-red-50 text-red-600 border-red-200'
               }`}>
+                {mensaje.tipo === 'exito' && <CheckCircle2 className="w-4 h-4 shrink-0" />}
                 {mensaje.texto}
               </div>
             )}
 
-            <div className="pt-4 relative z-10">
-              <button 
-                type="submit" 
+            {/* Botón submit */}
+            <div className="pt-2">
+              <button
+                type="submit"
                 disabled={registrando}
-                className="w-full bg-gradient-to-r from-[#dc2626] to-[#991b1b] text-white font-black uppercase tracking-widest py-4 rounded-xl transition-all shadow-[0_0_20px_rgba(220,38,38,0.4)] hover:from-[#ef4444] hover:to-[#dc2626] active:scale-95 disabled:opacity-50 text-xs flex justify-center items-center gap-2 cursor-pointer"
+                className="btn-primary w-full py-4 text-sm"
               >
                 {registrando ? (
-                  <span className="animate-pulse">Procesando...</span>
+                  <><Loader2 size={16} className="animate-spin" /> Creando tarjeta...</>
                 ) : (
-                  <>
-                    <span>Crear Tarjeta VIP</span>
-                    <span>💳</span>
-                  </>
+                  <><UserPlus size={16} /> Crear mi Tarjeta VIP</>
                 )}
               </button>
             </div>
           </form>
         </div>
+
+        {/* Footer */}
+        <p className="text-center text-xs text-[#a1a1aa] mt-6">
+          Tus datos son confidenciales y se usan solo para el programa de fidelización.
+        </p>
       </div>
     </main>
   )

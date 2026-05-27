@@ -1,38 +1,65 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 
 @layer base {
   :root {
-    --brand-red: #b91c1c;
-    --brand-red-dark: #7f1d1d;
-    --brand-gold: #d4af37;
-    --bg-deep: #050505;
-    --bg-card: #121212;
-    --border-subtle: #27272a;
+    /* ── Clean Light Canvas — Paleta Corporativa Premium ── */
+    --brand-red: #dc2626;
+    --brand-red-dark: #b91c1c;
+    --brand-accent: #ef4444;
+    --bg-canvas: #ffffff;
+    --bg-muted: #fafafa;
+    --bg-subtle: #f4f4f5;
+    --surface: #ffffff;
+    --border: #e4e4e7;
+    --border-strong: #d4d4d8;
+    --text-primary: #09090b;
+    --text-secondary: #52525b;
+    --text-muted: #a1a1aa;
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-md: 0 4px 16px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04);
+    --shadow-lg: 0 10px 40px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.05);
+    --shadow-xl: 0 20px 60px rgba(0,0,0,0.12), 0 4px 16px rgba(0,0,0,0.06);
+    --radius-sm: 8px;
+    --radius: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 20px;
+    --radius-2xl: 28px;
+  }
+
+  * {
+    box-sizing: border-box;
   }
 
   body {
-    background-color: var(--bg-deep);
-    color: #ffffff;
+    background-color: var(--bg-canvas);
+    color: var(--text-primary);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   h1, h2, h3, h4, h5, h6 {
-    font-family: var(--font-playfair), serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.02em;
   }
 }
 
 @layer components {
-  /* BOTÓN ESTILO MCDONALDS: CSS Puro y a prueba de balas */
+  /* ── Botón Primario Premium ── */
   .btn-primary {
-    background: linear-gradient(to right, var(--brand-red), var(--brand-red-dark));
+    background: var(--brand-red);
     color: #ffffff;
-    font-family: var(--font-inter), sans-serif;
-    font-weight: 900;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    border-radius: 1rem;
-    padding: 1rem 2rem;
-    transition: all 0.3s ease-in-out;
-    box-shadow: 0 8px 25px rgba(185, 28, 28, 0.3);
+    font-family: 'Inter', sans-serif;
+    font-weight: 700;
+    font-size: 0.8125rem;
+    letter-spacing: 0.02em;
+    border-radius: var(--radius);
+    padding: 0.75rem 1.5rem;
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 3px rgba(220,38,38,0.3), 0 4px 12px rgba(220,38,38,0.15);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -42,58 +69,155 @@
   }
 
   .btn-primary:hover {
-    box-shadow: 0 12px 35px rgba(185, 28, 28, 0.5);
-    transform: translateY(-4px);
+    background: var(--brand-red-dark);
+    box-shadow: 0 4px 20px rgba(220,38,38,0.35);
+    transform: translateY(-1px);
   }
 
   .btn-primary:active {
-    transform: scale(0.95);
+    transform: scale(0.98);
+    box-shadow: 0 1px 4px rgba(220,38,38,0.2);
   }
 
-  /* TARJETAS ESTILO HEMLOCK */
+  /* ── Card Limpia (Clean Surface Card) ── */
+  .card-clean {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-sm);
+    transition: box-shadow 0.2s ease;
+  }
+  .card-clean:hover {
+    box-shadow: var(--shadow-md);
+  }
+
+  /* ── Mantener compatibilidad con card-glass ── */
   .card-glass {
-    background-color: rgba(18, 18, 18, 0.9);
-    backdrop-filter: blur(40px);
-    -webkit-backdrop-filter: blur(40px);
-    border: 1px solid var(--border-subtle);
-    border-radius: 32px;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2xl);
+    box-shadow: var(--shadow-lg);
   }
 
-  /* TABLAS ELEGANTES */
+  /* ── Inputs Premium ── */
+  .input-clean {
+    width: 100%;
+    background: var(--bg-muted);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.75rem 1rem;
+    font-size: 0.9375rem;
+    color: var(--text-primary);
+    transition: border-color 0.15s, box-shadow 0.15s;
+    outline: none;
+  }
+  .input-clean::placeholder {
+    color: var(--text-muted);
+  }
+  .input-clean:focus {
+    border-color: var(--brand-red);
+    box-shadow: 0 0 0 3px rgba(220,38,38,0.1);
+    background: #ffffff;
+  }
+
+  /* ── Tabla Limpia ── */
   .table-header {
-    background-color: #000000;
-    color: #a1a1aa;
-    font-size: 10px;
+    background-color: var(--bg-muted);
+    color: var(--text-secondary);
+    font-size: 11px;
     text-transform: uppercase;
-    letter-spacing: 0.2em;
-    font-family: var(--font-inter), sans-serif;
+    letter-spacing: 0.08em;
     font-weight: 700;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--border);
   }
   
   .table-row {
-    transition: background-color 0.3s;
-    border-bottom: 1px solid rgba(39, 39, 42, 0.5);
+    transition: background-color 0.15s;
+    border-bottom: 1px solid var(--border);
   }
 
   .table-row:hover {
-    background-color: #18181b;
+    background-color: var(--bg-muted);
+  }
+
+  /* ── Badge / Chip ── */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+
+  /* ── Nav Tab Minimalista ── */
+  .nav-tab {
+    position: relative;
+    padding: 0.5rem 0.25rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: color 0.15s;
+    white-space: nowrap;
+    border: none;
+    background: none;
+  }
+  .nav-tab::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--brand-red);
+    border-radius: 2px;
+    transform: scaleX(0);
+    transition: transform 0.2s ease;
+  }
+  .nav-tab.active {
+    color: var(--text-primary);
+    font-weight: 700;
+  }
+  .nav-tab.active::after {
+    transform: scaleX(1);
+  }
+  .nav-tab:hover:not(.active) {
+    color: var(--text-secondary);
   }
 }
 
-/* Scrollbar personalizada para que no rompa la elegancia */
+/* ── Scrollbar elegante (light) ── */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #27272a;
+  background: var(--border-strong);
   border-radius: 10px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3f3f46;
+  background: var(--text-muted);
 }
+
+/* ── Animaciones ── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes spinRuleta {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(calc(var(--rotacion, 1440) * 1deg)); }
+}
+
+.animate-fadeIn { animation: fadeIn 0.2s ease forwards; }
+.animate-slideUp { animation: slideUp 0.3s ease forwards; }
