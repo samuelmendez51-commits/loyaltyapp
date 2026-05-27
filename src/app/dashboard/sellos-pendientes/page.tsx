@@ -19,6 +19,7 @@ interface Order {
   sello_rechazado: boolean
   estado: string
   created_at: string
+  cliente_id?: string | null
   clientes: { nombre: string; puntos: number } | null
 }
 

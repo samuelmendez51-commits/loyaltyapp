@@ -11,12 +11,15 @@ interface Business {
   id: string; nombre: string; slug: string; logo_url: string; banner_url: string
   telefono_whatsapp: string; max_sellos: number; monto_minimo_sello: number
   estado: string; fecha_vencimiento: string; moneda: string
+  latitude?: number; longitude?: number; direccion?: string; color_primario?: string
 }
 interface MenuGroup { id: string; nombre: string; descripcion: string; tipo_menu: string; activo: boolean; orden: number }
 interface MenuProduct {
   id: string; group_id: string; nombre: string; descripcion: string
-  precio: number; imagen_url: string; disponible: boolean
+  precio: number; imagen_url: string; disponible: boolean; es_upsell?: boolean
   product_modifiers?: ModifierGroup[]
+  suspension_tipo?: string
+  suspension_hasta?: string
 }
 interface ModifierGroup { id: string; nombre: string; requerido: boolean; modifier_options: ModifierOption[] }
 interface ModifierOption { id: string; nombre: string; precio_extra: number }
@@ -35,14 +38,31 @@ export default function MenuPublico({ params }: { params: Promise<{ slug: string
   const [rewards, setRewards] = useState<LoyaltyReward[]>([])
   const [cart, setCart] = useState<CartItem[]>([])
   const [grupoActivo, setGrupoActivo] = useState<string>('')
-  const [paso, setPaso] = useState<'menu' | 'checkout' | 'vip_invite' | 'confirmado'>('menu')
+  const [paso, setPaso] = useState<'menu' | 'upsell' | 'checkout' | 'vip_invite' | 'confirmado'>('menu')
   const [cargando, setCargando] = useState(true)
   const [enviando, setEnviando] = useState(false)
 
+  // Nuevos Estados para Pestañas del Portal del Cliente (B2C)
+  const [pestañaActiva, setPestañaActiva] = useState<'menu' | 'ubicacion' | 'contacto' | 'redes'>('menu')
+  const [linkFacebook, setLinkFacebook] = useState('')
+  const [linkInstagram, setLinkInstagram] = useState('')
+  const [linkTiktok, setLinkTiktok] = useState('')
+  const [linkYoutube, setLinkYoutube] = useState('')
+  const [horarioSemanal, setHorarioSemanal] = useState<any>(null)
+  const [googleMapsCargado, setGoogleMapsCargado] = useState(false)
+
+  // Estados de Ruleta de Hitos VIP
+  const [mostrarRuleta, setMostrarRuleta] = useState(false)
+  const [milestoneAlcanzado, setMilestoneAlcanzado] = useState<any | null>(null)
+  const [ruletaGirando, setRuletaGirando] = useState(false)
+  const [anguloGiro, setAnguloGiro] = useState(0)
+  const [premioGanado, setPremioGanado] = useState<any | null>(null)
+  const [codigoCuponRuleta, setCodigoCuponRuleta] = useState('')
+
   // Estados de Horario Comercial
   const [fueraDeHorario, setFueraDeHorario] = useState(false)
-  const [horaApertura, setHoraApertura] = useState('14:00')
-  const [horaCierre, setHoraCierre] = useState('22:00')
+  const [horaAperturaHoy, setHoraAperturaHoy] = useState('14:00')
+  const [horaCierreHoy, setHoraCierreHoy] = useState('22:00')
 
   // Datos del checkout
   const [form, setForm] = useState({ nombre: '', telefono: '', calle: '', numero: '', colonia: '' })
@@ -66,6 +86,96 @@ export default function MenuPublico({ params }: { params: Promise<{ slug: string
     cargarDatos()
   }, [slug, tipoMenu])
 
+  // Lógica matemática para verificar si está cerrado en base al horario semanal
+  const verificarHorarioNegocio = (horario: any) => {
+    if (!horario) return false
+    const diasSemana = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado']
+    const ahora = new Date()
+    const diaActual = diasSemana[ahora.getDay()]
+    
+    const configDia = horario[diaActual]
+    if (!configDia) return false
+    if (configDia.cerrado) return true // Cerrado por descanso
+
+    const apertura = configDia.apertura || '14:00'
+    const cierre = configDia.cierre || '22:00'
+    
+    const horasActual = ahora.getHours()
+    const minsActual = ahora.getMinutes()
+    const tiempoActualMin = horasActual * 60 + minsActual
+    
+    const [hAp, mAp] = apertura.split(':').map(Number)
+    const [hCi, mCi] = cierre.split(':').map(Number)
+    const tiempoApMin = hAp * 60 + mAp
+    const tiempoCiMin = hCi * 60 + mCi
+    
+    if (tiempoApMin <= tiempoCiMin) {
+      return tiempoActualMin < tiempoApMin || tiempoActualMin > tiempoCiMin
+    } else {
+      // Cruce de medianoche
+      return tiempoActualMin < tiempoApMin && tiempoActualMin > tiempoCiMin
+    }
+  }
+
+  // Cargar Google Maps en B2C
+  useEffect(() => {
+    if (pestañaActiva !== 'ubicacion') return
+    if (!business || !business.latitude || !business.longitude) return
+    if (typeof window === 'undefined') return
+
+    const initMap = () => {
+      const google = (window as any).google
+      if (!google) return
+
+      const center = { lat: Number(business.latitude) || 19.421583, lng: Number(business.longitude) || -102.067222 }
+      const mapDiv = document.getElementById('google-map-customer')
+      if (!mapDiv) return
+
+      const map = new google.maps.Map(mapDiv, {
+        center: center,
+        zoom: 16,
+        mapId: 'DEMO_MAP_ID',
+        disableDefaultUI: false,
+        zoomControl: true,
+        styles: [
+          { elementType: 'geometry', stylers: [{ color: '#131314' }] },
+          { elementType: 'labels.text.stroke', stylers: [{ color: '#131314' }] },
+          { elementType: 'labels.text.fill', stylers: [{ color: '#746855' }] },
+          { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#d59563' }] },
+          { featureType: 'poi', elementType: 'labels.text.fill', stylers: [{ color: '#d59563' }] },
+          { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#26262b' }] },
+          { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#212124' }] },
+          { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#9ca5b1' }] },
+          { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0c0c0d' }] }
+        ]
+      })
+
+      new google.maps.Marker({
+        position: center,
+        map: map,
+        title: business.nombre
+      })
+    }
+
+    if ((window as any).google && (window as any).google.maps) {
+      initMap()
+      setGoogleMapsCargado(true)
+      return
+    }
+
+    const script = document.createElement('script')
+    const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places`
+    script.async = true
+    script.defer = true
+    script.onload = () => {
+      initMap()
+      setGoogleMapsCargado(true)
+    }
+    document.head.appendChild(script)
+
+  }, [pestañaActiva, business])
+
   const cargarDatos = async () => {
     setCargando(true)
 
@@ -81,43 +191,57 @@ export default function MenuPublico({ params }: { params: Promise<{ slug: string
     if (biz.estado === 'vencido' || biz.bloqueado_manual) { window.location.href = '/suspended'; return }
     setBusiness(biz)
 
-    // Lógica de validación de horarios comerciales
-    let apertura = (biz as any).hora_apertura || '14:00'
-    let cierre = (biz as any).hora_cierre || '22:00'
-    
+    // ── CONFIGURACIÓN DE REDES SOCIALES Y HORARIOS DIARIOS ──
+    let linkFb = (biz as any).link_facebook || ''
+    let linkIg = (biz as any).link_instagram || ''
+    let linkTk = (biz as any).link_tiktok || ''
+    let linkYt = (biz as any).link_youtube || ''
+    let horarioSem = (biz as any).horario_semanal || null
+
+    // Fallback JSON in direccion
     if (biz.direccion && biz.direccion.includes('{')) {
       try {
         const jsonStart = biz.direccion.indexOf('{')
         const jsonStr = biz.direccion.substring(jsonStart)
         const parsed = JSON.parse(jsonStr)
-        if (parsed.hora_apertura) apertura = parsed.hora_apertura
-        if (parsed.hora_cierre) cierre = parsed.hora_cierre
+        if (parsed.facebook) linkFb = parsed.facebook
+        if (parsed.instagram) linkIg = parsed.instagram
+        if (parsed.tiktok) linkTk = parsed.tiktok
+        if (parsed.youtube) linkYt = parsed.youtube
+        if (parsed.horario_semanal) horarioSem = parsed.horario_semanal
       } catch (err) {
         console.warn("Error parsing schedule fallback JSON in menu:", err)
       }
     }
-    
-    // Validar si la hora actual está fuera del rango
-    const ahora = new Date()
-    const horasActual = ahora.getHours()
-    const minsActual = ahora.getMinutes()
-    const tiempoActualMin = horasActual * 60 + minsActual
-    
-    const [hAp, mAp] = apertura.split(':').map(Number)
-    const [hCi, mCi] = cierre.split(':').map(Number)
-    const tiempoApMin = hAp * 60 + mAp
-    const tiempoCiMin = hCi * 60 + mCi
-    
-    let estaCerrado = false
-    if (tiempoApMin <= tiempoCiMin) {
-      estaCerrado = tiempoActualMin < tiempoApMin || tiempoActualMin > tiempoCiMin
-    } else {
-      estaCerrado = tiempoActualMin < tiempoApMin && tiempoActualMin > tiempoCiMin
+
+    setLinkFacebook(linkFb)
+    setLinkInstagram(linkIg)
+    setLinkTiktok(linkTk)
+    setLinkYoutube(linkYt)
+
+    const horarioDefault = {
+      lunes: { cerrado: true, apertura: '14:00', cierre: '22:00' },
+      martes: { cerrado: false, apertura: '14:00', cierre: '21:30' },
+      miercoles: { cerrado: false, apertura: '14:00', cierre: '21:30' },
+      jueves: { cerrado: false, apertura: '14:00', cierre: '21:30' },
+      viernes: { cerrado: false, apertura: '14:00', cierre: '22:00' },
+      sabado: { cerrado: false, apertura: '14:00', cierre: '22:00' },
+      domingo: { cerrado: false, apertura: '14:00', cierre: '21:30' }
     }
-    
+    const horarioFinal = horarioSem || horarioDefault
+    setHorarioSemanal(horarioFinal)
+
+    // Validar si está cerrado por el horario comercial semanal
+    const estaCerrado = verificarHorarioNegocio(horarioFinal)
     setFueraDeHorario(estaCerrado)
-    setHoraApertura(apertura)
-    setHoraCierre(cierre)
+
+    const diasSemana = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado']
+    const diaHoy = diasSemana[new Date().getDay()]
+    const configHoy = horarioFinal[diaHoy]
+    if (configHoy) {
+      setHoraAperturaHoy(configHoy.apertura || '14:00')
+      setHoraCierreHoy(configHoy.cierre || '22:00')
+    }
 
     // Cargar grupos del menú
     const { data: gData } = await supabase
@@ -132,13 +256,36 @@ export default function MenuPublico({ params }: { params: Promise<{ slug: string
       if (gData.length > 0) setGrupoActivo(gData[0].id)
     }
 
-    // Cargar productos con modificadores
+    // ── LAZY CHECKER B2C: SANEAMIENTO DE STOCK ──
     const { data: pData } = await supabase
       .from('menu_products')
       .select('*, product_modifiers(*, modifier_options(*))')
       .eq('business_id', biz.id)
-      .eq('disponible', true)
-    if (pData) setProductos(pData as MenuProduct[])
+
+    if (pData) {
+      const ahora = new Date()
+      let huboCambio = false
+
+      const productosProcesados = await Promise.all(pData.map(async (prod: any) => {
+        if (!prod.disponible && prod.suspension_hasta && new Date(prod.suspension_hasta) < ahora) {
+          await supabase
+            .from('menu_products')
+            .update({ disponible: true, suspension_tipo: 'indefinida', suspension_hasta: null })
+            .eq('id', prod.id)
+          huboCambio = true
+          return { ...prod, disponible: true, suspension_tipo: 'indefinida', suspension_hasta: null }
+        }
+        return prod
+      }))
+
+      // Filtrar los disponibles y agregarlos
+      const disponibles = productosProcesados.filter((p: any) => p.disponible)
+      setProductos(disponibles as MenuProduct[])
+
+      if (huboCambio) {
+        setTimeout(() => { cargarDatos() }, 200)
+      }
+    }
 
     // Cargar premios intermedios
     const { data: rData } = await supabase
@@ -225,6 +372,23 @@ export default function MenuPublico({ params }: { params: Promise<{ slug: string
   const totalCarrito = cart.reduce((s, i) => s + i.subtotal, 0)
   const cantidadTotal = cart.reduce((s, i) => s + i.cantidad, 0)
 
+  // Helper para dirección en texto limpia
+  const obtenerDireccionLimpia = () => {
+    if (!business || !business.direccion) return 'Ubicación'
+    let dir = business.direccion
+    if (dir.includes('|')) {
+      dir = dir.split('|')[0].trim()
+    }
+    if (dir.includes('{')) {
+      try {
+        const jsonStart = dir.indexOf('{')
+        if (jsonStart === 0) return 'Ubicación'
+        dir = dir.substring(0, jsonStart).trim()
+      } catch {}
+    }
+    return dir || 'Ubicación'
+  }
+
   // Helper para armar el mensaje de WhatsApp estructurado y premium
   const generarTextoWhatsApp = () => {
     if (!business) return ''
@@ -240,7 +404,7 @@ export default function MenuPublico({ params }: { params: Promise<{ slug: string
       ? `\n*Dirección:* ${form.calle} #${form.numero}, ${form.colonia}`
       : ''
 
-    const msg = `*NUEVO PEDIDO - ${business.nombre.toUpperCase()}* 🌯🛍️
+    const msg = `*NUEVO PEDIDO - ${business.nombre.toUpperCase()}* 🛍️✨
 -----------------------------------
 *Cliente:* ${form.nombre}
 *Teléfono:* ${form.telefono}
@@ -257,7 +421,6 @@ _Pedido procesado a través de LoyaltyApp VIP_`
     return encodeURIComponent(msg)
   }
 
-  // ── Verificar teléfono ─────────────────────────────────────────
   const verificarTelefono = async () => {
     if (!business) return
     const { data } = await supabase
@@ -269,10 +432,8 @@ _Pedido procesado a través de LoyaltyApp VIP_`
     setClienteExistente(data)
 
     if (!data) {
-      // Nuevo cliente — mostrar invitación VIP
       setPaso('vip_invite')
     } else {
-      // Cliente existente — proceder directo
       await crearPedido(data.id, false)
     }
   }
@@ -284,7 +445,6 @@ _Pedido procesado a través de LoyaltyApp VIP_`
     const superaMinimo = totalCarrito >= (business.monto_minimo_sello || 0)
     const otorgarSello = superaMinimo && (clienteId !== null)
 
-    // Crear registro en orders
     const { data: order, error } = await supabase.from('orders').insert({
       business_id: business.id,
       cliente_id: clienteId,
@@ -312,7 +472,6 @@ _Pedido procesado a través de LoyaltyApp VIP_`
 
     setOrderId(order.id)
 
-    // Registrar evento de tracking
     if (clienteId && otorgarSello) {
       await supabase.from('tracking_events').insert({
         business_id: business.id,
@@ -322,7 +481,6 @@ _Pedido procesado a través de LoyaltyApp VIP_`
         metadata: { total: totalCarrito, tipo: tipoMenu, es_nuevo: esNuevo },
       })
 
-      // Incrementar puntos inmediatamente (optimista)
       await supabase.from('clientes')
         .update({ puntos: (clienteExistente?.puntos || 0) + 1 })
         .eq('id', clienteId)
@@ -330,9 +488,59 @@ _Pedido procesado a través de LoyaltyApp VIP_`
 
     setEnviando(false)
 
-    // Verificar si llegó al sello 10 → confeti
     const puntosNuevos = (clienteExistente?.puntos || 0) + (otorgarSello ? 1 : 0)
     if (puntosNuevos >= (business.max_sellos || 10)) setConfeti(true)
+
+    if (clienteId && otorgarSello) {
+      try {
+        const { data: milestonesData } = await supabase
+          .from('reward_milestones')
+          .select('*, milestone_prizes(*)')
+          .eq('business_id', business.id)
+          .eq('activo', true)
+
+        const milestone = (milestonesData || []).find(m => m.sello_objetivo === puntosNuevos)
+
+        if (milestone && milestone.milestone_prizes && milestone.milestone_prizes.length > 0) {
+          setMilestoneAlcanzado(milestone)
+          const pool = milestone.milestone_prizes
+          
+          let rand = Math.random() * 100
+          let acumulado = 0
+          let prizeElegido = pool[0]
+          for (const p of pool) {
+            acumulado += p.probabilidad || 0
+            if (rand <= acumulado) {
+              prizeElegido = p
+              break
+            }
+          }
+          setPremioGanado(prizeElegido)
+          
+          const { data: spinData } = await supabase
+            .from('roulette_spins')
+            .insert({
+              business_id: business.id,
+              cliente_id: clienteId,
+              milestone_id: milestone.id,
+              prize_id: prizeElegido.id,
+              prize_nombre: prizeElegido.nombre,
+              sello_numero: puntosNuevos,
+            })
+            .select()
+            .single()
+            
+          if (spinData && spinData.codigo_cupon) {
+            setCodigoCuponRuleta(spinData.codigo_cupon)
+          } else {
+            setCodigoCuponRuleta(Math.random().toString(36).substring(2, 10).toUpperCase())
+          }
+          setMostrarRuleta(true)
+        }
+      } catch (err) {
+        console.error("Error setting up stamp milestone roulette:", err)
+      }
+    }
 
     setPaso('confirmado')
   }
@@ -341,7 +549,6 @@ _Pedido procesado a través de LoyaltyApp VIP_`
     if (!business) return
     setEnviando(true)
 
-    // Crear cliente VIP nuevo
     const { data: nuevoCliente } = await supabase.from('clientes').insert({
       nombre: form.nombre,
       telefono: form.telefono,
@@ -363,7 +570,36 @@ _Pedido procesado a través de LoyaltyApp VIP_`
     }
   }
 
-  // ── Confeti ────────────────────────────────────────────────────
+  const irACheckout = () => {
+    const upsellDisponibles = productos.filter(p => p.es_upsell && p.disponible)
+    const yaTieneUpsell = cart.some(item => item.product.es_upsell)
+    if (upsellDisponibles.length > 0 && !yaTieneUpsell) {
+      setPaso('upsell')
+    } else {
+      setPaso('checkout')
+    }
+  }
+
+  const girarRuleta = () => {
+    if (ruletaGirando || !milestoneAlcanzado || !premioGanado) return
+    setRuletaGirando(true)
+    
+    const pool = milestoneAlcanzado.milestone_prizes || []
+    const idx = pool.findIndex((p: any) => p.id === premioGanado.id)
+    const count = pool.length
+    
+    const rebanadaGrados = 360 / count
+    const centroGrados = (idx * rebanadaGrados) + (rebanadaGrados / 2)
+    const anguloParada = 360 - centroGrados
+    
+    const totalGiro = 1800 + anguloParada
+    setAnguloGiro(totalGiro)
+    
+    setTimeout(() => {
+      setRuletaGirando(false)
+    }, 4000)
+  }
+
   const ConfetiFX = () => (
     <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
       {[...Array(40)].map((_, i) => (
@@ -385,7 +621,7 @@ _Pedido procesado a través de LoyaltyApp VIP_`
 
   if (cargando) return (
     <div className="min-h-screen bg-[#050505] flex items-center justify-center">
-      <div className="w-10 h-10 border-2 border-zinc-800 border-t-red-600 rounded-full animate-spin" />
+      <div className="w-10 h-10 border-2 border-zinc-800 border-t-amber-500 rounded-full animate-spin" />
     </div>
   )
 
@@ -399,7 +635,7 @@ _Pedido procesado a través de LoyaltyApp VIP_`
     </div>
   )
 
-  // ── PANTALLA: CONFIRMADO ───────────────────────────────────────
+  // PANTALLA: CONFIRMADO
   if (paso === 'confirmado') return (
     <div className="min-h-screen bg-[#050505] flex items-center justify-center p-6">
       {confeti && <ConfetiFX />}
@@ -439,7 +675,7 @@ _Pedido procesado a través de LoyaltyApp VIP_`
     </div>
   )
 
-  // ── PANTALLA: INVITACIÓN VIP ────────────────────────────────────
+  // PANTALLA: INVITACIÓN VIP
   if (paso === 'vip_invite') return (
     <div className="min-h-screen bg-[#050505] flex items-center justify-center p-6">
       <div className="max-w-sm w-full">
@@ -492,7 +728,70 @@ _Pedido procesado a través de LoyaltyApp VIP_`
     </div>
   )
 
-  // ── PANTALLA: CHECKOUT ──────────────────────────────────────────
+  // PANTALLA: UPSELL
+  if (paso === 'upsell') {
+    const upsellDisponibles = productos.filter(p => p.es_upsell && p.disponible)
+    return (
+      <div className="min-h-screen bg-[#050505] text-white p-4 flex items-center justify-center">
+        <div className="max-w-md w-full space-y-6 py-6 text-center">
+          <div className="space-y-2">
+            <div className="w-16 h-16 bg-red-950/40 border border-red-900 rounded-2xl flex items-center justify-center mx-auto mb-2 shadow-[0_0_30px_rgba(239,68,68,0.3)]">
+              <span className="text-3xl">🍟</span>
+            </div>
+            <h1 className="text-2xl font-black text-white">¿Te gustaría agregar un acompañamiento?</h1>
+            <p className="text-zinc-500 text-xs uppercase tracking-widest font-bold">Ofertas de Venta Cruzada VIP</p>
+          </div>
+
+          <div className="space-y-3 text-left">
+            {upsellDisponibles.map(product => {
+              const enCarrito = cart.find(i => i.product.id === product.id)
+              return (
+                <div key={product.id} className="bg-zinc-900/80 border border-zinc-800 rounded-2xl p-4 flex gap-4 items-center">
+                  {product.imagen_url && (
+                    <img src={product.imagen_url} alt={product.nombre} className="w-16 h-16 rounded-xl object-cover shrink-0" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-bold text-white text-sm truncate">{product.nombre}</h3>
+                    {product.descripcion && <p className="text-zinc-500 text-[10px] truncate mt-0.5">{product.descripcion}</p>}
+                    <p className="text-amber-400 font-black text-xs mt-1">${product.precio.toLocaleString()} MXN</p>
+                  </div>
+                  <div>
+                    {enCarrito ? (
+                      <span className="text-xs bg-green-950/60 border border-green-800 text-green-400 font-black uppercase px-2.5 py-1 rounded-xl">Añadido ✓</span>
+                    ) : (
+                      <button
+                        onClick={() => agregarAlCarritoDirecto(product, {})}
+                        className="bg-red-800 hover:bg-red-700 text-white font-black px-4 py-2 rounded-xl text-xs uppercase tracking-wider transition-all"
+                      >
+                        ➕ Añadir
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          <div className="space-y-3 pt-4">
+            <button
+              onClick={() => setPaso('checkout')}
+              className="w-full bg-gradient-to-r from-red-700 to-red-900 text-white font-black py-4 rounded-2xl uppercase tracking-widest text-xs transition-all hover:brightness-110 shadow-[0_0_20px_rgba(185,28,28,0.3)]"
+            >
+              Continuar al Pago 📦
+            </button>
+            <button
+              onClick={() => setPaso('menu')}
+              className="w-full border border-zinc-800 text-zinc-500 hover:text-white font-bold py-3 rounded-2xl text-xs uppercase tracking-wider transition-all"
+            >
+              Volver al Menú
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // PANTALLA: CHECKOUT
   if (paso === 'checkout') return (
     <div className="min-h-screen bg-[#050505] text-white p-4">
       <div className="max-w-lg mx-auto space-y-6 py-6">
@@ -556,8 +855,22 @@ _Pedido procesado a través de LoyaltyApp VIP_`
     </div>
   )
 
-  // ── PANTALLA PRINCIPAL: MENÚ ────────────────────────────────────
+  // ── PANTALLA PRINCIPAL: CARTA PREMIUM ──
   const productosFiltrados = productos.filter(p => p.group_id === grupoActivo)
+
+  const diasSemanaOrdenados = [
+    { key: 'lunes', label: 'Lunes' },
+    { key: 'martes', label: 'Martes' },
+    { key: 'miercoles', label: 'Miércoles' },
+    { key: 'jueves', label: 'Jueves' },
+    { key: 'viernes', label: 'Viernes' },
+    { key: 'sabado', label: 'Sábado' },
+    { key: 'domingo', label: 'Domingo' }
+  ]
+  const diasEsp = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado']
+  const hoyEsp = diasEsp[new Date().getDay()]
+
+  const algunRedeConfigurada = linkFacebook || linkInstagram || linkTiktok || linkYoutube
 
   return (
     <div className="min-h-screen bg-[#050505] text-white">
@@ -568,10 +881,15 @@ _Pedido procesado a través de LoyaltyApp VIP_`
         )}
         <div className="absolute bottom-0 left-0 right-0 p-6 flex items-end gap-4">
           <div className="w-16 h-16 bg-zinc-800 rounded-2xl border border-amber-500/20 flex items-center justify-center overflow-hidden shadow-[0_0_20px_rgba(251,191,36,0.3)]">
-            {business.logo_url
-              ? <img src={business.logo_url} alt="" className="w-full h-full object-cover" />
-              : <span className="text-3xl">🌯</span>
-            }
+            {business.logo_url ? (
+              business.logo_url.startsWith('http') || business.logo_url.startsWith('/') || business.logo_url.startsWith('data:') ? (
+                <img src={business.logo_url} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-3xl">{business.logo_url}</span>
+              )
+            ) : (
+              <span className="text-3xl">✨</span>
+            )}
           </div>
           <div>
             <h1 className="text-2xl font-black">{business.nombre}</h1>
@@ -583,99 +901,327 @@ _Pedido procesado a través de LoyaltyApp VIP_`
         </div>
       </div>
 
-      {/* Horario Comercial / Fuera de Horario */}
-      {fueraDeHorario && (
-        <div className="mx-4 mt-4 bg-red-950/20 border border-red-900/50 rounded-2xl p-5 text-center flex flex-col items-center justify-center gap-3 animate-pulse">
-          <div className="w-12 h-12 rounded-full bg-red-950/40 border border-red-800/40 flex items-center justify-center text-xl shadow-lg">
-            🔒
-          </div>
-          <div>
-            <h4 className="text-red-400 font-black text-xs uppercase tracking-widest">Cocina Cerrada Temporalmente</h4>
-            <p className="text-zinc-300 text-xs mt-1 font-bold">
-              Estamos recargando energía. Abrimos a las {horaApertura}.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Monto mínimo para sello */}
-      {business.monto_minimo_sello > 0 && (
-        <div className="mx-4 mt-4 bg-amber-950/30 border border-amber-700/40 rounded-xl px-4 py-2 flex items-center gap-2">
-          <span className="text-amber-400">⭐</span>
-          <p className="text-xs text-amber-400 font-bold">
-            Gana un sello con pedidos de ${business.monto_minimo_sello} MXN o más
-          </p>
-        </div>
-      )}
-
-      {/* Tabs de grupos */}
-      <div className="sticky top-0 z-10 bg-[#050505]/95 backdrop-blur-sm border-b border-zinc-800 px-4 overflow-x-auto">
-        <div className="flex gap-1 py-3">
-          {grupos.map(g => (
-            <button
-              key={g.id}
-              onClick={() => setGrupoActivo(g.id)}
-              className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider whitespace-nowrap transition-all ${
-                grupoActivo === g.id ? 'bg-red-800 text-white' : 'text-zinc-500 hover:text-zinc-300'
-              }`}
-            >
-              {g.nombre}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Lista de productos */}
-      <div className="p-4 space-y-3 pb-32">
-        {grupos.length === 0 && (
-          <div className="text-center py-16 text-zinc-600">
-            <p className="text-4xl mb-4">🍽️</p>
-            <p className="font-bold">El menú aún no tiene productos configurados</p>
-          </div>
-        )}
-        {productosFiltrados.map(product => {
-          const enCarrito = cart.find(i => i.product.id === product.id)
-          return (
-            <div key={product.id} className="bg-zinc-900/80 border border-zinc-800 rounded-2xl p-4 flex gap-4">
-              <div className="flex-1">
-                <h3 className="font-bold text-white">{product.nombre}</h3>
-                {product.descripcion && <p className="text-zinc-500 text-xs mt-1">{product.descripcion}</p>}
-                <p className="text-amber-400 font-black mt-2">${product.precio.toLocaleString()}</p>
-              </div>
-              {product.imagen_url && (
-                <img src={product.imagen_url} alt={product.nombre} className="w-20 h-20 rounded-xl object-cover flex-shrink-0" />
-              )}
-              <div className="flex flex-col items-center justify-center gap-2">
-                {fueraDeHorario ? (
-                  <span className="w-8 h-8 rounded-lg bg-zinc-950 border border-zinc-900 text-zinc-650 flex items-center justify-center cursor-not-allowed text-xs" title="Cocina cerrada por horario comercial">
-                    🔒
-                  </span>
-                ) : enCarrito ? (
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => quitarDelCarrito(product.id)}
-                      className="w-7 h-7 rounded-lg bg-zinc-800 text-white font-bold text-lg flex items-center justify-center hover:bg-zinc-700">−</button>
-                    <span className="text-white font-black w-4 text-center">{enCarrito.cantidad}</span>
-                    <button onClick={() => agregarAlCarrito(product)}
-                      className="w-7 h-7 rounded-lg bg-red-800 text-white font-bold text-lg flex items-center justify-center hover:bg-red-700">+</button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => agregarAlCarrito(product)}
-                    className="w-8 h-8 rounded-lg bg-red-800 text-white font-bold text-lg flex items-center justify-center hover:bg-red-700 transition-colors"
-                  >+</button>
+      {/* ── BARRA DE PESTAÑAS (TAB BAR PREMIUM) ── */}
+      <div className="border-b border-zinc-800 bg-black/60 sticky top-0 z-20 backdrop-blur-md">
+        <div className="flex justify-around items-center max-w-lg mx-auto">
+          {[
+            { id: 'menu', label: 'Menú', icon: '🍽️' },
+            { id: 'ubicacion', label: 'Ubicación', icon: '📍' },
+            { id: 'contacto', label: 'Horarios', icon: '📞' },
+            { id: 'redes', label: 'Redes', icon: '🌐' }
+          ].map(tab => {
+            const activo = pestañaActiva === tab.id
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setPestañaActiva(tab.id as any)}
+                className={`flex-1 py-4 flex flex-col items-center gap-1 transition-all relative ${
+                  activo ? 'text-amber-500 font-black scale-105' : 'text-zinc-500 hover:text-zinc-300 font-bold'
+                }`}
+              >
+                <span className="text-xl">{tab.icon}</span>
+                <span className="text-[10px] uppercase tracking-wider">{tab.label}</span>
+                {activo && (
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-amber-500 shadow-[0_0_10px_#fbbf24]" />
                 )}
-              </div>
-            </div>
-          )
-        })}
+              </button>
+            )
+          })}
+        </div>
       </div>
+
+      {/* ── PESTAÑA: MENÚ DE PRODUCTOS ── */}
+      {pestañaActiva === 'menu' && (
+        <div className="animate-fade-in">
+          {/* Si está fuera de horario, mostrar la hermosa pantalla de descanso */}
+          {fueraDeHorario ? (
+            <div className="px-4 py-16 flex flex-col items-center justify-center text-center max-w-sm mx-auto space-y-6">
+              <div className="w-24 h-24 rounded-full bg-amber-950/30 border-2 border-amber-500/30 flex items-center justify-center text-5xl shadow-[0_0_40px_rgba(245,158,11,0.2)] animate-pulse">
+                🔋💤
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-2xl font-serif font-black text-amber-500">¡Estamos en descanso!</h3>
+                <p className="text-zinc-400 text-xs uppercase tracking-widest font-bold">Para llegar con toda la pila</p>
+                <p className="text-zinc-500 text-sm leading-relaxed pt-2">
+                  Nuestra cocina se encuentra cerrada en este momento. Te invitamos a consultar nuestros horarios o escribirnos directamente.
+                </p>
+              </div>
+
+              <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4 w-full text-left space-y-1.5">
+                <p className="text-[9px] text-zinc-500 uppercase font-black tracking-widest">Horario de Hoy</p>
+                <p className="text-white text-sm font-bold">
+                  Hoy abrimos de <span className="text-amber-400">{horaAperturaHoy}</span> a <span className="text-amber-400">{horaCierreHoy}</span>
+                </p>
+              </div>
+
+              {business.telefono_whatsapp && (
+                <a
+                  href={`https://wa.me/${business.telefono_whatsapp}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full flex items-center justify-center gap-2 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-white font-bold py-3.5 px-6 rounded-2xl text-sm transition-all"
+                >
+                  💬 Escríbenos por WhatsApp
+                </a>
+              )}
+            </div>
+          ) : (
+            <>
+              {/* Monto mínimo para sello */}
+              {business.monto_minimo_sello > 0 && (
+                <div className="mx-4 mt-4 bg-amber-950/30 border border-amber-700/40 rounded-xl px-4 py-2 flex items-center gap-2">
+                  <span className="text-amber-400">⭐</span>
+                  <p className="text-xs text-amber-400 font-bold">
+                    Gana un sello con pedidos de ${business.monto_minimo_sello} MXN o más
+                  </p>
+                </div>
+              )}
+
+              {/* Tabs de grupos adhesivo secundario */}
+              <div className="sticky top-[73px] z-10 bg-[#050505]/95 backdrop-blur-sm border-b border-zinc-850 px-4 overflow-x-auto">
+                <div className="flex gap-1 py-3">
+                  {grupos.map(g => (
+                    <button
+                      key={g.id}
+                      onClick={() => setGrupoActivo(g.id)}
+                      className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider whitespace-nowrap transition-all ${
+                        grupoActivo === g.id ? 'bg-red-800 text-white shadow-md' : 'text-zinc-500 hover:text-zinc-300'
+                      }`}
+                    >
+                      {g.nombre}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Lista de productos */}
+              <div className="p-4 space-y-3 pb-32">
+                {grupos.length === 0 && (
+                  <div className="text-center py-16 text-zinc-600">
+                    <p className="text-4xl mb-4">🍽️</p>
+                    <p className="font-bold">El menú aún no tiene productos configurados</p>
+                  </div>
+                )}
+                {productosFiltrados.map(product => {
+                  const enCarrito = cart.find(i => i.product.id === product.id)
+                  return (
+                    <div key={product.id} className="bg-zinc-900/80 border border-zinc-800 rounded-2xl p-4 flex gap-4 hover:border-zinc-700 transition-colors">
+                      <div className="flex-1">
+                        <h3 className="font-bold text-white text-sm sm:text-base">{product.nombre}</h3>
+                        {product.descripcion && <p className="text-zinc-500 text-xs mt-1 line-clamp-2">{product.descripcion}</p>}
+                        <p className="text-amber-400 font-black text-sm mt-2">${product.precio.toLocaleString()} MXN</p>
+                      </div>
+                      {product.imagen_url && (
+                        <img src={product.imagen_url} alt={product.nombre} className="w-20 h-20 rounded-xl object-cover flex-shrink-0" />
+                      )}
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        {enCarrito ? (
+                          <div className="flex items-center gap-2 bg-black/40 p-1 rounded-lg border border-zinc-850">
+                            <button onClick={() => quitarDelCarrito(product.id)}
+                              className="w-7 h-7 rounded-lg bg-zinc-800 text-white font-bold text-lg flex items-center justify-center hover:bg-zinc-700 transition-colors">−</button>
+                            <span className="text-white font-black w-4 text-center text-sm">{enCarrito.cantidad}</span>
+                            <button onClick={() => agregarAlCarrito(product)}
+                              className="w-7 h-7 rounded-lg bg-red-800 text-white font-bold text-lg flex items-center justify-center hover:bg-red-700 transition-colors">+</button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => agregarAlCarrito(product)}
+                            className="w-8 h-8 rounded-lg bg-red-800 text-white font-bold text-lg flex items-center justify-center hover:bg-red-700 transition-all active:scale-95 shadow-md"
+                          >+</button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── PESTAÑA: UBICACIÓN Y MAPA ── */}
+      {pestañaActiva === 'ubicacion' && (
+        <div className="p-4 space-y-6 max-w-lg mx-auto animate-fade-in pb-20">
+          <div className="space-y-2 text-center sm:text-left">
+            <h2 className="text-xl font-black">📍 Nuestra Ubicación</h2>
+            <p className="text-zinc-400 text-xs uppercase tracking-widest font-bold">Cómo encontrarnos</p>
+            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 text-sm text-zinc-300 leading-relaxed font-semibold">
+              {obtenerDireccionLimpia()}
+            </div>
+          </div>
+
+          <div className="relative w-full rounded-2xl overflow-hidden border border-zinc-800 shadow-2xl" style={{ minHeight: '300px' }}>
+            <div id="google-map-customer" className="w-full h-full absolute inset-0" style={{ minHeight: '300px' }} />
+            {!googleMapsCargado && (
+              <div className="absolute inset-0 bg-[#0c0c0d] flex flex-col items-center justify-center gap-3">
+                <div className="w-8 h-8 border-2 border-zinc-800 border-t-amber-500 rounded-full animate-spin" />
+                <p className="text-[10px] text-zinc-550 uppercase tracking-widest font-black">Cargando Google Maps...</p>
+              </div>
+            )}
+          </div>
+
+          {business.latitude && business.longitude && (
+            <a
+              href={`https://www.google.com/maps/dir/?api=1&destination=${business.latitude},${business.longitude}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full bg-gradient-to-r from-amber-500 to-amber-700 hover:from-amber-600 hover:to-amber-800 text-white font-black py-4 px-6 rounded-2xl text-xs uppercase tracking-widest text-center shadow-lg transition-all block"
+            >
+              📍 Cómo Llegar con Google Maps
+            </a>
+          )}
+        </div>
+      )}
+
+      {/* ── PESTAÑA: HORARIOS Y CONTACTOS ── */}
+      {pestañaActiva === 'contacto' && (
+        <div className="p-4 space-y-6 max-w-lg mx-auto animate-fade-in pb-20">
+          <div className="space-y-2 text-center sm:text-left">
+            <h2 className="text-xl font-black">📞 Horarios & Contacto</h2>
+            <p className="text-zinc-400 text-xs uppercase tracking-widest font-bold">Planifica tu visita</p>
+          </div>
+
+          {/* Lista de días */}
+          <div className="bg-zinc-900/60 border border-zinc-800 rounded-3xl p-6 space-y-3">
+            {diasSemanaOrdenados.map(dia => {
+              const config = horarioSemanal?.[dia.key]
+              const esHoy = dia.key === hoyEsp
+              return (
+                <div
+                  key={dia.key}
+                  className={`flex justify-between items-center p-3.5 rounded-2xl border transition-all ${
+                    esHoy
+                      ? 'bg-amber-950/20 border-amber-500/80 shadow-[0_0_15px_rgba(245,158,11,0.1)]'
+                      : 'bg-black/20 border-zinc-850'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    {esHoy && <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />}
+                    <span className={`text-sm font-bold ${esHoy ? 'text-amber-400 font-black' : 'text-zinc-300'}`}>
+                      {dia.label}
+                    </span>
+                    {esHoy && <span className="text-[8px] bg-amber-500/10 border border-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full font-black uppercase tracking-wider">Hoy</span>}
+                  </div>
+
+                  {config?.cerrado ? (
+                    <span className="text-xs bg-red-950/40 border border-red-900/40 text-red-400 px-3 py-1 rounded-full font-bold uppercase">
+                      Descanso
+                    </span>
+                  ) : (
+                    <span className={`text-xs font-mono font-bold ${esHoy ? 'text-white' : 'text-zinc-450'}`}>
+                      {config?.apertura || '14:00'} - {config?.cierre || '22:00'}
+                    </span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Botones de acción de llamada/mensaje */}
+          <div className="grid grid-cols-2 gap-4">
+            {business.telefono_whatsapp && (
+              <a
+                href={`https://wa.me/${business.telefono_whatsapp}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-green-800/20 border border-green-700 hover:bg-green-800/40 text-green-400 font-bold py-3.5 px-6 rounded-2xl text-xs uppercase tracking-widest text-center transition-all block"
+              >
+                💬 WhatsApp
+              </a>
+            )}
+            {business.telefono_whatsapp && (
+              <a
+                href={`tel:${business.telefono_whatsapp}`}
+                className="bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-white font-bold py-3.5 px-6 rounded-2xl text-xs uppercase tracking-widest text-center transition-all block"
+              >
+                📞 Llamar
+              </a>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── PESTAÑA: REDES SOCIALES ── */}
+      {pestañaActiva === 'redes' && (
+        <div className="p-4 space-y-6 max-w-lg mx-auto animate-fade-in pb-20">
+          <div className="space-y-2 text-center sm:text-left">
+            <h2 className="text-xl font-black">🌐 Redes Sociales</h2>
+            <p className="text-zinc-400 text-xs uppercase tracking-widest font-bold">Conéctate con nosotros</p>
+          </div>
+
+          {algunRedeConfigurada ? (
+            <div className="grid grid-cols-1 gap-3.5">
+              {linkFacebook && (
+                <a
+                  href={linkFacebook.startsWith('http') ? linkFacebook : `https://facebook.com/${linkFacebook}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-gradient-to-r from-blue-700 to-blue-900 text-white font-bold py-4 px-6 rounded-2xl flex items-center justify-between shadow-md transition-all hover:scale-[1.01] active:scale-95"
+                >
+                  <span className="font-black text-sm uppercase tracking-widest flex items-center gap-3">
+                    <span className="text-lg">📘</span> Facebook
+                  </span>
+                  <span className="text-xs text-white/60">Seguir →</span>
+                </a>
+              )}
+              {linkInstagram && (
+                <a
+                  href={linkInstagram.startsWith('http') ? linkInstagram : `https://instagram.com/${linkInstagram}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-gradient-to-r from-pink-600 via-red-500 to-amber-500 text-white font-bold py-4 px-6 rounded-2xl flex items-center justify-between shadow-md transition-all hover:scale-[1.01] active:scale-95"
+                >
+                  <span className="font-black text-sm uppercase tracking-widest flex items-center gap-3">
+                    <span className="text-lg">📸</span> Instagram
+                  </span>
+                  <span className="text-xs text-white/60">Seguir →</span>
+                </a>
+              )}
+              {linkTiktok && (
+                <a
+                  href={linkTiktok.startsWith('http') ? linkTiktok : `https://tiktok.com/@${linkTiktok}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-gradient-to-r from-zinc-800 to-black border border-zinc-700 text-white font-bold py-4 px-6 rounded-2xl flex items-center justify-between shadow-md transition-all hover:scale-[1.01] active:scale-95"
+                >
+                  <span className="font-black text-sm uppercase tracking-widest flex items-center gap-3">
+                    <span className="text-lg">🎵</span> TikTok
+                  </span>
+                  <span className="text-xs text-white/60">Seguir →</span>
+                </a>
+              )}
+              {linkYoutube && (
+                <a
+                  href={linkYoutube.startsWith('http') ? linkYoutube : `https://youtube.com/${linkYoutube}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-gradient-to-r from-red-600 to-red-800 text-white font-bold py-4 px-6 rounded-2xl flex items-center justify-between shadow-md transition-all hover:scale-[1.01] active:scale-95"
+                >
+                  <span className="font-black text-sm uppercase tracking-widest flex items-center gap-3">
+                    <span className="text-lg">📺</span> YouTube
+                  </span>
+                  <span className="text-xs text-white/60">Seguir →</span>
+                </a>
+              )}
+            </div>
+          ) : (
+            <div className="bg-zinc-900/60 border border-zinc-800 rounded-3xl p-16 text-center">
+              <p className="text-5xl mb-4">🌐</p>
+              <p className="font-bold text-lg text-white">Próximamente más redes sociales</p>
+              <p className="text-zinc-550 text-xs mt-2 leading-relaxed">
+                El negocio aún no ha enlazado perfiles sociales, ¡pero mantente al pendiente de nuestras próximas actualizaciones!
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Carrito flotante */}
-      {cantidadTotal > 0 && !fueraDeHorario && (
+      {cantidadTotal > 0 && !fueraDeHorario && pestañaActiva === 'menu' && (
         <div className="fixed bottom-4 left-4 right-4 z-50">
           <button
-            onClick={() => setPaso('checkout')}
-            className="w-full bg-gradient-to-r from-red-700 to-red-900 text-white font-black py-4 rounded-2xl shadow-[0_0_30px_rgba(185,28,28,0.5)] flex items-center justify-between px-6 hover:brightness-110 transition-all"
+            onClick={irACheckout}
+            className="w-full bg-gradient-to-r from-red-700 to-red-900 text-white font-black py-4 rounded-2xl shadow-[0_0_30px_rgba(185,28,28,0.5)] flex items-center justify-between px-6 hover:brightness-110 transition-all active:scale-[0.99]"
           >
             <span className="bg-white/20 rounded-lg px-2 py-1 text-sm">{cantidadTotal}</span>
             <span className="uppercase tracking-widest text-sm">Ver Pedido</span>
@@ -687,10 +1233,10 @@ _Pedido procesado a través de LoyaltyApp VIP_`
       {/* MODAL DE MODIFICADORES */}
       {productoSeleccionadoMod && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 w-full max-w-md shadow-2xl relative">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 w-full max-w-md shadow-2xl relative animate-fade-in">
             <button 
               onClick={() => setProductoSeleccionadoMod(null)}
-              className="absolute top-4 right-4 text-zinc-500 hover:text-white text-xl"
+              className="absolute top-4 right-4 text-zinc-550 hover:text-white text-xl"
             >
               ✕
             </button>
@@ -701,7 +1247,7 @@ _Pedido procesado a través de LoyaltyApp VIP_`
               )}
               <div>
                 <h3 className="text-lg font-black text-white">{productoSeleccionadoMod.nombre}</h3>
-                <p className="text-zinc-500 text-xs mt-1">{productoSeleccionadoMod.descripcion}</p>
+                <p className="text-zinc-550 text-xs mt-1 leading-relaxed">{productoSeleccionadoMod.descripcion}</p>
                 <p className="text-amber-400 font-black text-sm mt-2">${productoSeleccionadoMod.precio.toLocaleString()} MXN</p>
               </div>
             </div>
@@ -710,10 +1256,10 @@ _Pedido procesado a través de LoyaltyApp VIP_`
             <div className="space-y-6 max-h-[45vh] overflow-y-auto mb-6 pr-2">
               {productoSeleccionadoMod.product_modifiers?.map(mod => (
                 <div key={mod.id} className="space-y-3">
-                  <div className="flex justify-between items-center border-b border-zinc-800 pb-2">
+                  <div className="flex justify-between items-center border-b border-zinc-850 pb-2">
                     <p className="text-sm font-black text-white uppercase tracking-wider">{mod.nombre}</p>
                     {mod.requerido && (
-                      <span className="text-[10px] bg-red-950/60 border border-red-900/60 text-red-400 px-2 py-0.5 rounded-full font-black uppercase">Requerido</span>
+                      <span className="text-[10px] bg-red-955/60 border border-red-900/60 text-red-400 px-2 py-0.5 rounded-full font-black uppercase">Requerido</span>
                     )}
                   </div>
                   
@@ -727,7 +1273,7 @@ _Pedido procesado a través de LoyaltyApp VIP_`
                           className={`flex justify-between items-center p-3 rounded-xl border cursor-pointer transition-all ${
                             seleccionado 
                               ? 'bg-amber-950/30 border-amber-600 text-white' 
-                              : 'bg-black/30 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-300'
+                              : 'bg-black/30 border-zinc-800 text-zinc-500 hover:border-zinc-700 hover:text-zinc-350'
                           }`}
                         >
                           <div className="flex items-center gap-3">
@@ -750,10 +1296,10 @@ _Pedido procesado a través de LoyaltyApp VIP_`
             </div>
 
             {/* Footer modal */}
-            <div className="border-t border-zinc-800 pt-4 flex gap-3">
+            <div className="border-t border-zinc-850 pt-4 flex gap-3">
               <button 
                 onClick={() => setProductoSeleccionadoMod(null)}
-                className="flex-1 py-3 border border-zinc-800 rounded-xl text-zinc-400 font-bold hover:text-white transition-colors"
+                className="flex-1 py-3 border border-zinc-800 rounded-xl text-zinc-500 font-bold hover:text-white transition-colors"
               >
                 Cancelar
               </button>
@@ -763,6 +1309,117 @@ _Pedido procesado a través de LoyaltyApp VIP_`
               >
                 Añadir
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE RULETA VIP */}
+      {mostrarRuleta && milestoneAlcanzado && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-[#121212] border border-zinc-800 rounded-3xl p-6 w-full max-w-sm shadow-2xl relative text-center space-y-6 animate-fade-in">
+            <div>
+              <p className="text-amber-500 font-black text-xs uppercase tracking-widest animate-pulse">🎰 HITO VIP DESBLOQUEADO 🎰</p>
+              <h2 className="text-xl font-serif font-black text-white mt-1">¡Gira la Ruleta de Premios!</h2>
+              <p className="text-zinc-550 text-[10px] mt-0.5">Hito del Sello {milestoneAlcanzado.sello_objetivo} de {business?.nombre}</p>
+            </div>
+
+            <div className="relative w-48 h-48 mx-auto my-4">
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-3 text-red-500 text-3xl z-10 filter drop-shadow-[0_0_10px_rgba(239,68,68,0.5)]">
+                ▼
+              </div>
+
+              <div 
+                style={{ 
+                  transform: `rotate(${anguloGiro}deg)`, 
+                  transition: anguloGiro > 0 ? 'transform 4s cubic-bezier(0.15, 0.85, 0.15, 1)' : 'none' 
+                }}
+                className="w-full h-full rounded-full border-4 border-amber-500/40 shadow-[0_0_30px_rgba(251,191,36,0.2)] overflow-hidden"
+              >
+                <svg viewBox="0 0 100 100" className="w-full h-full">
+                  {(() => {
+                    const pool = milestoneAlcanzado.milestone_prizes || []
+                    const count = pool.length
+                    const colors = ['#ef4444','#fbbf24','#3b82f6','#a855f7','#10b981','#ec4899']
+                    return pool.map((p: any, i: number) => {
+                      const pct = 1 / count
+                      const startAngle = i * pct * 2 * Math.PI
+                      const endAngle = (i + 1) * pct * 2 * Math.PI
+                      
+                      const x1 = 50 + 50 * Math.cos(startAngle - Math.PI / 2)
+                      const y1 = 50 + 50 * Math.sin(startAngle - Math.PI / 2)
+                      const x2 = 50 + 50 * Math.cos(endAngle - Math.PI / 2)
+                      const y2 = 50 + 50 * Math.sin(endAngle - Math.PI / 2)
+                      const large = pct > 0.5 ? 1 : 0
+                      
+                      const textAngle = startAngle + (endAngle - startAngle) / 2 - Math.PI / 2
+                      const tx = 50 + 32 * Math.cos(textAngle)
+                      const ty = 52 + 32 * Math.sin(textAngle)
+                      const rotDeg = (textAngle * 180) / Math.PI + 90
+                      
+                      return (
+                        <g key={p.id}>
+                          <path
+                            d={`M 50 50 L ${x1.toFixed(2)} ${y1.toFixed(2)} A 50 50 0 ${large} 1 ${x2.toFixed(2)} ${y2.toFixed(2)} Z`}
+                            fill={colors[i % colors.length]}
+                            stroke="#121212"
+                            strokeWidth="1.5"
+                          />
+                          <text 
+                            x={tx} 
+                            y={ty} 
+                            transform={`rotate(${rotDeg}, ${tx}, ${ty})`}
+                            textAnchor="middle" 
+                            fontSize="5.5" 
+                            fill="white" 
+                            fontWeight="900"
+                            className="select-none font-sans"
+                          >
+                            {p.nombre.substring(0, 10)}
+                          </text>
+                        </g>
+                      )
+                    })
+                  })()}
+                  <circle cx="50" cy="50" r="10" fill="#121212" stroke="#fbbf24" strokeWidth="1.5" />
+                  <circle cx="50" cy="50" r="3" fill="#fbbf24" />
+                </svg>
+              </div>
+            </div>
+
+            <div className="space-y-4 pt-2">
+              {anguloGiro === 0 ? (
+                <button
+                  onClick={girarRuleta}
+                  className="w-full bg-gradient-to-r from-amber-500 to-amber-700 hover:from-amber-600 hover:to-amber-800 text-white font-black py-3.5 rounded-2xl uppercase tracking-widest text-xs transition-all shadow-[0_0_20px_rgba(251,191,36,0.3)]"
+                >
+                  🎰 ¡Girar la Rueda! 🎰
+                </button>
+              ) : ruletaGirando ? (
+                <div className="flex flex-col items-center gap-2 py-2">
+                  <div className="w-6 h-6 border-2 border-zinc-700 border-t-amber-500 rounded-full animate-spin" />
+                  <p className="text-[10px] text-zinc-550 uppercase font-black tracking-widest animate-pulse">Girando la suerte...</p>
+                </div>
+              ) : (
+                <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 space-y-3 animate-fade-in">
+                  <p className="text-[9px] text-zinc-550 uppercase font-black tracking-widest">🎉 Recompensa VIP Ganada 🎉</p>
+                  <p className="text-lg font-serif font-black text-amber-400">{premioGanado?.nombre}</p>
+                  
+                  <div className="border-t border-zinc-850 pt-3 space-y-1.5">
+                    <p className="text-[9px] text-zinc-550 uppercase font-bold">Cupón para Canjear en Mostrador</p>
+                    <div className="bg-black/50 border border-zinc-850 rounded-xl py-2 px-4 font-mono font-black text-white tracking-wider text-sm select-all">
+                      {codigoCuponRuleta}
+                    </div>
+                  </div>
+                  
+                  <button
+                    onClick={() => setMostrarRuleta(false)}
+                    className="w-full bg-zinc-800 hover:bg-zinc-700 text-white font-black py-2.5 rounded-xl uppercase tracking-wider text-[10px] transition-colors mt-2"
+                  >
+                    Entendido, continuar 📦
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>

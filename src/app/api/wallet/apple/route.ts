@@ -140,22 +140,27 @@ export async function POST(req: Request) {
       template.setPrivateKey(SIGNER_KEY);
 
       try {
-        const LOGO_URL = business?.logo_url || "https://hjaeireljkcvjnigfhzb.supabase.co/storage/v1/object/public/assets/logo.png";
+        const LOGO_URL = business?.logo_url || "";
         const DESTACADA_URL = business?.banner_url || "https://hjaeireljkcvjnigfhzb.supabase.co/storage/v1/object/public/assets/destacada.jpg";
 
-        const [iconRes, stripRes] = await Promise.all([
-          fetch(LOGO_URL),
-          fetch(DESTACADA_URL)
-        ]);
+        const fetches = [];
+        if (LOGO_URL && (LOGO_URL.startsWith('http') || LOGO_URL.startsWith('/') || LOGO_URL.startsWith('data:'))) {
+          fetches.push(fetch(LOGO_URL).then(res => res.ok ? res.arrayBuffer() : null).catch(() => null));
+        } else {
+          fetches.push(Promise.resolve(null));
+        }
+        fetches.push(fetch(DESTACADA_URL).then(res => res.ok ? res.arrayBuffer() : null).catch(() => null));
 
-        if (iconRes.ok) {
-          const iconBuffer = Buffer.from(await iconRes.arrayBuffer());
+        const [iconBufferRaw, stripBufferRaw] = await Promise.all(fetches);
+
+        if (iconBufferRaw) {
+          const iconBuffer = Buffer.from(iconBufferRaw);
           template.images.add('icon', iconBuffer); 
           template.images.add('logo', iconBuffer); 
         }
         
-        if (stripRes.ok) {
-          const stripBuffer = Buffer.from(await stripRes.arrayBuffer());
+        if (stripBufferRaw) {
+          const stripBuffer = Buffer.from(stripBufferRaw);
           template.images.add('strip', stripBuffer); 
         }
       } catch (e) {
@@ -184,6 +189,7 @@ export async function POST(req: Request) {
       console.warn("Fallo la generación del archivo .pkpass. Generando fallback de pase Web...", e.message);
       
       const logoText = business ? business.nombre : 'La Burrería';
+      const logoEmoji = business?.logo_url && !business.logo_url.startsWith('http') ? business.logo_url : '✨';
       const starsHtml = Array.from({ length: 10 }).map((_, idx) => idx < (puntos || 0) ? `
         <svg viewBox="0 0 24 24" style="width: 2rem; height: 2rem; color: #f59e0b; fill: currentColor; filter: drop-shadow(0 0 8px rgba(245,158,11,0.6));">
           <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
@@ -211,17 +217,17 @@ export async function POST(req: Request) {
   </style>
 </head>
 <body class="min-h-screen flex flex-col items-center justify-center p-4">
-  <div class="fixed top-0 left-1/4 w-96 h-96 bg-red-950/20 rounded-full blur-[120px] pointer-events-none"></div>
-  <div class="fixed bottom-0 right-1/4 w-96 h-96 bg-amber-950/20 rounded-full blur-[120px] pointer-events-none"></div>
+  <div class="fixed top-0 left-1/4 w-96 h-96 bg-red-955/20 rounded-full blur-[120px] pointer-events-none"></div>
+  <div class="fixed bottom-0 right-1/4 w-96 h-96 bg-amber-955/20 rounded-full blur-[120px] pointer-events-none"></div>
 
   <div class="w-full max-w-sm bg-zinc-950 border border-zinc-800 rounded-[28px] overflow-hidden shadow-[0_0_50px_rgba(212,175,55,0.15)] flex flex-col relative p-6">
-    <div class="absolute inset-0 bg-gradient-to-br from-red-950/20 via-transparent to-amber-950/10 pointer-events-none"></div>
+    <div class="absolute inset-0 bg-gradient-to-br from-red-955/20 via-transparent to-amber-955/10 pointer-events-none"></div>
     
     <!-- Top Header -->
     <div class="flex justify-between items-center mb-8 relative z-10">
       <div class="flex items-center gap-3">
-        <div class="w-10 h-10 bg-red-900 rounded-xl flex items-center justify-center text-xl shadow-[0_0_15px_rgba(185,28,28,0.4)]">
-          🌯
+        <div class="w-10 h-10 bg-zinc-900 border border-zinc-800 rounded-xl flex items-center justify-center text-xl shadow-lg">
+          ${logoEmoji}
         </div>
         <div>
           <h2 class="text-xs font-black uppercase tracking-widest text-zinc-500">${logoText}</h2>

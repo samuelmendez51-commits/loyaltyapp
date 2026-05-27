@@ -1,6 +1,8 @@
 import './globals.css'
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Inter, Playfair_Display } from 'next/font/google'
+
+import Script from 'next/script'
 
 const inter = Inter({
   subsets: ['latin'],
@@ -18,12 +20,15 @@ export const metadata: Metadata = {
   title: 'LoyaltyApp — Sistema Enterprise de Fidelidad',
   description: 'Plataforma SaaS multi-tenant para programas de lealtad en restaurantes. Panel de control premium.',
   manifest: '/manifest.json',
-  themeColor: '#b91c1c',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
     title: 'LoyaltyApp',
   },
+}
+
+export const viewport: Viewport = {
+  themeColor: '#b91c1c',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -42,15 +47,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         style={{ backgroundColor: '#050505', margin: 0, color: '#ffffff' }}
       >
         {/* Registro del Service Worker */}
-        <script dangerouslySetInnerHTML={{ __html: `
-          if ('serviceWorker' in navigator) {
-            window.addEventListener('load', function() {
-              navigator.serviceWorker.register('/service-worker.js', { scope: '/' })
-                .then(function(reg) { console.log('[LoyaltyApp] SW registrado:', reg.scope); })
-                .catch(function(err) { console.log('[LoyaltyApp] SW error:', err); });
-            });
-          }
-        ` }} />
+        <Script id="register-sw" strategy="afterInteractive">
+          {`
+            if ('serviceWorker' in navigator) {
+              window.addEventListener('load', function() {
+                navigator.serviceWorker.register('/service-worker.js', { scope: '/' })
+                  .then(function(reg) { console.log('[LoyaltyApp] SW registrado:', reg.scope); })
+                  .catch(function(err) { console.log('[LoyaltyApp] SW error:', err); });
+              });
+            }
+          `}
+        </Script>
 
         {/* Atmósfera de fondo */}
         <div className="fixed top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-red-900 blur-[150px] opacity-[0.07] pointer-events-none z-0" />

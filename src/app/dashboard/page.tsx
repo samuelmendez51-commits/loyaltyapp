@@ -62,6 +62,8 @@ interface Business {
   telefono_whatsapp: string; max_sellos: number; monto_minimo_sello: number
   estado: string; fecha_vencimiento: string; latitude: number; longitude: number;
   direccion?: string; hora_apertura?: string; hora_cierre?: string;
+  banner_url?: string;
+  moneda?: string;
 }
 
 // ── Componente: Countdown de vencimiento ────────────────────────────────────
@@ -158,6 +160,8 @@ export default function DashboardPage() {
 
   // ── MOTORES: Gestor de Modificadores en el Dashboard ──────────────────
   const [productoSeleccionadoModAdmin, setProductoSeleccionadoModAdmin] = useState<any | null>(null)
+  const [productoEditarSeleccionado, setProductoEditarSeleccionado] = useState<any | null>(null)
+  const [categoriasExpandidas, setCategoriasExpandidas] = useState<Record<string, boolean>>({})
   const [modificadoresProducto, setModificadoresProducto] = useState<any[]>([])
   const [cargandoMods, setCargandoMods] = useState(false)
   const [nuevoModNombre, setNuevoModNombre] = useState('')
@@ -172,6 +176,11 @@ export default function DashboardPage() {
   const [guardandoConfig, setGuardandoConfig] = useState(false)
   const [geoLat, setGeoLat] = useState<string>('')
   const [geoLng, setGeoLng] = useState<string>('')
+  
+  // Branding configurable
+  const [nombreNegocio, setNombreNegocio] = useState('')
+  const [logoNegocio, setLogoNegocio] = useState('')
+  const [colorPrimario, setColorPrimario] = useState('#ef4444')
 
   // Inputs para agregar premio
   const [nuevoSelloReq, setNuevoSelloReq] = useState<string>('3')
@@ -184,6 +193,7 @@ export default function DashboardPage() {
   const [nuevoNombreProd, setNuevoNombreProd] = useState('')
   const [nuevoDescProd, setNuevoDescProd] = useState('')
   const [nuevoPrecioProd, setNuevoPrecioProd] = useState<string>('0')
+  const [esUpsellProd, setEsUpsellProd] = useState(false)
   const [guardandoProducto, setGuardandoProducto] = useState(false)
   const [whatsappNegocio, setWhatsappNegocio] = useState('')
   const [guardandoWhatsapp, setGuardandoWhatsapp] = useState(false)
@@ -217,7 +227,7 @@ export default function DashboardPage() {
     
     const handlePrompt = (e: any) => {
       e.preventDefault()
-      setInstallPrompt(e)
+      setDeferredPrompt(e)
     }
     window.addEventListener('beforeinstallprompt', handlePrompt)
 
@@ -236,6 +246,99 @@ export default function DashboardPage() {
       document.removeEventListener('mousedown', handleOutsideClick)
     }
   }, [])
+
+  // Nuevos Estados: Redes Sociales y Horario Semanal por Día
+  const [linkFacebook, setLinkFacebook] = useState('')
+  const [linkInstagram, setLinkInstagram] = useState('')
+  const [linkTiktok, setLinkTiktok] = useState('')
+  const [linkYoutube, setLinkYoutube] = useState('')
+  const [horarioSemanal, setHorarioSemanal] = useState<any>({
+    lunes: { cerrado: true, apertura: '14:00', cierre: '22:00' },
+    martes: { cerrado: false, apertura: '14:00', cierre: '21:30' },
+    miercoles: { cerrado: false, apertura: '14:00', cierre: '21:30' },
+    jueves: { cerrado: false, apertura: '14:00', cierre: '21:30' },
+    viernes: { cerrado: false, apertura: '14:00', cierre: '22:00' },
+    sabado: { cerrado: false, apertura: '14:00', cierre: '22:00' },
+    domingo: { cerrado: false, apertura: '14:00', cierre: '21:30' }
+  })
+  const [suspensionModalProd, setSuspensionModalProd] = useState<any | null>(null)
+  const [googleMapsCargado, setGoogleMapsCargado] = useState(false)
+
+  // Cargar Google Maps dinámicamente en el tab geocercas
+  useEffect(() => {
+    if (pestaña !== 'geocercas') return
+    if (!geoLat || !geoLng) return
+    if (typeof window === 'undefined') return
+
+    const initMap = () => {
+      const google = (window as any).google
+      if (!google) return
+
+      const center = { lat: Number(geoLat) || 19.421583, lng: Number(geoLng) || -102.067222 }
+      const mapDiv = document.getElementById('google-map-selector')
+      if (!mapDiv) return
+
+      const map = new google.maps.Map(mapDiv, {
+        center: center,
+        zoom: 15,
+        mapId: 'DEMO_MAP_ID',
+        disableDefaultUI: false,
+        zoomControl: true,
+        styles: [
+          { elementType: 'geometry', stylers: [{ color: '#131314' }] },
+          { elementType: 'labels.text.stroke', stylers: [{ color: '#131314' }] },
+          { elementType: 'labels.text.fill', stylers: [{ color: '#746855' }] },
+          { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#d59563' }] },
+          { featureType: 'poi', elementType: 'labels.text.fill', stylers: [{ color: '#d59563' }] },
+          { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#26262b' }] },
+          { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#212124' }] },
+          { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#9ca5b1' }] },
+          { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0c0c0d' }] }
+        ]
+      })
+
+      const marker = new google.maps.Marker({
+        position: center,
+        map: map,
+        draggable: true,
+        title: 'Ubicación de tu Negocio'
+      })
+
+      google.maps.event.addListener(marker, 'dragend', () => {
+        const pos = marker.getPosition()
+        if (pos) {
+          setGeoLat(pos.lat().toFixed(6))
+          setGeoLng(pos.lng().toFixed(6))
+        }
+      })
+
+      map.addListener('click', (e: any) => {
+        if (e.latLng) {
+          marker.setPosition(e.latLng)
+          setGeoLat(e.latLng.lat().toFixed(6))
+          setGeoLng(e.latLng.lng().toFixed(6))
+        }
+      })
+    }
+
+    if ((window as any).google && (window as any).google.maps) {
+      initMap()
+      setGoogleMapsCargado(true)
+      return
+    }
+
+    const script = document.createElement('script')
+    const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places`
+    script.async = true
+    script.defer = true
+    script.onload = () => {
+      initMap()
+      setGoogleMapsCargado(true)
+    }
+    document.head.appendChild(script)
+
+  }, [pestaña, geoLat, geoLng])
 
   const getCookieVal = (name: string) => {
     if (typeof document === 'undefined') return ''
@@ -258,8 +361,18 @@ export default function DashboardPage() {
         setGeoLng(biz.longitude || '')
         setWhatsappNegocio(biz.telefono_whatsapp || '')
         setMensajePush(biz.mensaje_push || '¡Pasa por tus recompensas!')
+        setNombreNegocio(biz.nombre || '')
+        setLogoNegocio(biz.logo_url || '')
+        setColorPrimario(biz.color_primario || '#ef4444')
 
-        // Decodificar horarios
+        // Cargar redes sociales y horario semanal
+        let linkFb = (biz as any).link_facebook || ''
+        let linkIg = (biz as any).link_instagram || ''
+        let linkTk = (biz as any).link_tiktok || ''
+        let linkYt = (biz as any).link_youtube || ''
+        let horarioSem = (biz as any).horario_semanal || null
+
+        // Decodificar horarios y campos desde fallback JSON en direccion
         let apertura = biz.hora_apertura || '14:00'
         let cierre = biz.hora_cierre || '22:00'
         
@@ -270,11 +383,22 @@ export default function DashboardPage() {
             const parsed = JSON.parse(jsonStr)
             if (parsed.hora_apertura) apertura = parsed.hora_apertura
             if (parsed.hora_cierre) cierre = parsed.hora_cierre
+            if (parsed.facebook) linkFb = parsed.facebook
+            if (parsed.instagram) linkIg = parsed.instagram
+            if (parsed.tiktok) linkTk = parsed.tiktok
+            if (parsed.youtube) linkYt = parsed.youtube
+            if (parsed.horario_semanal) horarioSem = parsed.horario_semanal
           } catch(err) {
             console.warn("Error parsing schedule fallback JSON:", err)
           }
         }
         
+        setLinkFacebook(linkFb)
+        setLinkInstagram(linkIg)
+        setLinkTiktok(linkTk)
+        setLinkYoutube(linkYt)
+        if (horarioSem) setHorarioSemanal(horarioSem)
+
         setHoraApertura(apertura)
         setHoraCierre(cierre)
       }
@@ -297,13 +421,34 @@ export default function DashboardPage() {
         if (gData.length > 0) setGrupoSeleccionadoProd(gData[0].id)
       }
 
-      // Cargar productos del menú
+      // Cargar productos del menú con lazy checker
       const { data: pData } = await supabase
         .from('menu_products')
         .select('*')
         .eq('business_id', activeBizId)
         .order('created_at', { ascending: false })
-      if (pData) setProductosMenu(pData)
+      
+      if (pData) {
+        const ahora = new Date()
+        let huboCambio = false
+
+        const productosProcesados = await Promise.all(pData.map(async (prod: any) => {
+          if (!prod.disponible && prod.suspension_hasta && new Date(prod.suspension_hasta) < ahora) {
+            await supabase
+              .from('menu_products')
+              .update({ disponible: true, suspension_tipo: 'indefinida', suspension_hasta: null })
+              .eq('id', prod.id)
+            huboCambio = true
+            return { ...prod, disponible: true, suspension_tipo: 'indefinida', suspension_hasta: null }
+          }
+          return prod
+        }))
+
+        setProductosMenu(productosProcesados)
+        if (huboCambio) {
+          setTimeout(() => { cargarDatos() }, 200)
+        }
+      }
     } else {
       // Fallback
       const { data: biz } = await supabase.from('businesses').select('*').eq('slug', 'laburreria').maybeSingle()
@@ -515,22 +660,127 @@ export default function DashboardPage() {
     }
   }
 
+  const guardarWhatsappNegocio = async () => {
+    const businessId = getCookieVal('session_business_id') || business?.id
+    if (!businessId) return
+    setGuardandoWhatsapp(true)
+    
+    const { error } = await supabase
+      .from('businesses')
+      .update({ telefono_whatsapp: whatsappNegocio })
+      .eq('id', businessId)
+
+    if (error) {
+      alert('Error al guardar WhatsApp: ' + error.message)
+    } else {
+      alert('✅ WhatsApp guardado con éxito')
+      cargarDatos()
+    }
+    setGuardandoWhatsapp(false)
+  }
+
   const probarConexionWhatsApp = () => {
     if (!whatsappNegocio) return alert('Por favor ingresa un número de WhatsApp primero')
-    const msg = `*LoyaltyApp Enterprise* 🌯📲\n¡Tu conexión de notificaciones de mostrador está ACTIVA! Listo para recibir pedidos del Club VIP.`
+    const msg = `*LoyaltyApp Enterprise* 📲✨\n¡Tu conexión de notificaciones de mostrador está ACTIVA! Listo para recibir pedidos del Club VIP.`
     const url = `https://wa.me/${whatsappNegocio}?text=${encodeURIComponent(msg)}`
     window.open(url, '_blank')
   }
 
   // ── MOTORES: Alternador de Producto Agotado ──────────────────
   const toggleDisponibilidadProducto = async (prodId: string, actualDisponible: boolean) => {
+    // Si se está activando (actualDisponible es false, entonces pasará a true)
+    const dataUpdate: any = { disponible: !actualDisponible }
+    if (!actualDisponible) {
+      dataUpdate.suspension_tipo = 'indefinida'
+      dataUpdate.suspension_hasta = null
+    }
+
     const { error } = await supabase
       .from('menu_products')
-      .update({ disponible: !actualDisponible })
+      .update(dataUpdate)
+      .eq('id', prodId)
+
+    if (error) {
+      // Fallback si no existen las columnas de suspensión
+      const { error: fallbackErr } = await supabase
+        .from('menu_products')
+        .update({ disponible: !actualDisponible })
+        .eq('id', prodId)
+      if (fallbackErr) alert('Error al actualizar disponibilidad')
+      else cargarDatos()
+    } else {
+      cargarDatos()
+    }
+  }
+
+  const aplicarSuspensionProducto = async (tipo: 'temporal' | 'turno' | 'indefinida', minutos: number = 0) => {
+    if (!suspensionModalProd) return
+    setGuardandoConfig(true)
+    
+    let suspensionHasta: string | null = null
+    const ahora = new Date()
+
+    if (tipo === 'temporal') {
+      suspensionHasta = new Date(ahora.getTime() + minutos * 60000).toISOString()
+    } else if (tipo === 'turno') {
+      // Reactivar al inicio de la jornada del siguiente día activo
+      const prox = new Date()
+      prox.setDate(prox.getDate() + 1)
+      prox.setHours(9, 0, 0, 0) // Default 9 AM
+      suspensionHasta = prox.toISOString()
+    }
+
+    try {
+      const { error } = await supabase
+        .from('menu_products')
+        .update({
+          disponible: false,
+          suspension_tipo: tipo,
+          suspension_hasta: suspensionHasta
+        } as any)
+        .eq('id', suspensionModalProd.id)
+      
+      if (error) {
+        // Fallback
+        const { error: fallbackErr } = await supabase
+          .from('menu_products')
+          .update({ disponible: false })
+          .eq('id', suspensionModalProd.id)
+        if (fallbackErr) throw fallbackErr
+      }
+
+      alert('✅ Platillo suspendido con éxito')
+      setSuspensionModalProd(null)
+      cargarDatos()
+    } catch(err: any) {
+      alert('Error al suspender: ' + err.message)
+    } finally {
+      setGuardandoConfig(false)
+    }
+  }
+
+  const toggleCategoriaActiva = async (catId: string, actualActivo: boolean) => {
+    const { error } = await supabase
+      .from('menu_groups')
+      .update({ activo: !actualActivo })
+      .eq('id', catId)
+    if (error) {
+      alert('Error al actualizar categoría')
+    } else {
+      cargarDatos()
+    }
+  }
+
+  const eliminarProductoMenu = async (prodId: string) => {
+    if (!confirm('¿Eliminar este producto del menú?')) return
+    const { error } = await supabase
+      .from('menu_products')
+      .delete()
       .eq('id', prodId)
     if (error) {
-      alert('Error al actualizar disponibilidad')
+      alert('Error al eliminar producto: ' + error.message)
     } else {
+      alert('✅ Producto eliminado con éxito')
       cargarDatos()
     }
   }
@@ -723,10 +973,67 @@ export default function DashboardPage() {
     if (!businessId) return
     setGuardandoConfig(true)
     
-    const { error } = await supabase.from('businesses').update({ monto_minimo_sello: Number(montoMinimo), max_sellos: Number(maxStamps) }).eq('id', businessId)
-    if (error) alert('Error al guardar la configuración')
-    else { alert('✅ Reglas de lealtad guardadas correctamente'); cargarDatos() }
-    setGuardandoConfig(false)
+    // Generar el JSON fallback de direccion por compatibilidad
+    const direccionTexto = business?.direccion && !business.direccion.includes('{') 
+      ? business.direccion 
+      : (business?.direccion?.split('|')[0]?.trim() || 'Calle Principal 123')
+      
+    const fallbackJson = JSON.stringify({
+      hora_apertura: horaApertura,
+      hora_cierre: horaCierre,
+      facebook: linkFacebook,
+      instagram: linkInstagram,
+      tiktok: linkTiktok,
+      youtube: linkYoutube,
+      horario_semanal: horarioSemanal
+    })
+    const direccionCompuesta = `${direccionTexto} | ${fallbackJson}`
+
+    try {
+      // 1. Intentar guardar en columnas nativas (si existen)
+      const { error } = await supabase
+        .from('businesses')
+        .update({ 
+          nombre: nombreNegocio.trim(),
+          logo_url: logoNegocio.trim(),
+          color_primario: colorPrimario.trim(),
+          monto_minimo_sello: Number(montoMinimo), 
+          max_sellos: Number(maxStamps),
+          // Columnas V12
+          link_facebook: linkFacebook.trim(),
+          link_instagram: linkInstagram.trim(),
+          link_tiktok: linkTiktok.trim(),
+          link_youtube: linkYoutube.trim(),
+          horario_semanal: horarioSemanal,
+          direccion: direccionCompuesta
+        } as any)
+        .eq('id', businessId)
+
+      if (error) {
+        // Fallback si fallan las columnas
+        console.warn("Supabase native columns not found, using JSON fallback in direccion:", error.message)
+        const { error: fallbackError } = await supabase
+          .from('businesses')
+          .update({
+            nombre: nombreNegocio.trim(),
+            logo_url: logoNegocio.trim(),
+            color_primario: colorPrimario.trim(),
+            monto_minimo_sello: Number(montoMinimo), 
+            max_sellos: Number(maxStamps),
+            direccion: direccionCompuesta
+          })
+          .eq('id', businessId)
+        
+        if (fallbackError) throw fallbackError
+      }
+
+      alert('✅ Reglas, Redes Sociales y Horario Semanal guardados correctamente')
+      cargarDatos()
+    } catch(err: any) {
+      alert('Error al guardar la configuración: ' + err.message)
+    } finally {
+      setGuardandoConfig(false)
+    }
   }
 
   const agregarPremio = async (e: React.FormEvent) => {
@@ -750,9 +1057,9 @@ export default function DashboardPage() {
     setGuardandoConfig(false)
   }
 
-  const parseCoordenada = (coordenadaStr: string): number => {
+  const parseCoordenada = (coordenadaStr: string | number | null | undefined): number => {
     if (!coordenadaStr) return 0
-    const limpia = coordenadaStr.trim()
+    const limpia = String(coordenadaStr).trim()
     if (/^-?\d+(\.\d+)?$/.test(limpia)) return parseFloat(limpia)
 
     const dmsRegex = /(\d+)\s*°\s*(\d+)\s*'\s*(\d+(?:\.\d+)?)\s*"\s*([NnSsEeOoWw])/
@@ -887,12 +1194,13 @@ export default function DashboardPage() {
         else imageUrl = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=600&auto=format&fit=crop'
       }
 
-      const { error: prodError } = await supabase.from('menu_products').insert({ business_id: businessId, group_id: grupoId, nombre: nuevoNombreProd.trim(), descripcion: nuevoDescProd.trim(), precio: Number(nuevoPrecioProd), imagen_url: imageUrl, disponible: true })
+      const { error: prodError } = await supabase.from('menu_products').insert({ business_id: businessId, group_id: grupoId, nombre: nuevoNombreProd.trim(), descripcion: nuevoDescProd.trim(), precio: Number(nuevoPrecioProd), imagen_url: imageUrl, disponible: true, es_upsell: esUpsellProd })
       if (prodError) throw prodError
       alert('✅ Producto agregado con éxito al menú')
       setNuevoNombreProd('')
       setNuevoDescProd('')
       setNuevoPrecioProd('0')
+      setEsUpsellProd(false)
       setImagenArchivo(null)
       const fileInput = document.getElementById('product-image-input') as HTMLInputElement
       if (fileInput) fileInput.value = ''
@@ -946,7 +1254,7 @@ export default function DashboardPage() {
     { id: 'metricas', label: '📊 Métricas', icon: LayoutDashboard },
     { id: 'clientes', label: '👥 Socios VIP', icon: Users },
     { id: 'empleados', label: '🛡️ Empleados', icon: UserCheck },
-    { id: 'menu_qr', label: '🌯 Menú & QR', icon: UtensilsCrossed },
+    { id: 'menu_qr', label: '🍽️ Menú & QR', icon: UtensilsCrossed },
     { id: 'geocercas', label: '🗺️ Geo & Push', icon: Map },
     { id: 'configuracion', label: '⚙️ Reglas', icon: Settings },
   ]
@@ -1251,7 +1559,7 @@ export default function DashboardPage() {
                         <tr key={h.id} className="hover:bg-white/5 transition-colors">
                           <td className="px-5 py-3 font-bold text-white">{h.clientes?.nombre || 'Socio'}</td>
                           <td className="px-5 py-3"><span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${h.tipo_movimiento === 'suma' ? 'bg-green-950 text-green-400' : 'bg-red-950 text-red-400'}`}>{h.tipo_movimiento}</span></td>
-                          <td className="px-5 py-3 font-mono font-bold text-amber-400">{h.puntos || h.cantidad} ★</td>
+                          <td className="px-5 py-3 font-mono font-bold text-amber-400">{h.cantidad} ★</td>
                           <td className="px-5 py-3 text-zinc-400">{h.descripcion}</td>
                           <td className="px-5 py-3 text-zinc-650 font-mono">{new Date(h.created_at).toLocaleString('es-MX')}</td>
                         </tr>
@@ -1492,7 +1800,7 @@ export default function DashboardPage() {
 
               {/* Productos en tu menú */}
               <div className="bg-[#121212] border border-zinc-900 rounded-2xl p-6 shadow-2xl">
-                <h3 className="font-serif font-black text-lg text-white mb-1">🌯 Productos en tu Carta Digital</h3>
+                <h3 className="font-serif font-black text-lg text-white mb-1">🍽️ Productos en tu Carta Digital</h3>
                 <p className="text-zinc-500 text-xs mb-6">Configura tus productos y define modificadores de forma interactiva.</p>
                 
                 <form onSubmit={agregarProductoMenu} className="bg-black/20 border border-zinc-850 rounded-2xl p-5 mb-6 space-y-4">
@@ -1500,7 +1808,7 @@ export default function DashboardPage() {
                   <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                     <div className="sm:col-span-2">
                       <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1">Nombre del Platillo</label>
-                      <input type="text" value={nuevoNombreProd} onChange={(e) => setNuevoNombreProd(e.target.value)} placeholder="Ej: Burrito de Asada Especial" className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-white text-xs focus:outline-none focus:border-amber-600 transition-colors" required />
+                      <input type="text" value={nuevoNombreProd} onChange={(e) => setNuevoNombreProd(e.target.value)} placeholder="Ej: Platillo Especial" className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-white text-xs focus:outline-none focus:border-amber-600 transition-colors" required />
                     </div>
                     <div>
                       <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1">Categoría</label>
@@ -1524,39 +1832,210 @@ export default function DashboardPage() {
                       <input id="product-image-input" type="file" accept="image/*" onChange={(e) => { if (e.target.files && e.target.files.length > 0) setImagenArchivo(e.target.files[0]) }} className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-1.5 text-white text-xs file:bg-zinc-800 file:border-none file:text-white file:text-xs file:py-1 file:px-2" />
                     </div>
                   </div>
+                  <div className="flex items-center gap-2 py-2">
+                    <input
+                      type="checkbox"
+                      id="es-upsell-checkbox"
+                      checked={esUpsellProd}
+                      onChange={e => setEsUpsellProd(e.target.checked)}
+                      className="w-4 h-4 rounded bg-zinc-950 border border-zinc-800 text-amber-600 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                    />
+                    <label htmlFor="es-upsell-checkbox" className="text-[10px] text-zinc-400 uppercase font-black cursor-pointer">⭐ Recomendar en Venta Cruzada (Upsell Predictivo)</label>
+                  </div>
                   <button type="submit" disabled={guardandoProducto} className="bg-amber-600 hover:bg-amber-500 text-white font-black px-5 py-2.5 rounded-xl uppercase tracking-widest text-[9px] transition-all">{guardandoProducto ? '...' : '➕ Agregar Producto'}</button>
                 </form>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {productosMenu.map(prod => {
-                    const catNombre = gruposMenu.find(g => g.id === prod.group_id)?.nombre || 'General'
+                <div className="space-y-4">
+                  {gruposMenu.map(grupo => {
+                    const productosDeEsteGrupo = productosMenu.filter(p => p.group_id === grupo.id)
+                    const estaExpandida = categoriasExpandidas[grupo.id] !== false // default expandida
                     return (
-                      <div key={prod.id} className="bg-black/30 border border-zinc-850 rounded-xl p-4 flex gap-4 items-center justify-between">
-                        <div className="flex gap-3 items-center min-w-0">
-                          <div className="w-12 h-12 bg-zinc-900 rounded-lg overflow-hidden border border-zinc-850 shrink-0">
-                            <img src={prod.imagen_url || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=100'} alt="" className="w-full h-full object-cover" />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="font-bold text-white text-xs truncate">{prod.nombre}</p>
-                            <p className="text-[9px] text-zinc-550 truncate">{catNombre} · ${Number(prod.precio).toFixed(0)} MXN</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <div className="flex items-center gap-1">
-                            <span className={`text-[8px] font-black uppercase ${prod.disponible ? 'text-green-500' : 'text-red-500'}`}>{prod.disponible ? 'Stock' : 'Agotado'}</span>
-                            <div onClick={() => toggleDisponibilidadProducto(prod.id, prod.disponible)} className={`w-8 h-4 rounded-full p-0.5 cursor-pointer transition-all ${prod.disponible ? 'bg-green-800 flex justify-end' : 'bg-zinc-850 flex justify-start'}`}><div className="w-3.5 h-3.5 bg-white rounded-full" /></div>
+                      <div key={grupo.id} className="border border-zinc-900 rounded-2xl overflow-hidden bg-black/20">
+                        {/* Encabezado Categoría (Rappi Style) */}
+                        <div className="flex items-center justify-between p-4 bg-[#18181b]/50 border-b border-zinc-900 select-none">
+                          <div className="flex items-center gap-3">
+                            <button
+                              type="button"
+                              onClick={() => setCategoriasExpandidas(prev => ({ ...prev, [grupo.id]: !estaExpandida }))}
+                              className="text-zinc-500 hover:text-white transition-colors text-sm"
+                            >
+                              {estaExpandida ? '▼' : '▶'}
+                            </button>
+                            <div>
+                              <h4 className="font-bold text-xs sm:text-sm text-white flex items-center gap-2">
+                                {grupo.nombre}
+                                <span className="text-[9px] bg-zinc-800 text-zinc-400 border border-zinc-700 px-2 py-0.5 rounded-full font-mono">
+                                  {productosDeEsteGrupo.length} producto(s)
+                                </span>
+                                {productosDeEsteGrupo.length === 0 && (
+                                  <span className="text-[8px] bg-amber-950/60 text-amber-500 border border-amber-900/50 px-2 py-0.5 rounded-full uppercase font-black">Incompleta</span>
+                                )}
+                              </h4>
+                              {grupo.descripcion && <p className="text-[10px] text-zinc-550 mt-0.5">{grupo.descripcion}</p>}
+                            </div>
                           </div>
                           
-                          {/* Botón Gestor de Modificadores */}
-                          <button onClick={() => abrirGestorModificadores(prod)} className="w-7 h-7 rounded-lg bg-zinc-900 border border-zinc-800 text-amber-400 hover:bg-zinc-800 flex items-center justify-center transition-colors" title="Modificadores del menú">
-                            <Settings className="w-3.5 h-3.5" />
-                          </button>
-                          
-                          <button onClick={() => eliminarProductoMenu(prod.id)} className="w-7 h-7 rounded-lg bg-zinc-950 border border-zinc-900 text-zinc-500 hover:text-red-500 hover:border-red-900/20 flex items-center justify-center transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                          <div className="flex items-center gap-3 sm:gap-6">
+                            {/* Switch Categoria Activa */}
+                            <div className="flex items-center gap-2">
+                              <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider hidden sm:inline">Activa</span>
+                              <div
+                                onClick={() => toggleCategoriaActiva(grupo.id, grupo.activo !== false)}
+                                className={`w-8 h-4 rounded-full p-0.5 cursor-pointer transition-all ${
+                                  grupo.activo !== false ? 'bg-green-800 flex justify-end' : 'bg-zinc-800 flex justify-start'
+                                }`}
+                              >
+                                <div className="w-3 h-3 bg-white rounded-full shadow-sm" />
+                              </div>
+                            </div>
+                            
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setGrupoSeleccionadoProd(grupo.id)
+                                document.getElementById('add-product-form')?.scrollIntoView({ behavior: 'smooth' })
+                              }}
+                              className="text-[9px] text-amber-500 hover:text-amber-400 font-black uppercase tracking-widest border border-amber-950/30 bg-amber-950/10 px-2.5 py-1 rounded-lg hover:bg-amber-950/20 transition-all shrink-0"
+                            >
+                              ➕ Agregar producto
+                            </button>
+                          </div>
                         </div>
+
+                        {/* Listado de productos (Rappi rows) */}
+                        {estaExpandida && (
+                          <div className="p-4 divide-y divide-zinc-900 space-y-3.5">
+                            {productosDeEsteGrupo.length === 0 ? (
+                              <div className="text-center py-6 text-zinc-600 text-xs">
+                                <p className="text-xl mb-1">🌮</p>
+                                <p className="font-bold">Sin productos en esta categoría</p>
+                                <button
+                                  onClick={() => {
+                                    setGrupoSeleccionadoProd(grupo.id)
+                                    document.getElementById('add-product-form')?.scrollIntoView({ behavior: 'smooth' })
+                                  }}
+                                  className="text-amber-500 hover:underline mt-1 font-bold block mx-auto text-[10px]"
+                                >
+                                  Añadir el primer platillo
+                                </button>
+                              </div>
+                            ) : (
+                              productosDeEsteGrupo.map((prod, pIdx) => (
+                                <div key={prod.id} className={`flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between ${pIdx > 0 ? 'pt-3.5' : ''}`}>
+                                  <div className="flex gap-3.5 items-center min-w-0">
+                                    <div className="w-14 h-14 bg-zinc-900 rounded-xl overflow-hidden border border-zinc-850 shrink-0 relative shadow-inner">
+                                      <img src={prod.imagen_url || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=100'} alt="" className="w-full h-full object-cover" />
+                                    </div>
+                                    <div className="min-w-0 space-y-0.5">
+                                      <h5 className="font-bold text-white text-xs sm:text-sm tracking-wide flex items-center gap-1.5 flex-wrap">
+                                        {prod.nombre}
+                                        {prod.es_upsell && (
+                                          <span className="text-[8px] bg-amber-950 text-amber-500 border border-amber-900 px-2 py-0.5 rounded-full uppercase font-black tracking-widest">Upsell</span>
+                                        )}
+                                      </h5>
+                                      {prod.descripcion && <p className="text-[10px] text-zinc-500 line-clamp-1 max-w-md">{prod.descripcion}</p>}
+                                      <p className="text-xs font-mono font-black text-amber-400">${Number(prod.precio).toFixed(0)} MXN</p>
+                                    </div>
+                                  </div>
+                                  
+                                  <div className="flex items-center gap-4 w-full sm:w-auto justify-end pt-2 sm:pt-0">
+                                    {/* Toggle disponible */}
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (prod.disponible) {
+                                          setSuspensionModalProd(prod)
+                                        } else {
+                                          toggleDisponibilidadProducto(prod.id, false)
+                                        }
+                                      }}
+                                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-wider transition-all select-none shadow-sm cursor-pointer ${
+                                        prod.disponible 
+                                          ? 'bg-green-950/40 border-green-900/40 text-green-400 hover:bg-green-900/30' 
+                                          : 'bg-red-950/40 border-red-900/40 text-red-400 hover:bg-red-900/30'
+                                      }`}
+                                      title={prod.disponible ? 'Poner platillo fuera de servicio' : 'Activar platillo'}
+                                    >
+                                      <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse shrink-0" />
+                                      {prod.disponible ? (
+                                        <span>Disponible</span>
+                                      ) : (
+                                        <span>
+                                          Agotado
+                                          {prod.suspension_tipo === 'temporal' && ' (⏳ temp)'}
+                                          {prod.suspension_tipo === 'turno' && ' (🌅 turno)'}
+                                        </span>
+                                      )}
+                                    </button>
+                                    
+                                    {/* Editar producto */}
+                                    <button
+                                      type="button"
+                                      onClick={() => setProductoEditarSeleccionado(prod)}
+                                      className="w-8 h-8 rounded-xl bg-zinc-900 border border-zinc-850 text-blue-400 hover:text-blue-300 hover:bg-zinc-800 hover:border-blue-900/30 flex items-center justify-center transition-all shadow-sm shrink-0"
+                                      title="Editar platillo y modificadores"
+                                    >
+                                      ✏️
+                                    </button>
+                                    
+                                    {/* Eliminar producto */}
+                                    <button
+                                      type="button"
+                                      onClick={() => eliminarProductoMenu(prod.id)}
+                                      className="w-8 h-8 rounded-xl bg-red-950/20 border border-red-950/40 text-zinc-500 hover:text-red-400 hover:border-red-900/20 flex items-center justify-center transition-all shadow-sm shrink-0"
+                                      title="Eliminar platillo"
+                                    >
+                                      ✕
+                                    </button>
+                                  </div>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        )}
                       </div>
                     )
                   })}
+
+                  {/* Sin categoría */}
+                  {productosMenu.filter(p => !gruposMenu.some(g => g.id === p.group_id)).length > 0 && (
+                    <div className="border border-zinc-900 rounded-2xl overflow-hidden bg-black/20">
+                      <div className="p-4 bg-[#18181b]/50 border-b border-zinc-900">
+                        <h4 className="font-bold text-xs text-white">General / Sin Categorizar</h4>
+                      </div>
+                      <div className="p-4 space-y-3">
+                        {productosMenu.filter(p => !gruposMenu.some(g => g.id === p.group_id)).map(prod => (
+                          <div key={prod.id} className="flex gap-4 items-center justify-between">
+                            <div className="flex gap-3 items-center min-w-0">
+                              <div className="w-12 h-12 bg-zinc-900 rounded-lg overflow-hidden border border-zinc-850 shrink-0">
+                                <img src={prod.imagen_url || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=100'} alt="" className="w-full h-full object-cover" />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="font-bold text-white text-xs truncate">{prod.nombre}</p>
+                                <p className="text-[9px] text-zinc-550 font-mono">${Number(prod.precio).toFixed(0)} MXN</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setProductoEditarSeleccionado(prod)}
+                                className="w-8 h-8 rounded-xl bg-zinc-900 border border-zinc-800 text-blue-400 hover:text-blue-300 hover:bg-zinc-800 flex items-center justify-center transition-colors"
+                              >
+                                ✏️
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => eliminarProductoMenu(prod.id)}
+                                className="w-8 h-8 rounded-xl bg-red-950/20 border border-red-950/40 text-red-400 flex items-center justify-center transition-colors"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1601,13 +2080,23 @@ export default function DashboardPage() {
                 <div className="bg-[#121212] border border-zinc-900 rounded-2xl p-6 flex flex-col gap-4 shadow-2xl">
                   <div>
                     <h3 className="font-serif font-black text-lg text-white">🗺️ Radar Geocercas Satelital</h3>
-                    <p className="text-zinc-505 text-xs">Radar geocerca sincronizado con OpenStreetMap.</p>
+                    <p className="text-zinc-500 text-xs">Haz click en el mapa o arrastra el marcador para configurar con precisión absoluta.</p>
                   </div>
-                  {geoLat && geoLng ? (
-                    <div className="w-full rounded-2xl overflow-hidden border border-zinc-900 bg-zinc-950">
-                      <iframe title="Geocerca" width="100%" height="260" src={`https://www.openstreetmap.org/export/embed.html?bbox=${Number(parseCoordenada(geoLng)) - 0.003}%2C${Number(parseCoordenada(geoLat)) - 0.003}%2C${Number(parseCoordenada(geoLng)) + 0.003}%2C${Number(parseCoordenada(geoLat)) + 0.003}&layer=mapnik&marker=${parseCoordenada(geoLat)}%2C${parseCoordenada(geoLng)}`} className="w-full h-64 grayscale invert opacity-60 contrast-125"></iframe>
-                    </div>
-                  ) : <div className="w-full h-64 bg-zinc-950 rounded-2xl border border-zinc-900 flex items-center justify-center text-xs text-zinc-650">Cargando...</div>}
+                  <div className="w-full rounded-2xl overflow-hidden border border-zinc-800 bg-zinc-950 relative h-72">
+                    <div id="google-map-selector" className="w-full h-full" style={{ minHeight: '280px' }} />
+                    {!googleMapsCargado && (
+                      <div className="absolute inset-0 bg-black/80 flex items-center justify-center text-xs text-zinc-400">
+                        Cargando Google Maps...
+                      </div>
+                    )}
+                  </div>
+                  <div className="bg-zinc-950/40 border border-zinc-850 rounded-xl p-3 text-[10px] text-zinc-500 leading-relaxed space-y-1">
+                    <p className="font-bold text-amber-500 uppercase tracking-wider">💡 Instrucciones de API Key (Google Cloud):</p>
+                    <p>1. Ve a la consola de Google Cloud Developer.</p>
+                    <p>2. Crea un proyecto y habilita **Maps JavaScript API**.</p>
+                    <p>3. Genera una Credencial API Key y configúrala como `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` en tu archivo `.env.local`.</p>
+                    <p className="italic text-zinc-650">(Actualmente ejecutando en modo de desarrollo sin cargo, totalmente funcional para seleccionar y fijar coordenadas).</p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1616,19 +2105,149 @@ export default function DashboardPage() {
           {/* ────────────────── PESTAÑA: CONFIGURACIÓN REGLAS ────────────────── */}
           {pestaña === 'configuracion' && (
             <div className="space-y-6">
-              <form onSubmit={guardarReglasNegocio} className="bg-[#121212] border border-zinc-900 rounded-2xl p-6 shadow-2xl">
-                <h3 className="font-serif font-black text-lg text-white mb-1">⚙️ Reglas de Lealtad</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6">
-                  <div>
-                    <label className="block text-xs font-black text-zinc-400 uppercase tracking-wider mb-2">Monto Mínimo por Sello ({business?.moneda || 'MXN'})</label>
-                    <input type="number" value={montoMinimo} onChange={(e) => setMontoMinimo(e.target.value)} className="w-full bg-black/50 border border-zinc-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-amber-600 transition-colors" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-black text-zinc-400 uppercase tracking-wider mb-2">Total de Sellos por Tarjeta VIP</label>
-                    <input type="number" value={maxStamps} onChange={(e) => setMaxStamps(e.target.value)} className="w-full bg-black/50 border border-zinc-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none" />
+              <form onSubmit={guardarReglasNegocio} className="bg-[#121212] border border-zinc-900 rounded-2xl p-6 shadow-2xl space-y-6 animate-in fade-in duration-200">
+                <div>
+                  <h3 className="font-serif font-black text-lg text-white mb-1">⚙️ Reglas & Personalización del Club</h3>
+                  <p className="text-zinc-550 text-xs">Administra las condiciones de lealtad y la identidad visual de tu marca.</p>
+                </div>
+
+                {/* Sección de Branding */}
+                <div className="border-t border-zinc-900/60 pt-4 space-y-4">
+                  <p className="text-[10px] text-amber-500 font-black uppercase tracking-widest font-sans">1. Identidad Visual (White-Label)</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                    <div>
+                      <label className="block text-xs font-black text-zinc-400 uppercase tracking-wider mb-2">Nombre Comercial de Empresa</label>
+                      <input type="text" value={nombreNegocio} onChange={(e) => setNombreNegocio(e.target.value)} placeholder="Ej: Morisquetas Apatzingán" className="w-full bg-black/50 border border-zinc-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-amber-600 transition-colors" required />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-black text-zinc-400 uppercase tracking-wider mb-2">Icono Emoji o URL de Logo</label>
+                      <input type="text" value={logoNegocio} onChange={(e) => setLogoNegocio(e.target.value)} placeholder="Ej: 🍔 o enlace a imagen" className="w-full bg-black/50 border border-zinc-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-amber-600 transition-colors" required />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-black text-zinc-400 uppercase tracking-wider mb-2">Color del Tema de Marca</label>
+                      <div className="flex gap-3">
+                        <input type="color" value={colorPrimario} onChange={(e) => setColorPrimario(e.target.value)} className="w-14 h-12 bg-black/50 border border-zinc-800 rounded-xl p-1 cursor-pointer focus:outline-none" />
+                        <input type="text" value={colorPrimario} onChange={(e) => setColorPrimario(e.target.value)} placeholder="#ef4444" className="flex-1 bg-black/50 border border-zinc-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none font-mono" required />
+                      </div>
+                    </div>
                   </div>
                 </div>
-                <button type="submit" disabled={guardandoConfig} className="bg-amber-600 hover:bg-amber-500 text-white font-black px-6 py-3 rounded-xl uppercase tracking-widest text-xs transition-all">Guardar Reglas</button>
+
+                {/* Sección de Reglas de Puntos */}
+                <div className="border-t border-zinc-900/60 pt-4 space-y-4">
+                  <p className="text-[10px] text-amber-500 font-black uppercase tracking-widest font-sans">2. Condiciones de Recompensas</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-xs font-black text-zinc-400 uppercase tracking-wider mb-2">Monto Mínimo por Sello ({business?.moneda || 'MXN'})</label>
+                      <input type="number" value={montoMinimo} onChange={(e) => setMontoMinimo(e.target.value)} className="w-full bg-black/50 border border-zinc-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-amber-600 transition-colors" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-black text-zinc-400 uppercase tracking-wider mb-2">Total de Sellos por Tarjeta VIP</label>
+                      <input type="number" value={maxStamps} onChange={(e) => setMaxStamps(e.target.value)} className="w-full bg-black/50 border border-zinc-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sección de Redes Sociales */}
+                <div className="border-t border-zinc-900/60 pt-4 space-y-4">
+                  <p className="text-[10px] text-amber-500 font-black uppercase tracking-widest font-sans">3. Redes Sociales & Contacto</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-black text-zinc-400 uppercase tracking-wider mb-2">Facebook Link</label>
+                      <input type="text" value={linkFacebook} onChange={e => setLinkFacebook(e.target.value)} placeholder="Ej: https://facebook.com/minegocio" className="w-full bg-black/50 border border-zinc-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-amber-600 transition-colors" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-black text-zinc-400 uppercase tracking-wider mb-2">Instagram Link</label>
+                      <input type="text" value={linkInstagram} onChange={e => setLinkInstagram(e.target.value)} placeholder="Ej: https://instagram.com/minegocio" className="w-full bg-black/50 border border-zinc-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-amber-600 transition-colors" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-black text-zinc-400 uppercase tracking-wider mb-2">TikTok Link</label>
+                      <input type="text" value={linkTiktok} onChange={e => setLinkTiktok(e.target.value)} placeholder="Ej: https://tiktok.com/@minegocio" className="w-full bg-black/50 border border-zinc-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-amber-600 transition-colors" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-black text-zinc-400 uppercase tracking-wider mb-2">YouTube Link</label>
+                      <input type="text" value={linkYoutube} onChange={e => setLinkYoutube(e.target.value)} placeholder="Ej: https://youtube.com/c/minegocio" className="w-full bg-black/50 border border-zinc-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-amber-600 transition-colors" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sección de Horarios Diarios Detallados */}
+                <div className="border-t border-zinc-900/60 pt-4 space-y-4">
+                  <p className="text-[10px] text-amber-500 font-black uppercase tracking-widest font-sans">4. Horario de Jornada Semanal Comercial</p>
+                  <p className="text-zinc-500 text-xs">Configura los horarios comerciales y días de descanso individualmente para cada día.</p>
+                  
+                  <div className="bg-black/20 border border-zinc-850 rounded-2xl p-4 divide-y divide-zinc-900">
+                    {Object.keys(horarioSemanal).map((dia) => {
+                      const config = horarioSemanal[dia]
+                      const nombresDias: Record<string, string> = {
+                        lunes: 'Lunes', martes: 'Martes', miercoles: 'Miércoles',
+                        jueves: 'Jueves', viernes: 'Viernes', sabado: 'Sábado', domingo: 'Domingo'
+                      }
+                      return (
+                        <div key={dia} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 py-3.5 first:pt-0 last:pb-0">
+                          <div className="flex items-center gap-3">
+                            <span className="w-24 text-sm font-bold text-white capitalize">{nombresDias[dia]}</span>
+                            <label className="flex items-center gap-2 cursor-pointer select-none">
+                              <input 
+                                type="checkbox" 
+                                checked={!config.cerrado} 
+                                onChange={e => {
+                                  const cerrado = !e.target.checked
+                                  setHorarioSemanal((prev: any) => ({
+                                    ...prev,
+                                    [dia]: { ...prev[dia], cerrado }
+                                  }))
+                                }}
+                                className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
+                              />
+                              <span className={`text-xs font-black uppercase tracking-wider ${!config.cerrado ? 'text-green-500' : 'text-red-500'}`}>
+                                {!config.cerrado ? 'Abierto' : 'Descanso'}
+                              </span>
+                            </label>
+                          </div>
+                          
+                          {!config.cerrado ? (
+                            <div className="flex items-center gap-2">
+                              <input 
+                                type="time" 
+                                value={config.apertura || '14:00'} 
+                                onChange={e => {
+                                  const val = e.target.value
+                                  setHorarioSemanal((prev: any) => ({
+                                    ...prev,
+                                    [dia]: { ...prev[dia], apertura: val }
+                                  }))
+                                }}
+                                className="bg-black/40 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-amber-600 font-mono"
+                              />
+                              <span className="text-zinc-550 text-xs">a</span>
+                              <input 
+                                type="time" 
+                                value={config.cierre || '22:00'} 
+                                onChange={e => {
+                                  const val = e.target.value
+                                  setHorarioSemanal((prev: any) => ({
+                                    ...prev,
+                                    [dia]: { ...prev[dia], cierre: val }
+                                  }))
+                                }}
+                                className="bg-black/40 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-amber-600 font-mono"
+                              />
+                            </div>
+                          ) : (
+                            <span className="text-xs text-zinc-600 uppercase font-black tracking-widest italic py-1 bg-zinc-950/40 px-3 rounded-lg border border-zinc-900">
+                              🔋💤 Descanso comercial
+                            </span>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                <div className="border-t border-zinc-900/60 pt-4 flex justify-end">
+                  <button type="submit" disabled={guardandoConfig} className="bg-amber-600 hover:bg-amber-500 text-white font-black px-6 py-3 rounded-xl uppercase tracking-widest text-xs transition-all shadow-[0_0_15px_rgba(245,158,11,0.25)]">💾 Guardar Configuración</button>
+                </div>
               </form>
 
               <div className="bg-[#121212] border border-zinc-900 rounded-2xl p-6 shadow-2xl">
@@ -1694,7 +2313,17 @@ export default function DashboardPage() {
               <p className="text-[9px] uppercase tracking-widest text-zinc-505 font-bold">Tarjeta Socio</p>
               <h4 className="text-xs font-serif font-black tracking-wide text-amber-400 truncate w-32 mt-0.5">{business?.nombre || 'LoyaltyApp'}</h4>
             </div>
-            <div className="w-9 h-9 bg-zinc-900 border border-zinc-800 rounded-xl flex items-center justify-center text-sm shadow">🌯</div>
+            <div className="w-9 h-9 bg-zinc-900 border border-zinc-800 rounded-xl flex items-center justify-center text-sm shadow overflow-hidden">
+              {logoNegocio ? (
+                logoNegocio.startsWith('http') || logoNegocio.startsWith('/') || logoNegocio.startsWith('data:') ? (
+                  <img src={logoNegocio} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-base">{logoNegocio}</span>
+                )
+              ) : (
+                <span className="text-base">✨</span>
+              )}
+            </div>
           </div>
           <div className="relative z-10 mt-4">
             <p className="text-[9px] uppercase tracking-widest text-zinc-505 font-bold">Miembro VIP</p>
@@ -1772,6 +2401,71 @@ export default function DashboardPage() {
               <div className="flex gap-3">
                 <button onClick={() => setModalAjusteSocio(null)} className="flex-1 py-2.5 border border-zinc-800 rounded-xl text-xs font-bold text-zinc-400">Cancelar</button>
                 <button onClick={ejecutarAjustePuntos} disabled={!motivoAjuste.trim() || guardandoAjuste} className="flex-1 py-2.5 bg-gradient-to-r from-amber-600 to-amber-700 text-white rounded-xl text-xs font-black uppercase">{guardandoAjuste ? '...' : 'Registrar'}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: SUSPENSIÓN TEMPORAL DE STOCK ───────────────── */}
+      {suspensionModalProd && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-[#121212] border border-[#27272a] rounded-3xl p-6 w-full max-w-sm shadow-2xl relative">
+            <button onClick={() => setSuspensionModalProd(null)} className="absolute top-4 right-4 text-zinc-500 hover:text-white text-xl">✕</button>
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-lg">⏳</div>
+                <div>
+                  <h4 className="text-sm font-black text-white">Suspensión Fina de Platillo</h4>
+                  <p className="text-[10px] text-zinc-500 uppercase tracking-widest">Reactivación automática e inteligente</p>
+                </div>
+              </div>
+              
+              <div className="bg-black/30 border border-zinc-900 rounded-xl p-3.5 text-xs">
+                <p className="text-zinc-500">Producto: <strong className="text-white">{suspensionModalProd.nombre}</strong></p>
+                <p className="text-zinc-500 mt-1">Precio: <strong className="text-amber-400">${Number(suspensionModalProd.precio).toFixed(0)} MXN</strong></p>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-[10px] text-zinc-400 uppercase font-black block tracking-wider">Opciones de Suspensión:</p>
+                
+                <div className="grid grid-cols-1 gap-2">
+                  <button 
+                    onClick={() => aplicarSuspensionProducto('temporal', 30)}
+                    className="w-full bg-[#1c1c1e] hover:bg-zinc-800 border border-zinc-850 text-white rounded-xl py-3 px-4 text-xs font-bold text-left flex items-center justify-between cursor-pointer"
+                  >
+                    <span>⏳ Suspender por 30 minutos</span>
+                    <span className="text-[9px] bg-red-950/40 border border-red-900/30 text-red-400 px-2 py-0.5 rounded-full">Reactivar 30m</span>
+                  </button>
+                  <button 
+                    onClick={() => aplicarSuspensionProducto('temporal', 60)}
+                    className="w-full bg-[#1c1c1e] hover:bg-zinc-800 border border-zinc-850 text-white rounded-xl py-3 px-4 text-xs font-bold text-left flex items-center justify-between cursor-pointer"
+                  >
+                    <span>⏳ Suspender por 1 hora</span>
+                    <span className="text-[9px] bg-red-950/40 border border-red-900/30 text-red-400 px-2 py-0.5 rounded-full">Reactivar 1h</span>
+                  </button>
+                  <button 
+                    onClick={() => aplicarSuspensionProducto('temporal', 120)}
+                    className="w-full bg-[#1c1c1e] hover:bg-zinc-800 border border-zinc-850 text-white rounded-xl py-3 px-4 text-xs font-bold text-left flex items-center justify-between cursor-pointer"
+                  >
+                    <span>⏳ Suspender por 2 horas</span>
+                    <span className="text-[9px] bg-red-950/40 border border-red-900/30 text-red-400 px-2 py-0.5 rounded-full">Reactivar 2h</span>
+                  </button>
+                  <button 
+                    onClick={() => aplicarSuspensionProducto('turno')}
+                    className="w-full bg-[#1c1c1e] hover:bg-zinc-800 border border-zinc-850 text-white rounded-xl py-3 px-4 text-xs font-bold text-left flex items-center justify-between cursor-pointer"
+                  >
+                    <span>🌅 Hasta el Siguiente Turno</span>
+                    <span className="text-[9px] bg-amber-950/40 border border-amber-900/30 text-amber-400 px-2 py-0.5 rounded-full">Próxima Jornada</span>
+                  </button>
+                  <button 
+                    onClick={() => aplicarSuspensionProducto('indefinida')}
+                    className="w-full bg-red-950/20 hover:bg-red-900/10 border border-red-900/30 text-red-400 rounded-xl py-3 px-4 text-xs font-black text-left flex items-center justify-between cursor-pointer"
+                  >
+                    <span>🚫 Suspender Indefinidamente</span>
+                    <span className="text-[9px] bg-red-950/40 border border-red-900/30 text-red-400 px-2 py-0.5 rounded-full">Manual</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -1937,6 +2631,355 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {productoEditarSeleccionado && (
+        <EditarProductoModal
+          producto={productoEditarSeleccionado}
+          gruposMenu={gruposMenu}
+          onClose={() => setProductoEditarSeleccionado(null)}
+          onSuccess={() => { setProductoEditarSeleccionado(null); cargarDatos() }}
+        />
+      )}
+
+    </div>
+  )
+}
+
+// Componente Modal de Edición de Producto (Estilo Rappi Partner)
+function EditarProductoModal({
+  producto,
+  gruposMenu,
+  onClose,
+  onSuccess
+}: {
+  producto: any
+  gruposMenu: any[]
+  onClose: () => void
+  onSuccess: () => void
+}) {
+  const [nombre, setNombre] = useState(producto.nombre)
+  const [groupId, setGroupId] = useState(producto.group_id)
+  const [precio, setPrecio] = useState(producto.precio)
+  const [descripcion, setDescripcion] = useState(producto.descripcion || '')
+  const [esUpsell, setEsUpsell] = useState(producto.es_upsell || false)
+  const [imagenUrl, setImagenUrl] = useState(producto.imagen_url || '')
+  const [guardando, setGuardando] = useState(false)
+  const [imagenArchivo, setImagenArchivo] = useState<File | null>(null)
+
+  // Modificadores integrados
+  const [modificadores, setModificadores] = useState<any[]>([])
+  const [cargandoMods, setCargandoMods] = useState(false)
+  const [nuevoModNombre, setNuevoModNombre] = useState('')
+  const [nuevoModRequerido, setNuevoModRequerido] = useState(false)
+  const [nuevaOpcionNombre, setNuevaOpcionNombre] = useState<Record<string, string>>({})
+  const [nuevaOpcionPrecio, setNuevaOpcionPrecio] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    cargarModificadores()
+  }, [])
+
+  const cargarModificadores = async () => {
+    setCargandoMods(true)
+    const { data } = await supabase
+      .from('product_modifiers')
+      .select('*, modifier_options(*)')
+      .eq('product_id', producto.id)
+    if (data) setModificadores(data)
+    setCargandoMods(false)
+  }
+
+  const crearModificador = async () => {
+    if (!nuevoModNombre.trim()) return
+    const { error } = await supabase
+      .from('product_modifiers')
+      .insert({
+        product_id: producto.id,
+        nombre: nuevoModNombre.trim(),
+        requerido: nuevoModRequerido
+      })
+    if (error) alert('Error al crear modificador')
+    else {
+      setNuevoModNombre('')
+      setNuevoModRequerido(false)
+      cargarModificadores()
+    }
+  }
+
+  const eliminarModificador = async (id: string) => {
+    if (!confirm('¿Eliminar este grupo de modificadores?')) return
+    await supabase.from('product_modifiers').delete().eq('id', id)
+    cargarModificadores()
+  }
+
+  const agregarOpcion = async (modId: string) => {
+    const optNombre = nuevaOpcionNombre[modId]?.trim()
+    const optPrecio = Number(nuevaOpcionPrecio[modId] || 0)
+    if (!optNombre) return
+    
+    await supabase.from('modifier_options').insert({
+      modifier_id: modId,
+      nombre: optNombre,
+      precio_extra: optPrecio
+    })
+    setNuevaOpcionNombre(prev => ({ ...prev, [modId]: '' }))
+    setNuevaOpcionPrecio(prev => ({ ...prev, [modId]: '0' }))
+    cargarModificadores()
+  }
+
+  const eliminarOpcion = async (optId: string) => {
+    await supabase.from('modifier_options').delete().eq('id', optId)
+    cargarModificadores()
+  }
+
+  const guardar = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setGuardando(true)
+
+    let finalImageUrl = imagenUrl
+
+    if (imagenArchivo) {
+      const extension = imagenArchivo.name.split('.').pop()
+      const path = `${producto.business_id || 'prod'}/${producto.id}-${Date.now()}.${extension}`
+      const { data, error: uploadError } = await supabase.storage
+        .from('menu-assets')
+        .upload(path, imagenArchivo, { upsert: true })
+      
+      if (!uploadError && data) {
+        const { data: { publicUrl } } = supabase.storage.from('menu-assets').getPublicUrl(path)
+        finalImageUrl = publicUrl
+      }
+    }
+
+    const { error } = await supabase
+      .from('menu_products')
+      .update({
+        nombre,
+        group_id: groupId,
+        precio: Number(precio),
+        descripcion,
+        es_upsell: esUpsell,
+        imagen_url: finalImageUrl
+      })
+      .eq('id', producto.id)
+
+    if (error) {
+      alert('Error al guardar: ' + error.message)
+    } else {
+      alert('✅ Producto actualizado')
+      onSuccess()
+    }
+    setGuardando(false)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-[#121212] border border-[#27272a] rounded-3xl p-6 sm:p-8 w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto flex flex-col space-y-6">
+        <div className="flex justify-between items-start">
+          <div>
+            <h2 className="text-xl font-black text-white">Editar Producto</h2>
+            <p className="text-zinc-500 text-xs">Ajusta los detalles de tu menú y modificadores en el mismo lugar</p>
+          </div>
+          <button onClick={onClose} className="text-zinc-500 hover:text-white text-xl">✕</button>
+        </div>
+
+        <form onSubmit={guardar} className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+            <div className="sm:col-span-2 space-y-4">
+              <div>
+                <label className="text-[10px] text-zinc-400 uppercase font-black block mb-1">Nombre del Platillo</label>
+                <input
+                  type="text"
+                  value={nombre}
+                  onChange={e => setNombre(e.target.value)}
+                  className="w-full bg-black/50 border border-zinc-800 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-amber-605"
+                  required
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] text-zinc-400 uppercase font-black block mb-1">Categoría</label>
+                  <select
+                    value={groupId}
+                    onChange={e => setGroupId(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-white text-xs focus:outline-none"
+                    required
+                  >
+                    {gruposMenu.map(g => (
+                      <option key={g.id} value={g.id}>{g.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] text-zinc-400 uppercase font-black block mb-1">Precio (MXN)</label>
+                  <input
+                    type="number"
+                    value={precio}
+                    onChange={e => setPrecio(e.target.value)}
+                    className="w-full bg-black/50 border border-zinc-800 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-amber-605 font-mono text-amber-500 font-bold"
+                    required
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] text-zinc-400 uppercase font-black block mb-1">Descripción</label>
+                <textarea
+                  value={descripcion}
+                  onChange={e => setDescripcion(e.target.value)}
+                  className="w-full bg-black/50 border border-zinc-800 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-amber-605 h-20 resize-none"
+                />
+              </div>
+            </div>
+            
+            <div className="flex flex-col items-center justify-center border border-zinc-800 rounded-2xl p-4 bg-black/20 space-y-3">
+              <div className="w-28 h-28 bg-zinc-950 rounded-xl overflow-hidden border border-zinc-800">
+                <img src={imagenUrl || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=100'} alt="" className="w-full h-full object-cover" />
+              </div>
+              <label className="bg-zinc-850 hover:bg-zinc-800 border border-zinc-700 text-white font-bold py-1.5 px-4 rounded-xl text-[10px] uppercase tracking-wider cursor-pointer">
+                Subir Imagen
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={e => { if (e.target.files?.length) setImagenArchivo(e.target.files[0]) }}
+                  className="hidden"
+                />
+              </label>
+            </div>
+          </div>
+
+          <label className="flex items-center gap-2 cursor-pointer pt-2 select-none">
+            <input
+              type="checkbox"
+              checked={esUpsell}
+              onChange={e => setEsUpsell(e.target.checked)}
+              className="w-4 h-4 rounded bg-zinc-950 border border-zinc-800 text-amber-600 focus:ring-0 focus:ring-offset-0"
+            />
+            <span className="text-[10px] text-zinc-450 uppercase font-black">⭐ Recomendar en Venta Cruzada (Upsell Predictivo)</span>
+          </label>
+
+          {/* Sección de Modificadores Integrada (Estilo Rappi Partner) */}
+          <div className="border-t border-zinc-850 pt-6 space-y-4">
+            <h3 className="text-xs sm:text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
+              <span>📋 Modificadores de Producto</span>
+              <span className="text-[9px] bg-amber-950/40 text-amber-400 border border-amber-900/50 px-2 py-0.5 rounded-full uppercase tracking-wider font-mono">Panel Unificado</span>
+            </h3>
+            
+            <div className="bg-black/30 border border-zinc-850 rounded-2xl p-4 space-y-3">
+              <p className="text-[9px] text-amber-500 font-black uppercase tracking-wider">Añadir Nuevo Grupo (ej: Elige tu Salsa / Ingredientes)</p>
+              <div className="flex gap-3">
+                <input
+                  type="text"
+                  value={nuevoModNombre}
+                  onChange={e => setNuevoModNombre(e.target.value)}
+                  placeholder="Ej: Elige tu Salsa"
+                  className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                />
+                <label className="flex items-center gap-2 cursor-pointer bg-zinc-950 px-3 rounded-xl border border-zinc-800 text-[10px] text-zinc-400 font-bold uppercase tracking-wider select-none">
+                  <input
+                    type="checkbox"
+                    checked={nuevoModRequerido}
+                    onChange={e => setNuevoModRequerido(e.target.checked)}
+                    className="accent-amber-500"
+                  />
+                  Obligatorio
+                </label>
+                <button
+                  type="button"
+                  onClick={crearModificador}
+                  className="bg-amber-600 hover:bg-amber-500 text-white font-black px-4 py-2 rounded-xl text-xs uppercase tracking-widest transition-all"
+                >
+                  ➕ Crear
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-4 max-h-[30vh] overflow-y-auto pr-1">
+              {cargandoMods ? (
+                <div className="flex justify-center py-6">
+                  <div className="w-6 h-6 border-2 border-zinc-800 border-t-amber-500 rounded-full animate-spin" />
+                </div>
+              ) : modificadores.length === 0 ? (
+                <p className="text-zinc-600 text-xs text-center py-4 font-bold uppercase tracking-wider">Sin modificadores en este platillo. Agrega uno arriba.</p>
+              ) : (
+                modificadores.map(mod => (
+                  <div key={mod.id} className="bg-black/20 border border-zinc-850 rounded-2xl p-4 space-y-3">
+                    <div className="flex justify-between items-center border-b border-zinc-850 pb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-xs text-white">{mod.nombre}</span>
+                        {mod.requerido && <span className="bg-red-950 text-red-500 border border-red-900 text-[8px] font-black px-2 py-0.5 rounded-full uppercase">Obligatorio</span>}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => eliminarModificador(mod.id)}
+                        className="text-red-500 hover:text-red-400 text-xs font-bold"
+                      >
+                        Eliminar Grupo
+                      </button>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      {mod.modifier_options?.map((opt: any) => (
+                        <div key={opt.id} className="flex justify-between items-center bg-zinc-950 px-3 py-1.5 rounded-xl border border-zinc-900 text-xs font-mono">
+                          <span className="text-zinc-300">{opt.nombre}</span>
+                          <div className="flex items-center gap-3">
+                            <span className="text-amber-500 font-bold">+${Number(opt.precio_extra).toFixed(0)} MXN</span>
+                            <button
+                              type="button"
+                              onClick={() => eliminarOpcion(opt.id)}
+                              className="text-zinc-500 hover:text-red-500 transition-colors"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="flex gap-2 pt-1.5 border-t border-dashed border-zinc-850">
+                      <input
+                        type="text"
+                        value={nuevaOpcionNombre[mod.id] || ''}
+                        onChange={e => setNuevaOpcionNombre(prev => ({ ...prev, [mod.id]: e.target.value }))}
+                        placeholder="Ej: Salsa Habanera"
+                        className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none"
+                      />
+                      <input
+                        type="number"
+                        value={nuevaOpcionPrecio[mod.id] || '0'}
+                        onChange={e => setNuevaOpcionPrecio(prev => ({ ...prev, [mod.id]: e.target.value }))}
+                        placeholder="+$"
+                        className="w-16 bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 text-xs text-center text-amber-500 font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => agregarOpcion(mod.id)}
+                        className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold px-3 py-1 rounded-lg text-xs"
+                      >
+                        ➕
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="flex gap-3 pt-4 border-t border-zinc-800">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 border border-zinc-700 text-zinc-400 font-bold py-3 rounded-xl text-xs hover:border-zinc-500 transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={guardando}
+              className="flex-1 bg-gradient-to-r from-amber-600 to-amber-700 text-white font-black py-3 rounded-xl text-xs hover:brightness-110 transition-all disabled:opacity-50"
+            >
+              {guardando ? 'Guardando...' : '💾 Guardar Cambios'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }

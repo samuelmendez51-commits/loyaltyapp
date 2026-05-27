@@ -274,6 +274,62 @@ export default function EscanerTrabajadores() {
     }
   }
 
+  const manejarAjusteSello = async (delta: number) => {
+    if (!cliente) return
+    setCargando(true)
+
+    const activeBizId = businessId || getCookieVal('session_business_id')
+    const maxStamps = business?.max_sellos || 10
+    const nuevosPuntos = Math.max(0, Math.min(maxStamps, cliente.puntos + delta))
+
+    try {
+      const { error: errorCliente } = await supabase
+        .from('clientes')
+        .update({ puntos: nuevosPuntos })
+        .eq('id', cliente.id)
+
+      if (errorCliente) throw new Error('No se pudo actualizar el registro');
+
+      await supabase
+        .from('historial_puntos')
+        .insert({
+           cliente_id: cliente.id,
+           cantidad: Math.abs(delta), 
+           tipo_movimiento: delta > 0 ? 'suma' : 'resta',
+           descripcion: delta > 0 ? 'Sello registrado en mostrador' : 'Sello retirado por cajero'
+        });
+
+      if (activeBizId) {
+        await supabase.from('tracking_events').insert({
+          business_id: activeBizId,
+          cliente_id: cliente.id,
+          event_type: 'puntos_ajustados',
+          metadata: { canal: 'mostrador', delta, nuevosPuntos, puntos_anteriores: cliente.puntos }
+        })
+      }
+
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        navigator.vibrate([100, 50, 100])
+      }
+      
+      setMensaje({ 
+        tipo: 'exito', 
+        texto: delta > 0 ? '¡SELLO AGREGADO CON ÉXITO!' : '¡SELLO RETIRADO CON ÉXITO!' 
+      })
+      
+      setTimeout(() => {
+        setCliente((prev: any) => ({ ...prev, puntos: nuevosPuntos }))
+        setMensaje({ tipo: '', texto: '' });
+      }, 1500)
+
+    } catch (err) {
+      console.error(err);
+      setMensaje({ tipo: 'error', texto: 'ERROR AL PROCESAR EL AJUSTE' })
+    } finally {
+      setCargando(false)
+    }
+  }
+
   return (
     <main className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10 font-sans">
       
@@ -385,7 +441,7 @@ export default function EscanerTrabajadores() {
               </div>
             </div>
 
-            {/* Botón de Acción Masivo */}
+            {/* Botones de Acción */}
             {coupon ? (
               <button 
                 onClick={manejarAccionVIP}
@@ -395,21 +451,57 @@ export default function EscanerTrabajadores() {
                 🎁 CANJEAR CUPÓN: {coupon.codigo_cupon}
               </button>
             ) : cliente.puntos >= 10 ? (
-              <button 
-                onClick={manejarAccionVIP}
-                disabled={cargando}
-                className="w-full bg-gradient-to-r from-green-600 to-green-800 text-white py-5 rounded-2xl font-black text-sm uppercase shadow-[0_8px_30px_rgba(34,197,94,0.4)] active:scale-95 transition-all tracking-[0.2em] flex items-center justify-center gap-2"
-              >
-                🏆 CANJEAR PREMIO
-              </button>
+              <div className="space-y-4 w-full">
+                <button 
+                  onClick={manejarAccionVIP}
+                  disabled={cargando}
+                  className="w-full bg-gradient-to-r from-green-600 to-green-800 text-white py-5 rounded-2xl font-black text-sm uppercase shadow-[0_8px_30px_rgba(34,197,94,0.4)] active:scale-95 transition-all tracking-[0.2em] flex items-center justify-center gap-2"
+                >
+                  🏆 CANJEAR PREMIO
+                </button>
+                <div className="flex gap-3">
+                  <button 
+                    onClick={() => manejarAjusteSello(-1)}
+                    disabled={cargando || cliente.puntos === 0}
+                    className="flex-1 bg-zinc-900 border border-zinc-800 hover:bg-zinc-850 text-red-400 font-bold py-3.5 rounded-xl text-xs uppercase tracking-wider transition-all disabled:opacity-40"
+                  >
+                    ➖ Quitar Sello
+                  </button>
+                  <button 
+                    onClick={() => manejarAjusteSello(1)}
+                    disabled={cargando || cliente.puntos >= 10}
+                    className="flex-1 bg-zinc-900 border border-zinc-800 hover:bg-zinc-850 text-green-400 font-bold py-3.5 rounded-xl text-xs uppercase tracking-wider transition-all disabled:opacity-40"
+                  >
+                    ➕ Sumar Sello
+                  </button>
+                </div>
+              </div>
             ) : (
-              <button 
-                onClick={manejarAccionVIP}
-                disabled={cargando}
-                className="btn-primary w-full"
-              >
-                + APLICAR SELLO
-              </button>
+              <div className="space-y-4 w-full">
+                <button 
+                  onClick={() => manejarAjusteSello(1)}
+                  disabled={cargando}
+                  className="btn-primary w-full py-5 rounded-2xl font-black text-sm uppercase tracking-widest flex items-center justify-center gap-2 shadow-[0_8px_30px_rgba(185,28,28,0.3)]"
+                >
+                  ➕ APLICAR SELLO
+                </button>
+                <div className="flex gap-3">
+                  <button 
+                    onClick={() => manejarAjusteSello(-1)}
+                    disabled={cargando || cliente.puntos === 0}
+                    className="flex-1 bg-[#121212] border border-zinc-850 hover:bg-zinc-800 text-red-400 hover:text-red-300 font-bold py-3 rounded-xl text-xs uppercase tracking-wider transition-all disabled:opacity-40 flex items-center justify-center gap-1"
+                  >
+                    ➖ Quitar Sello
+                  </button>
+                  <button 
+                    onClick={() => manejarAjusteSello(1)}
+                    disabled={cargando}
+                    className="flex-1 bg-[#121212] border border-zinc-850 hover:bg-zinc-800 text-green-400 hover:text-green-300 font-bold py-3 rounded-xl text-xs uppercase tracking-wider transition-all disabled:opacity-40 flex items-center justify-center gap-1"
+                  >
+                    ➕ Sello Extra
+                  </button>
+                </div>
+              </div>
             )}
             
             <button 

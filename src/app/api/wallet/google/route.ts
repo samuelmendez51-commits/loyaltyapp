@@ -12,6 +12,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Falta el ID del cliente' }, { status: 400 })
     }
 
+    const businessName = body.business_name || "Mi Negocio VIP"
+    const businessLogo = body.business_logo || "✨"
+
     // 1. LEEMOS CREDENCIALES
     const issuerId = process.env.GOOGLE_WALLET_ISSUER_ID
     const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL
@@ -20,7 +23,7 @@ export async function POST(req: Request) {
     if (!issuerId || !privateKey || !clientEmail) {
       console.warn("⚠️ API Google Wallet: Faltan credenciales. Simulando...")
       return NextResponse.json({ 
-        url: `https://pay.google.com/gp/v/save/simulacion_modo_desarrollo_cliente_${id}` 
+        url: `/google-wallet-simulacion?id=${id}&nombre=${encodeURIComponent(nombre)}&puntos=${puntos}&business_name=${encodeURIComponent(businessName)}&business_logo=${encodeURIComponent(businessLogo)}` 
       })
     }
 

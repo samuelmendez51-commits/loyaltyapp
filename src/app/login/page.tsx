@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { Eye, EyeOff } from 'lucide-react'
 
 export default function LoginPage() {
   const [modo, setModo] = useState<'email' | 'pin' | 'registro'>('email')
@@ -9,6 +10,7 @@ export default function LoginPage() {
   // Login
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [pin, setPin] = useState('')
   const [recordarme, setRecordarme] = useState(false)
   const [cargando, setCargando] = useState(false)
@@ -19,16 +21,41 @@ export default function LoginPage() {
   const [regNombre, setRegNombre] = useState('')
   const [regEmail, setRegEmail] = useState('')
   const [regPin, setRegPin] = useState('')
+  const [showRegPin, setShowRegPin] = useState(false)
   const [regNegocio, setRegNegocio] = useState('')
   const [regSlug, setRegSlug] = useState('')
 
-  // Capturar evento de PWA
+  const [subdomainBranding, setSubdomainBranding] = useState<{ nombre: string; logo: string } | null>(null)
+  
+  // Capturar evento de PWA y jalar Branding de Subdominio
   useEffect(() => {
     const handlePrompt = (e: any) => {
       e.preventDefault()
       setInstallPrompt(e)
     }
     window.addEventListener('beforeinstallprompt', handlePrompt)
+
+    if (typeof window !== 'undefined') {
+      const host = window.location.hostname
+      const parts = host.split('.')
+      if (parts.length > 2 && parts[0] !== 'www' && parts[0] !== 'localhost') {
+        const slug = parts[0]
+        supabase
+          .from('businesses')
+          .select('nombre, logo_url')
+          .eq('slug', slug)
+          .maybeSingle()
+          .then(({ data }) => {
+            if (data) {
+              setSubdomainBranding({
+                nombre: data.nombre,
+                logo: data.logo_url || '✨'
+              })
+            }
+          })
+      }
+    }
+
     return () => window.removeEventListener('beforeinstallprompt', handlePrompt)
   }, [])
 
@@ -43,13 +70,11 @@ export default function LoginPage() {
   }
 
   const obtenerRedireccionUrl = (rol: string, slug: string) => {
-    // Si viene un redireccionamiento explícito en la URL
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search)
       const redirect = urlParams.get('redirect')
       if (redirect) return redirect
     }
-    
     if (rol === 'superadmin') return '/superadmin'
     if (rol === 'admin_comercio') return slug ? `/${slug}/dashboard` : '/dashboard'
     return '/escaner'
@@ -62,7 +87,6 @@ export default function LoginPage() {
     setError('')
 
     try {
-      // Verificar superadmin
       if (email === (process.env.NEXT_PUBLIC_SUPERADMIN_EMAIL || 'superadmin@loyaltyapp.com') 
           && password === '0000') {
         setCookies('superadmin', 'Super Admin', '', '', 'root')
@@ -72,7 +96,6 @@ export default function LoginPage() {
         return
       }
 
-      // Buscar en business_users
       const { data, error: dbError } = await supabase
         .from('business_users')
         .select('*, businesses(nombre, slug, estado, fecha_vencimiento), branches(nombre)')
@@ -96,14 +119,7 @@ export default function LoginPage() {
         return
       }
 
-      setCookies(
-        data.rol,
-        data.nombre,
-        data.business_id,
-        data.branch_id || '',
-        data.id
-      )
-
+      setCookies(data.rol, data.nombre, data.business_id, data.branch_id || '', data.id)
       const target = obtenerRedireccionUrl(data.rol, biz?.slug || '')
       setTimeout(() => { window.location.href = target }, 300)
       setCargando(false)
@@ -119,7 +135,6 @@ export default function LoginPage() {
     setError('')
 
     try {
-      // SuperAdmin PIN
       if (pinIngresado === '0000') {
         setCookies('superadmin', 'Super Admin', '', '', 'root')
         const target = obtenerRedireccionUrl('superadmin', '')
@@ -161,14 +176,11 @@ export default function LoginPage() {
     }
   }
 
-  // ── MOTORES: Registro SaaS Self-Service ────────────────────────────────────
   const registrarNegocioSaaS = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!regNombre.trim() || !regEmail.trim() || !regPin.trim() || !regNegocio.trim() || !regSlug.trim()) {
       return setError('Llene todos los campos del registro')
     }
-    
-    // Política de contraseñas: Mínimo 6 caracteres, máximo 16. Sin más validaciones.
     if (regPin.trim().length < 6 || regPin.trim().length > 16) {
       return setError('La contraseña debe tener entre 6 y 16 caracteres')
     }
@@ -179,7 +191,6 @@ export default function LoginPage() {
     try {
       const slugFormateado = regSlug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '')
       
-      // Validar si el slug ya existe
       const { data: existente } = await supabase
         .from('businesses')
         .select('id')
@@ -190,9 +201,8 @@ export default function LoginPage() {
         throw new Error('La página / subdominio de negocio ya está ocupado por otra marca')
       }
 
-      // 1. Crear el Negocio (Demo Premium Anual con 12 créditos iniciales de regalo)
       const fin = new Date()
-      fin.setDate(fin.getDate() + 365) // 1 año gratis
+      fin.setDate(fin.getDate() + 365)
 
       const { data: biz, error: errBiz } = await supabase
         .from('businesses')
@@ -207,7 +217,7 @@ export default function LoginPage() {
           creditos_usados: 12,
           fecha_vencimiento: fin.toISOString(),
           es_demo: false,
-          latitude: 19.421583, // Coordenadas demo iniciales
+          latitude: 19.421583,
           longitude: -102.067222,
           mensaje_push: '¡Estás cerca de tu premio! Pasa por tus sellos VIP.'
         })
@@ -216,7 +226,6 @@ export default function LoginPage() {
 
       if (errBiz || !biz) throw errBiz || new Error('No se pudo registrar el comercio')
 
-      // 2. Crear el Usuario Administrador en business_users
       const { data: user, error: errUser } = await supabase
         .from('business_users')
         .insert({
@@ -232,7 +241,6 @@ export default function LoginPage() {
 
       if (errUser || !user) throw errUser || new Error('No se pudo registrar la cuenta admin')
 
-      // 3. Crear Categoría inicial "General" por defecto para su menú digital
       await supabase.from('menu_groups').insert({
         business_id: biz.id,
         nombre: 'General',
@@ -240,23 +248,20 @@ export default function LoginPage() {
         orden: 1
       })
 
-      // 4. Asentar transacciones de créditos para control de auditoría
       await supabase.from('credit_transactions').insert({
         business_id: biz.id,
         tipo: 'demo',
         creditos: 12,
         meses: 12,
         monto_mxn: 0,
-        notes: 'Regalo de Onboarding SaaS: 12 créditos (1 año de servicio gratis)',
+        notas: 'Regalo de Onboarding SaaS: 12 créditos (1 año de servicio gratis)',
         creado_por: 'self_onboarding'
       })
 
-      // 5. Iniciar sesión automáticamente
       setCookies('admin_comercio', user.nombre, biz.id, '', user.id)
       
       alert(`🎉 ¡Negocio registrado con éxito absoluto!\nPágina creada en: loyaltyapp.vercel.app/${slugFormateado}`)
       
-      // Redirigir a su nuevo dashboard dinámico
       setTimeout(() => {
         window.location.href = `/${slugFormateado}/dashboard`
       }, 300)
@@ -284,11 +289,23 @@ export default function LoginPage() {
       <div className="w-full max-w-md relative z-10 space-y-6">
         {/* Logo / Branding */}
         <div className="text-center">
-          <div className="w-20 h-20 bg-gradient-to-br from-red-600 to-red-900 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-[0_0_40px_rgba(239,68,68,0.25)] border border-red-500/20 animate-pulse" style={{ animationDuration: '4s' }}>
-            <span className="text-4xl">🌯</span>
+          <div className="w-20 h-20 bg-gradient-to-br from-zinc-800 to-zinc-950 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-[0_0_40px_rgba(255,255,255,0.05)] border border-zinc-700/20 overflow-hidden">
+            {subdomainBranding?.logo ? (
+              subdomainBranding.logo.startsWith('http') || subdomainBranding.logo.startsWith('/') || subdomainBranding.logo.startsWith('data:') ? (
+                <img src={subdomainBranding.logo} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-4xl">{subdomainBranding.logo}</span>
+              )
+            ) : (
+              <span className="text-4xl">✨</span>
+            )}
           </div>
-          <h1 className="text-4xl font-black text-white font-sans tracking-tighter italic">LoyaltyApp</h1>
-          <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-black mt-2">SaaS de Fidelización Multi-Tenant · V8</p>
+          <h1 className="text-4xl font-black text-white font-sans tracking-tighter italic">
+            {subdomainBranding?.nombre || 'LoyaltyApp'}
+          </h1>
+          <p className="text-[10px] text-zinc-550 uppercase tracking-widest font-black mt-2">
+            {subdomainBranding?.nombre ? `Panel de Acceso de ${subdomainBranding.nombre}` : 'SaaS de Fidelización Multi-Tenant · V12'}
+          </p>
         </div>
 
         {/* Selector de modo */}
@@ -332,16 +349,26 @@ export default function LoginPage() {
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] text-zinc-550 uppercase tracking-widest font-black block">Contraseña / PIN</label>
-                <input
-                  id="current-password"
-                  type="password"
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  className="w-full bg-black/50 border border-zinc-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-red-600 transition-colors"
-                  placeholder="••••••••"
-                  required
-                />
+                <div className="relative">
+                  <input
+                    id="current-password"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    className="w-full bg-black/50 border border-zinc-800 rounded-xl px-4 py-3 pr-12 text-white text-sm focus:outline-none focus:border-red-600 transition-colors"
+                    placeholder="••••••••"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors"
+                    tabIndex={-1}
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
               </div>
 
               <label className="flex items-center gap-3 cursor-pointer group">
@@ -450,15 +477,25 @@ export default function LoginPage() {
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[9px] text-zinc-500 uppercase font-black block">Contraseña (6-16 chars)</label>
-                  <input
-                    type="password"
-                    maxLength={16}
-                    value={regPin}
-                    onChange={e => setRegPin(e.target.value)}
-                    className="w-full bg-black/50 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-red-600 transition-colors"
-                    placeholder="Mín. 6 caracteres"
-                    required
-                  />
+                  <div className="relative">
+                    <input
+                      type={showRegPin ? 'text' : 'password'}
+                      maxLength={16}
+                      value={regPin}
+                      onChange={e => setRegPin(e.target.value)}
+                      className="w-full bg-black/50 border border-zinc-800 rounded-xl px-3 py-2.5 pr-10 text-xs text-white focus:outline-none focus:border-red-600 transition-colors"
+                      placeholder="Mín. 6 caracteres"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowRegPin(!showRegPin)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors"
+                      tabIndex={-1}
+                    >
+                      {showRegPin ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -521,7 +558,7 @@ export default function LoginPage() {
         )}
 
         <p className="text-center text-zinc-700 text-[9px] uppercase tracking-widest">
-          LoyaltyApp Enterprise · SaaS Multi-Tenant V8
+          LoyaltyApp Enterprise · SaaS Multi-Tenant V10
         </p>
       </div>
     </main>
