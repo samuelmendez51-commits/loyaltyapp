@@ -14,8 +14,26 @@ import {
   ShieldCheck,
   ChevronLeft,
   ChevronRight,
-  Download
+  Download,
+  Key,
+  Eye,
+  EyeOff,
+  Copy,
+  Check,
+  Trash2,
+  Play
 } from 'lucide-react'
+
+// ── Interfaces ─────────────────────────────────────────────────────────────
+interface BusinessUser {
+  id: string
+  business_id: string
+  nombre: string
+  email: string
+  pin: string
+  rol: string
+  activo: boolean
+}
 
 interface Business {
   id: string
@@ -33,6 +51,7 @@ interface Business {
   latitude: number
   longitude: number
   created_at: string
+  business_users?: BusinessUser[]
 }
 
 interface CreditTransaction {
@@ -50,7 +69,7 @@ interface CreditTransaction {
   }
 }
 
-// ── Componente: Contador regresivo ─────────────────────────────────────────
+// ── Componente: Contador regresivo premium ─────────────────────────────────
 function Countdown({ fechaVencimiento }: { fechaVencimiento: string }) {
   const [tiempo, setTiempo] = useState('')
   const [critico, setCritico] = useState(false)
@@ -74,25 +93,65 @@ function Countdown({ fechaVencimiento }: { fechaVencimiento: string }) {
   }, [fechaVencimiento])
 
   return (
-    <span className={`font-mono text-xs font-black ${critico ? 'text-red-400 animate-pulse' : 'text-zinc-400'}`}>
+    <span className={`font-mono text-xs font-bold ${critico ? 'text-red-650 animate-pulse' : 'text-[#71717a]'}`}>
       {tiempo}
     </span>
   )
 }
 
-// ── Componente: LED de estado ──────────────────────────────────────────────
+// ── Componente: LED de estado limpio ──────────────────────────────────────────
 function StatusLED({ estado, bloqueado }: { estado: string; bloqueado: boolean }) {
-  if (bloqueado) return <span className="w-2.5 h-2.5 rounded-full bg-zinc-650 inline-block shadow-sm" title="Bloqueado" />
+  if (bloqueado) return <span className="w-2.5 h-2.5 rounded-full bg-zinc-400 inline-block shadow-sm" title="Bloqueado" />
   const colores: Record<string, string> = {
-    activo: 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.8)]',
-    demo: 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]',
-    vencido: 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]',
-    bloqueado: 'bg-zinc-650',
+    activo: 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]',
+    demo: 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.4)]',
+    vencido: 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]',
+    bloqueado: 'bg-zinc-400',
   }
-  return <span className={`w-2.5 h-2.5 rounded-full inline-block ${colores[estado] || 'bg-zinc-600'}`} />
+  return <span className={`w-2.5 h-2.5 rounded-full inline-block ${colores[estado] || 'bg-zinc-300'}`} />
 }
 
-// ── Componente: Menú de acción flotante ────────────────────────────────────
+// ── Componente: Fila de Credencial (Ver/Ocultar/Copiar PIN) ─────────────────
+function CredentialRow({ email, pin }: { email: string; pin: string }) {
+  const [reveal, setReveal] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(pin)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div className="space-y-1 text-xs">
+      <div className="flex items-center gap-1.5 text-[#52525b]">
+        <span className="font-semibold select-all">{email}</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] uppercase font-bold tracking-wider text-[#a1a1aa] shrink-0 font-mono">PIN / Clave:</span>
+        <span className="font-mono font-bold text-[#09090b] text-xs">
+          {reveal ? pin : '••••••••'}
+        </span>
+        <button
+          onClick={() => setReveal(!reveal)}
+          className="text-[#a1a1aa] hover:text-[#52525b] transition-colors p-0.5"
+          title={reveal ? "Ocultar clave" : "Mostrar clave"}
+        >
+          {reveal ? <EyeOff size={13} /> : <Eye size={13} />}
+        </button>
+        <button
+          onClick={handleCopy}
+          className="text-[#a1a1aa] hover:text-[#52525b] transition-colors p-0.5"
+          title="Copiar contraseña"
+        >
+          {copied ? <Check size={13} className="text-green-600" /> : <Copy size={13} />}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Componente: Menú de acción flotante (Clean Canvas) ─────────────────────
 function ActionMenu({
   business,
   onRenovar,
@@ -123,33 +182,33 @@ function ActionMenu({
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 transition-colors flex items-center justify-center text-zinc-400 hover:text-white text-xs font-bold"
+        className="w-8 h-8 rounded-lg bg-white border border-[#e4e4e7] hover:bg-[#fafafa] transition-colors flex items-center justify-center text-[#71717a] hover:text-[#09090b] text-sm font-black"
       >
         ⋮
       </button>
       {open && (
-        <div className="absolute left-8 top-0 z-50 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl overflow-hidden min-w-[180px] animate-in fade-in zoom-in-95 duration-100">
+        <div className="absolute left-8 top-0 z-50 bg-white border border-[#e4e4e7] rounded-xl shadow-xl overflow-hidden min-w-[190px] py-1 animate-in fade-in zoom-in-95 duration-100">
           <button
             onClick={() => { onImpersonar(); setOpen(false) }}
-            className="w-full px-4 py-2.5 text-left text-xs font-bold text-purple-450 hover:bg-zinc-900 hover:text-purple-300 transition-colors flex items-center gap-2 border-b border-zinc-900"
+            className="w-full px-4 py-2.5 text-left text-xs font-bold text-purple-650 hover:bg-purple-50 transition-colors flex items-center gap-2 border-b border-[#f4f4f5]"
           >
-            🎭 Impersonar
+            <Play size={13} className="fill-purple-650" /> Impersonar
           </button>
           <button
             onClick={() => { onHistorial(); setOpen(false) }}
-            className="w-full px-4 py-2.5 text-left text-xs font-bold text-zinc-350 hover:bg-zinc-900 hover:text-white transition-colors flex items-center gap-2 border-b border-zinc-900"
+            className="w-full px-4 py-2.5 text-left text-xs font-bold text-[#52525b] hover:bg-[#fafafa] hover:text-[#09090b] transition-colors flex items-center gap-2 border-b border-[#f4f4f5]"
           >
             📋 Ver Historial
           </button>
           <button
             onClick={() => { onRenovar(); setOpen(false) }}
-            className="w-full px-4 py-2.5 text-left text-xs font-bold text-green-450 hover:bg-zinc-900 hover:text-green-300 transition-colors flex items-center gap-2 border-b border-zinc-900"
+            className="w-full px-4 py-2.5 text-left text-xs font-bold text-green-650 hover:bg-green-50 transition-colors flex items-center gap-2 border-b border-[#f4f4f5]"
           >
             🔄 Renovar Susc.
           </button>
           <button
             onClick={() => { onEditar(); setOpen(false) }}
-            className="w-full px-4 py-2.5 text-left text-xs font-bold text-blue-450 hover:bg-zinc-900 hover:text-blue-300 transition-colors flex items-center gap-2 border-b border-zinc-900"
+            className="w-full px-4 py-2.5 text-left text-xs font-bold text-blue-650 hover:bg-blue-50 transition-colors flex items-center gap-2 border-b border-[#f4f4f5]"
           >
             ✏️ Editar / Ajustar
           </button>
@@ -157,8 +216,8 @@ function ActionMenu({
             onClick={() => { onToggleBloqueo(); setOpen(false) }}
             className={`w-full px-4 py-2.5 text-left text-xs font-bold transition-colors flex items-center gap-2 ${
               business.bloqueado_manual
-                ? 'text-green-400 hover:bg-zinc-900'
-                : 'text-red-400 hover:bg-zinc-900'
+                ? 'text-green-650 hover:bg-green-50'
+                : 'text-red-650 hover:bg-red-50'
             }`}
           >
             {business.bloqueado_manual ? '🔓 Desbloquear' : '🚫 Bloquear Acceso'}
@@ -206,10 +265,10 @@ export default function SuperAdminPage() {
   const cargar = async () => {
     setCargando(true)
     try {
-      // 1. Cargar negocios
+      // 1. Cargar negocios y sus usuarios asociados (para jalar PIN/Contraseña)
       const { data: bizData } = await supabase
         .from('businesses')
-        .select('*')
+        .select('*, business_users(*)')
         .order('created_at', { ascending: false })
       if (bizData) setBusinesses(bizData as Business[])
 
@@ -273,7 +332,7 @@ export default function SuperAdminPage() {
 
       if (errBiz || !biz) throw errBiz || new Error('Error al registrar el negocio')
 
-      // 2. Crear administrador de comercio
+      // 2. Crear administrador de comercio en business_users
       const { error: errUser } = await supabase
         .from('business_users')
         .insert({
@@ -287,7 +346,7 @@ export default function SuperAdminPage() {
 
       if (errUser) throw errUser
 
-      // 3. Registrar transacción
+      // 3. Registrar transacción en ledger
       await supabase.from('credit_transactions').insert({
         business_id: biz.id,
         tipo: nuevoBiz.plan === 'demo' ? 'demo' : 'renovacion',
@@ -343,15 +402,10 @@ export default function SuperAdminPage() {
   }
 
   const impersonar = async (b: Business) => {
-    const { data: user } = await supabase
-      .from('business_users')
-      .select('*')
-      .eq('business_id', b.id)
-      .eq('rol', 'admin_comercio')
-      .maybeSingle()
-
-    const userId = user?.id || 'root'
-    const userNombre = user?.nombre || b.owner_name || 'Administrador'
+    // Buscar la cuenta admin vinculada
+    const adminUser = b.business_users?.find(u => u.rol === 'admin_comercio')
+    const userId = adminUser?.id || 'root'
+    const userNombre = adminUser?.nombre || b.owner_name || 'Administrador'
 
     const base = `; path=/; SameSite=Strict`
     document.cookie = `session_rol=admin_comercio${base}`
@@ -359,7 +413,7 @@ export default function SuperAdminPage() {
     document.cookie = `session_business_id=${b.id}${base}`
     document.cookie = `session_user_id=${userId}${base}`
 
-    alert(`🎭 Impersonación Exitosa (Soporte Técnico)\nCargando entorno de mostrador de: ${b.nombre}`)
+    alert(`🎭 Soporte Técnico - Impersonación Exitosa\nAccediendo al entorno de mostrador de: ${b.nombre}`)
     window.location.href = '/dashboard'
   }
 
@@ -378,7 +432,7 @@ export default function SuperAdminPage() {
     (b.owner_name || '').toLowerCase().includes(busqueda.toLowerCase())
   )
 
-  // KPIs dinámicos calculados a través del Ledger SQL de transacciones
+  // KPIs calculados
   const activos = businesses.filter(b => b.estado === 'activo' && !b.bloqueado_manual).length
   const demos = businesses.filter(b => b.estado === 'demo').length
   const proximosVencer = businesses.filter(b => {
@@ -386,7 +440,7 @@ export default function SuperAdminPage() {
     return diff > 0 && diff < 7 * 86400000
   }).length
 
-  // Métricas financieras a partir del Ledger real
+  // Métricas financieras
   const totalIngresosHistorial = transactions.reduce((acc, tx) => acc + Number(tx.monto_mxn || 0), 0)
   
   const limite30Dias = new Date()
@@ -406,30 +460,30 @@ export default function SuperAdminPage() {
   ] as const
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white flex font-sans">
+    <div className="min-h-screen bg-[#fafafa] text-[#09090b] flex font-sans">
       
-      {/* ── SIDEBAR DE NAVEGACIÓN LATERAL (ESTILO TRIAL MERCHANT DASHBOARD) ── */}
-      <aside className={`bg-[#0c0c0c] border-r border-zinc-900 transition-all duration-300 flex flex-col justify-between z-30 shrink-0 sticky top-0 h-screen ${
+      {/* ── BARRA LATERAL (SIDEBAR DE NAVEGACIÓN ESTILO MERCHANT DASHBOARD) ── */}
+      <aside className={`bg-white border-r border-[#e4e4e7] transition-all duration-300 flex flex-col justify-between z-30 shrink-0 sticky top-0 h-screen shadow-[1px_0_0_#e4e4e7] ${
         sidebarExpanded ? 'w-64' : 'w-20'
       }`}>
         <div className="flex flex-col">
           {/* Logo Superior */}
-          <div className="h-20 border-b border-zinc-900 flex items-center justify-between px-5">
+          <div className="h-20 border-b border-[#e4e4e7] flex items-center justify-between px-5">
             <div className="flex items-center gap-3 overflow-hidden">
-              <div className="w-9 h-9 bg-gradient-to-br from-purple-700 to-purple-900 rounded-xl flex items-center justify-center shadow-lg shadow-purple-950/20 shrink-0">
+              <div className="w-9 h-9 bg-[#dc2626] rounded-xl flex items-center justify-center shadow-md shadow-red-900/10 shrink-0">
                 <span className="text-lg">👑</span>
               </div>
               {sidebarExpanded && (
-                <span className="font-serif font-black tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-fuchsia-300">
+                <span className="font-bold text-[#09090b] text-sm tracking-tight truncate">
                   LoyaltyApp
                 </span>
               )}
             </div>
             <button 
               onClick={() => setSidebarExpanded(!sidebarExpanded)} 
-              className="text-zinc-500 hover:text-white transition-colors"
+              className="text-[#a1a1aa] hover:text-[#52525b] transition-colors"
             >
-              {sidebarExpanded ? <ChevronLeft className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+              {sidebarExpanded ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
             </button>
           </div>
 
@@ -444,11 +498,11 @@ export default function SuperAdminPage() {
                   onClick={() => setPestaña(tab.id)}
                   className={`w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-200 ${
                     isSelected 
-                      ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20 shadow-inner' 
-                      : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200 border border-transparent'
+                      ? 'bg-[#fef2f2] text-[#dc2626] border border-red-100 shadow-inner' 
+                      : 'text-[#71717a] hover:bg-[#fafafa] hover:text-[#09090b] border border-transparent'
                   }`}
                 >
-                  <TabIcon className={`w-5 h-5 shrink-0 ${isSelected ? 'text-purple-400' : 'text-zinc-500'}`} />
+                  <TabIcon className={`w-5 h-5 shrink-0 ${isSelected ? 'text-[#dc2626]' : 'text-[#a1a1aa]'}`} />
                   {sidebarExpanded && <span>{tab.label.split(' ').slice(1).join(' ') || tab.label}</span>}
                 </button>
               )
@@ -457,10 +511,10 @@ export default function SuperAdminPage() {
         </div>
 
         {/* Footer Sidebar */}
-        <div className="p-4 border-t border-zinc-900">
+        <div className="p-4 border-t border-[#e4e4e7]">
           {sidebarExpanded && (
-            <p className="text-center text-zinc-700 text-[9px] uppercase tracking-widest mt-1 font-mono">
-              LoyaltyApp v12 · SaaS Master
+            <p className="text-center text-[#a1a1aa] text-[9px] uppercase tracking-widest mt-1 font-mono">
+              LoyaltyApp v14 · SaaS Master
             </p>
           )}
         </div>
@@ -470,102 +524,105 @@ export default function SuperAdminPage() {
       <div className="flex-1 flex flex-col min-w-0">
         
         {/* Cabecera Superior Fija */}
-        <header className="h-20 border-b border-zinc-900 bg-[#0c0c0c]/85 backdrop-blur-md sticky top-0 z-20 px-6 sm:px-8 flex items-center justify-between">
+        <header className="h-20 border-b border-[#e4e4e7] bg-white sticky top-0 z-20 px-6 sm:px-8 flex items-center justify-between shadow-[0_1px_0_#e4e4e7]">
           <div className="min-w-0">
-            <h1 className="text-xl sm:text-2xl font-serif font-black truncate">
+            <h1 className="text-lg font-bold text-[#09090b] flex items-center gap-2">
               {pestaña === 'metricas' ? 'Métricas & KPIs' : pestaña === 'negocios' ? 'Gestión de Tenants' : 'Ajustes Centrales'}
-              <span className="ml-2.5 text-xs font-sans font-bold uppercase tracking-widest text-purple-450">
-                SaaS Control Center
+              <span className="text-xs font-semibold uppercase tracking-widest text-[#dc2626] bg-[#fef2f2] border border-red-100 px-2 py-0.5 rounded-full">
+                SaaS Center
               </span>
             </h1>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             {pestaña === 'negocios' && (
               <button
                 onClick={() => setModalRegistrar(true)}
-                className="bg-gradient-to-r from-purple-700 to-purple-900 text-white font-black px-5 py-3 rounded-xl text-xs uppercase tracking-widest hover:brightness-110 transition-all shadow-[0_0_20px_rgba(168,85,247,0.3)]"
+                className="btn-primary py-2.5 px-4 text-xs font-bold uppercase tracking-wider shadow-sm"
               >
                 ➕ Registrar Negocio
               </button>
             )}
             <button
               onClick={cerrarSesion}
-              className="bg-red-955/20 hover:bg-red-955/40 border border-red-900/30 rounded-xl px-4 py-2.5 text-xs font-bold text-red-400 hover:text-red-300 transition-all flex items-center gap-2"
+              className="border border-[#e4e4e7] text-[#52525b] hover:text-red-650 hover:bg-red-50 hover:border-red-200 transition-all rounded-xl px-4 py-2.5 text-xs font-bold flex items-center gap-2"
             >
-              <LogOut className="w-4 h-4 shrink-0" />
+              <LogOut className="w-4 h-4 shrink-0 text-red-600" />
               Cerrar Sesión
             </button>
           </div>
         </header>
 
         {/* Cuerpo del Contenido */}
-        <main className="flex-1 overflow-y-auto p-6 sm:p-10 relative">
-          {/* Luz Púrpura de fondo */}
-          <div className="fixed top-[-10%] right-[-10%] w-[500px] h-[500px] bg-purple-900/5 rounded-full blur-[200px] pointer-events-none z-0" />
-
-          <div className="max-w-[1200px] mx-auto space-y-8 relative z-10">
+        <main className="flex-1 overflow-y-auto p-6 sm:p-8 bg-[#fafafa]">
+          <div className="max-w-[1200px] mx-auto space-y-6">
             
             {/* ────────────────── TAB: MÈTRICAS ────────────────── */}
             {pestaña === 'metricas' && (
-              <div className="space-y-8 animate-in fade-in duration-200">
+              <div className="space-y-6 animate-fadeIn">
                 {/* Grid de Tarjetas KPI */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   {[
-                    { label: 'Suscripciones Activas', valor: activos, sub: 'SaaS Activos en vivo', icono: ShieldCheck, color: 'text-green-400', bg: 'from-green-950/20 to-green-900/10', border: 'border-green-900/30' },
-                    { label: 'Créditos Totales Vendidos', valor: `${totalCreditosCargados} meses`, sub: 'Ledger de meses cargados', icono: TrendingUp, color: 'text-purple-400', bg: 'from-purple-950/20 to-purple-900/10', border: 'border-purple-900/30' },
-                    { label: 'Ingresos Históricos', valor: `$${totalIngresosHistorial.toLocaleString()} MXN`, sub: 'Recaudación real acumulada', icono: DollarSign, color: 'text-amber-450', bg: 'from-amber-950/20 to-amber-900/10', border: 'border-amber-900/30' },
-                    { label: 'Ingresos (Últimos 30 días)', valor: `$${ingresos30Dias.toLocaleString()} MXN`, sub: 'Facturación del mes corriente', icono: DollarSign, color: 'text-fuchsia-400', bg: 'from-fuchsia-950/20 to-fuchsia-900/10', border: 'border-fuchsia-900/30' },
+                    { label: 'Suscripciones Activas', valor: activos, sub: 'SaaS Activos en vivo', icono: ShieldCheck, color: 'text-green-600', border: 'border-green-100', bg: 'bg-white' },
+                    { label: 'Créditos Vendidos', valor: `${totalCreditosCargados} meses`, sub: 'Ledger de meses cargados', icono: TrendingUp, color: 'text-[#dc2626]', border: 'border-red-100', bg: 'bg-white' },
+                    { label: 'Ingresos Históricos', valor: `$${totalIngresosHistorial.toLocaleString()} MXN`, sub: 'Recaudación real acumulada', icono: DollarSign, color: 'text-amber-600', border: 'border-amber-100', bg: 'bg-white' },
+                    { label: 'Ingresos (Últimos 30 días)', valor: `$${ingresos30Dias.toLocaleString()} MXN`, sub: 'Facturación del mes corriente', icono: DollarSign, color: 'text-[#dc2626]', border: 'border-red-100', bg: 'bg-white' },
                   ].map((kpi, idx) => {
                     const Icon = kpi.icono
                     return (
-                      <div key={idx} className={`bg-gradient-to-br ${kpi.bg} border ${kpi.border} rounded-2xl p-5 relative overflow-hidden group`}>
+                      <div key={idx} className={`bg-white border border-[#e4e4e7] rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group`}>
                         <div className="flex justify-between items-start">
                           <div className="space-y-1">
-                            <p className="text-[9px] text-zinc-500 uppercase tracking-widest font-black">{kpi.label}</p>
-                            <p className={`text-2xl font-black ${kpi.color}`}>{kpi.valor}</p>
-                            <p className="text-[10px] text-zinc-400">{kpi.sub}</p>
+                            <p className="text-[10px] text-[#71717a] uppercase tracking-wider font-semibold">{kpi.label}</p>
+                            <p className={`text-2xl font-bold font-mono ${kpi.color}`}>{kpi.valor}</p>
+                            <p className="text-[11px] text-[#71717a]">{kpi.sub}</p>
                           </div>
-                          <Icon className={`w-8 h-8 ${kpi.color} opacity-40 shrink-0`} />
+                          <div className="w-10 h-10 rounded-xl bg-[#fafafa] flex items-center justify-center border border-[#e4e4e7]">
+                            <Icon className={`w-5 h-5 ${kpi.color} shrink-0`} />
+                          </div>
                         </div>
                       </div>
                     )
                   })}
                 </div>
 
-                {/* Métricas y Datos rápidos */}
+                {/* Estadísticas de soporte y ledger rápido */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <div className="bg-zinc-900/40 border border-zinc-900 rounded-2xl p-6 space-y-4">
-                    <h3 className="text-sm font-black uppercase text-zinc-355 tracking-wider">📊 Estadísticas de Tenants</h3>
+                  <div className="bg-white border border-[#e4e4e7] rounded-2xl p-6 shadow-sm space-y-4">
+                    <h3 className="text-xs font-bold uppercase text-[#09090b] tracking-wider flex items-center gap-1.5 border-b border-[#f4f4f5] pb-2.5">
+                      🏢 Estadísticas de Tenants
+                    </h3>
                     <div className="space-y-3">
                       <div className="flex justify-between items-center text-xs">
-                        <span className="text-zinc-500">Total Negocios Registrados:</span>
-                        <span className="text-white font-bold">{businesses.length}</span>
+                        <span className="text-[#71717a]">Total Negocios Registrados:</span>
+                        <span className="text-[#09090b] font-bold font-mono">{businesses.length}</span>
                       </div>
                       <div className="flex justify-between items-center text-xs">
-                        <span className="text-zinc-500">En periodo Demo (Gratis):</span>
-                        <span className="text-blue-400 font-bold">{demos}</span>
+                        <span className="text-[#71717a]">En periodo Demo (Gratis):</span>
+                        <span className="text-blue-600 font-bold font-mono">{demos}</span>
                       </div>
                       <div className="flex justify-between items-center text-xs">
-                        <span className="text-zinc-500">Vencen en ≤7 días:</span>
-                        <span className="text-red-400 font-bold">{proximosVencer} negocios</span>
+                        <span className="text-[#71717a]">Vencen en ≤7 días:</span>
+                        <span className="text-red-650 font-bold font-mono">{proximosVencer} negocios</span>
                       </div>
                     </div>
                   </div>
                   
-                  <div className="bg-zinc-900/40 border border-zinc-900 rounded-2xl p-6 space-y-4">
-                    <h3 className="text-sm font-black uppercase text-zinc-355 tracking-wider">🔒 Parámetros Globales</h3>
+                  <div className="bg-white border border-[#e4e4e7] rounded-2xl p-6 shadow-sm space-y-4">
+                    <h3 className="text-xs font-bold uppercase text-[#09090b] tracking-wider flex items-center gap-1.5 border-b border-[#f4f4f5] pb-2.5">
+                      ⚙️ Parámetros Globales
+                    </h3>
                     <div className="space-y-3">
                       <div className="flex justify-between items-center text-xs">
-                        <span className="text-zinc-500">Costo configurado por crédito:</span>
-                        <span className="text-amber-500 font-bold font-mono">${precioCredito} MXN / mes</span>
+                        <span className="text-[#71717a]">Costo configurado por crédito:</span>
+                        <span className="text-amber-600 font-bold font-mono">${precioCredito} MXN / mes</span>
                       </div>
                       <div className="flex justify-between items-center text-xs">
-                        <span className="text-zinc-500">Servicio de Notificaciones:</span>
-                        <span className="text-green-400 font-bold">Activo (WhatsApp Gateway)</span>
+                        <span className="text-[#71717a]">Servicio de Notificaciones:</span>
+                        <span className="text-green-600 font-bold">Activo (WhatsApp Gateway)</span>
                       </div>
                       <div className="flex justify-between items-center text-xs">
-                        <span className="text-zinc-500">Cargas demo totales en ledger:</span>
-                        <span className="text-blue-400 font-mono font-bold">
+                        <span className="text-[#71717a]">Cargas demo totales en ledger:</span>
+                        <span className="text-blue-600 font-mono font-bold">
                           {transactions.filter(tx => tx.tipo === 'demo').length} cargas
                         </span>
                       </div>
@@ -574,60 +631,60 @@ export default function SuperAdminPage() {
                 </div>
 
                 {/* Ledger de Transacciones Recientes */}
-                <div className="bg-[#0c0c0c] border border-zinc-900 rounded-2xl overflow-hidden shadow-2xl mt-8">
-                  <div className="p-6 border-b border-zinc-900 flex justify-between items-center">
-                    <h3 className="text-xs font-black text-zinc-300 uppercase tracking-widest">
+                <div className="bg-white border border-[#e4e4e7] rounded-2xl overflow-hidden shadow-sm mt-6">
+                  <div className="p-6 border-b border-[#e4e4e7] flex justify-between items-center bg-white">
+                    <h3 className="text-xs font-bold text-[#09090b] uppercase tracking-wider">
                       📊 Historial de Transacciones SaaS (Ledger)
                     </h3>
-                    <span className="text-[10px] text-purple-400 font-mono bg-purple-955/30 border border-purple-900/40 px-2.5 py-1 rounded-full uppercase font-black">
+                    <span className="text-[10px] text-red-600 font-mono bg-red-50 border border-red-200 px-2.5 py-1 rounded-full uppercase font-bold">
                       En vivo
                     </span>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
-                      <thead className="bg-black/40 border-b border-zinc-900">
+                      <thead className="bg-[#fafafa] border-b border-[#e4e4e7]">
                         <tr>
                           {['Fecha', 'Negocio', 'Concepto', 'Créditos', 'Monto (MXN)', 'Cargado Por'].map(h => (
-                            <th key={h} className="px-4 py-4 text-left text-zinc-500 font-black uppercase tracking-widest whitespace-nowrap">{h}</th>
+                            <th key={h} className="px-4 py-4 text-left text-[#71717a] font-bold uppercase tracking-wider whitespace-nowrap">{h}</th>
                           ))}
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-zinc-900">
+                      <tbody className="divide-y divide-[#e4e4e7]">
                         {transactions.slice(0, 10).map(tx => (
-                          <tr key={tx.id} className="hover:bg-white/5 transition-colors">
-                            <td className="px-4 py-4 font-mono text-zinc-400">
+                          <tr key={tx.id} className="hover:bg-[#fafafa] transition-colors">
+                            <td className="px-4 py-4 font-mono text-[#71717a]">
                               {new Date(tx.created_at).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })}
                             </td>
-                            <td className="px-4 py-4 font-bold text-white">
+                            <td className="px-4 py-4 font-bold text-[#09090b]">
                               {tx.businesses?.nombre || 'Negocio Registrado'}
                             </td>
                             <td className="px-4 py-4">
                               <div className="flex items-center gap-2">
-                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
-                                  tx.tipo === 'demo' ? 'bg-blue-955 text-blue-400 border border-blue-900/30' :
-                                  tx.tipo === 'renovacion' ? 'bg-green-955 text-green-400 border border-green-900/30' :
-                                  tx.tipo === 'compra' ? 'bg-purple-955 text-purple-450 border border-purple-900/30' :
-                                  'bg-zinc-850 text-zinc-400 border border-zinc-800'
+                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
+                                  tx.tipo === 'demo' ? 'bg-blue-50 text-blue-600 border border-blue-200' :
+                                  tx.tipo === 'renovacion' ? 'bg-green-50 text-green-600 border border-green-200' :
+                                  tx.tipo === 'compra' ? 'bg-purple-50 text-purple-600 border border-purple-200' :
+                                  'bg-zinc-50 text-zinc-600 border border-zinc-200'
                                 }`}>
                                   {tx.tipo}
                                 </span>
-                                <span className="text-zinc-500 text-[10px] font-medium">({tx.notas || 'Sin notas'})</span>
+                                <span className="text-[#71717a] text-[10px] font-medium">({tx.notas || 'Sin notas'})</span>
                               </div>
                             </td>
-                            <td className="px-4 py-4 font-bold text-zinc-300">
+                            <td className="px-4 py-4 font-bold text-[#52525b]">
                               +{tx.creditos} mes{tx.creditos !== 1 ? 'es' : ''}
                             </td>
-                            <td className="px-4 py-4 font-black font-mono text-amber-450">
+                            <td className="px-4 py-4 font-bold font-mono text-amber-600">
                               {tx.monto_mxn > 0 ? `$${Number(tx.monto_mxn).toLocaleString()} MXN` : 'Gratis (Demo)'}
                             </td>
-                            <td className="px-4 py-4 text-zinc-500 uppercase tracking-widest text-[9px] font-bold">
+                            <td className="px-4 py-4 text-[#71717a] uppercase tracking-wider text-[9px] font-semibold">
                               {tx.creado_por || 'system'}
                             </td>
                           </tr>
                         ))}
                         {transactions.length === 0 && (
                           <tr>
-                            <td colSpan={6} className="text-center py-12 text-zinc-600 uppercase font-black tracking-widest">
+                            <td colSpan={6} className="text-center py-12 text-[#71717a] uppercase font-bold tracking-wider">
                               No hay transacciones registradas en el ledger
                             </td>
                           </tr>
@@ -641,9 +698,9 @@ export default function SuperAdminPage() {
 
             {/* ────────────────── TAB: TENANTS SAAS ────────────────── */}
             {pestaña === 'negocios' && (
-              <div className="bg-[#0c0c0c] border border-zinc-900 rounded-2xl overflow-hidden shadow-2xl animate-in fade-in duration-200">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 p-6 border-b border-zinc-900">
-                  <h3 className="text-xs font-black text-zinc-300 uppercase tracking-widest">
+              <div className="bg-white border border-[#e4e4e7] rounded-2xl overflow-hidden shadow-sm animate-fadeIn">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 p-6 border-b border-[#e4e4e7]">
+                  <h3 className="text-xs font-bold text-[#09090b] uppercase tracking-wider">
                     Lista de Negocios Registrados ({businesses.length})
                   </h3>
                   <div className="relative w-full sm:w-64">
@@ -651,114 +708,119 @@ export default function SuperAdminPage() {
                       type="text"
                       value={busqueda}
                       onChange={e => setBusqueda(e.target.value)}
-                      placeholder="Buscar por negocio o dueño..."
-                      className="w-full bg-black/50 border border-zinc-800 rounded-xl pl-9 pr-4 py-2.5 text-xs text-white focus:outline-none focus:border-purple-600 font-medium"
+                      placeholder="Buscar negocio, dueño o email..."
+                      className="input-clean text-xs pl-9 py-2.5 focus:border-[#dc2626]"
                     />
-                    <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-3 top-3" />
+                    <Search className="w-4 h-4 text-[#a1a1aa] absolute left-3 top-3" />
                   </div>
                 </div>
 
                 {cargando ? (
                   <div className="flex justify-center py-16">
-                    <div className="w-8 h-8 border-2 border-zinc-850 border-t-purple-600 rounded-full animate-spin" />
+                    <div className="w-8 h-8 border-2 border-zinc-200 border-t-[#dc2626] rounded-full animate-spin" />
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
-                      <thead className="bg-black/40 border-b border-zinc-900">
+                      <thead className="bg-[#fafafa] border-b border-[#e4e4e7]">
                         <tr>
-                          {['Acc.', 'LED', 'Nombre / subdominio', 'Propietario', 'Plan', 'Vence en', 'Prohibir', 'Créditos'].map(h => (
-                            <th key={h} className="px-4 py-4 text-left text-zinc-500 font-black uppercase tracking-widest whitespace-nowrap">{h}</th>
+                          {['Acc.', 'LED', 'Nombre / subdominio', 'Credenciales de Acceso', 'Plan', 'Vence en', 'Bloqueado', 'Créditos'].map(h => (
+                            <th key={h} className="px-4 py-4 text-left text-[#71717a] font-bold uppercase tracking-wider whitespace-nowrap">{h}</th>
                           ))}
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-zinc-900">
-                        {filtrados.map(b => (
-                          <tr key={b.id} className="hover:bg-white/5 transition-colors group">
-                            {/* Acciones */}
-                            <td className="px-4 py-4">
-                              <ActionMenu
-                                business={b}
-                                onRenovar={() => setModalRenovar(b)}
-                                onHistorial={() => setModalHistorial(b)}
-                                onEditar={() => setModalEditar(b)}
-                                onToggleBloqueo={() => toggleBloqueo(b)}
-                                onImpersonar={() => impersonar(b)}
-                              />
-                            </td>
-                            {/* LED */}
-                            <td className="px-4 py-4">
-                              <StatusLED estado={b.estado} bloqueado={b.bloqueado_manual} />
-                            </td>
-                            {/* Nombre */}
-                            <td className="px-4 py-4">
-                              <p className="font-bold text-white text-sm group-hover:text-purple-400 transition-colors">{b.nombre}</p>
-                              <p className="text-zinc-500 font-mono">{b.slug}.loyaltyapp.com</p>
-                            </td>
-                            {/* Propietario */}
-                            <td className="px-4 py-4">
-                              <p className="text-zinc-300 font-bold">{b.owner_name || '—'}</p>
-                              <p className="text-zinc-500">{b.owner_email || '—'}</p>
-                            </td>
-                            {/* Plan */}
-                            <td className="px-4 py-4">
-                              <span className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase whitespace-nowrap ${
-                                b.es_demo ? 'bg-blue-955 text-blue-400 border border-blue-900/50' :
-                                b.plan === 'anual' ? 'bg-amber-955 text-amber-400 border border-amber-900/50' :
-                                'bg-zinc-900 text-zinc-400 border border-zinc-800'
-                              }`}>
-                                {b.es_demo ? '🎁 Demo 30 Días' : b.plan === 'anual' ? '⭐ Premium Anual' : `📦 ${b.plan}`}
-                              </span>
-                            </td>
-                            {/* Vigencia */}
-                            <td className="px-4 py-4">
-                              <p className="text-zinc-400 font-mono mb-0.5">
-                                {new Date(b.fecha_vencimiento).toLocaleDateString('es-MX')}
-                              </p>
-                              <Countdown fechaVencimiento={b.fecha_vencimiento} />
-                            </td>
-                            {/* Prohibir / Bloquear */}
-                            <td className="px-4 py-4">
-                              <button
-                                onClick={() => toggleBloqueo(b)}
-                                className={`px-3 py-1 rounded-full text-[9px] font-black uppercase border transition-all ${
-                                  b.bloqueado_manual
-                                    ? 'bg-red-955 text-red-400 border-red-900/50 hover:bg-red-900/50'
-                                    : 'bg-green-955 text-green-400 border-green-900/50 hover:bg-green-900/50'
-                                }`}
-                              >
-                                {b.bloqueado_manual ? 'SÍ' : 'NO'}
-                              </button>
-                            </td>
-                            {/* Créditos */}
-                            <td className="px-4 py-4">
-                              <div className="flex items-center gap-2">
-                                <div className="flex-1 h-1.5 bg-zinc-900 rounded-full overflow-hidden w-16 border border-zinc-800">
-                                  <div
-                                    className="h-full bg-gradient-to-r from-purple-650 to-purple-400 rounded-full transition-all"
-                                    style={{ width: `${b.creditos_totales > 0 ? (b.creditos_usados / b.creditos_totales) * 100 : 0}%` }}
-                                  />
-                                </div>
-                                <span className="text-zinc-400 font-mono font-bold">
-                                  {b.creditos_usados}/{b.creditos_totales}
+                      <tbody className="divide-y divide-[#e4e4e7]">
+                        {filtrados.map(b => {
+                          const adminUser = b.business_users?.find(u => u.rol === 'admin_comercio')
+                          const adminEmail = adminUser?.email || b.owner_email || '—'
+                          const adminPin = adminUser?.pin || '—'
+                          
+                          return (
+                            <tr key={b.id} className="hover:bg-[#fafafa] transition-colors group">
+                              {/* Acciones */}
+                              <td className="px-4 py-4">
+                                <ActionMenu
+                                  business={b}
+                                  onRenovar={() => setModalRenovar(b)}
+                                  onHistorial={() => setModalHistorial(b)}
+                                  onEditar={() => setModalEditar(b)}
+                                  onToggleBloqueo={() => toggleBloqueo(b)}
+                                  onImpersonar={() => impersonar(b)}
+                                />
+                              </td>
+                              {/* LED */}
+                              <td className="px-4 py-4">
+                                <StatusLED estado={b.estado} bloqueado={b.bloqueado_manual} />
+                              </td>
+                              {/* Nombre */}
+                              <td className="px-4 py-4">
+                                <p className="font-bold text-[#09090b] text-sm group-hover:text-[#dc2626] transition-colors">{b.nombre}</p>
+                                <p className="text-[#71717a] font-mono text-xs">loyaltyapp.vercel.app/{b.slug}</p>
+                              </td>
+                              {/* Credenciales de Acceso (REQUERIDO) */}
+                              <td className="px-4 py-4 min-w-[200px]">
+                                <CredentialRow email={adminEmail} pin={adminPin} />
+                              </td>
+                              {/* Plan */}
+                              <td className="px-4 py-4">
+                                <span className={`px-2.5 py-1 rounded-full text-[9px] font-bold uppercase whitespace-nowrap ${
+                                  b.es_demo ? 'bg-blue-50 text-blue-600 border border-blue-100' :
+                                  b.plan === 'anual' ? 'bg-amber-50 text-amber-600 border border-amber-100' :
+                                  'bg-zinc-50 text-zinc-600 border border-zinc-200'
+                                }`}>
+                                  {b.es_demo ? '🎁 Demo 30 Días' : b.plan === 'anual' ? '⭐ Premium Anual' : `📦 ${b.plan}`}
                                 </span>
-                              </div>
-                              <button
-                                onClick={() => generarDemo(b)}
-                                className="mt-1 text-[8px] text-blue-500 hover:text-blue-400 font-bold uppercase tracking-wider block"
-                              >
-                                + Demo 30d
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
+                              </td>
+                              {/* Vigencia */}
+                              <td className="px-4 py-4">
+                                <p className="text-[#52525b] font-mono mb-0.5">
+                                  {new Date(b.fecha_vencimiento).toLocaleDateString('es-MX')}
+                                </p>
+                                <Countdown fechaVencimiento={b.fecha_vencimiento} />
+                              </td>
+                              {/* Prohibir / Bloquear */}
+                              <td className="px-4 py-4">
+                                <button
+                                  onClick={() => toggleBloqueo(b)}
+                                  className={`px-3 py-1 rounded-full text-[9px] font-bold uppercase border transition-all ${
+                                    b.bloqueado_manual
+                                      ? 'bg-red-50 text-red-650 border-red-200 hover:bg-red-100'
+                                      : 'bg-green-50 text-green-650 border-green-200 hover:bg-green-100'
+                                  }`}
+                                >
+                                  {b.bloqueado_manual ? 'SÍ' : 'NO'}
+                                </button>
+                              </td>
+                              {/* Créditos */}
+                              <td className="px-4 py-4">
+                                <div className="flex items-center gap-2">
+                                  <div className="flex-1 h-1.5 bg-[#f4f4f5] rounded-full overflow-hidden w-16 border border-[#e4e4e7]">
+                                    <div
+                                      className="h-full bg-gradient-to-r from-[#dc2626] to-[#ef4444] rounded-full transition-all"
+                                      style={{ width: `${b.creditos_totales > 0 ? (b.creditos_usados / b.creditos_totales) * 100 : 0}%` }}
+                                    />
+                                  </div>
+                                  <span className="text-[#52525b] font-mono font-bold">
+                                    {b.creditos_usados}/{b.creditos_totales}
+                                  </span>
+                                </div>
+                                <button
+                                  onClick={() => generarDemo(b)}
+                                  className="mt-1 text-[9px] text-[#dc2626] hover:text-red-750 font-bold uppercase tracking-wider block"
+                                >
+                                  + Demo 30d
+                                </button>
+                              </td>
+                            </tr>
+                          )
+                        })}
                       </tbody>
                     </table>
 
                     {filtrados.length === 0 && !cargando && (
-                      <div className="text-center py-16 text-zinc-600">
-                        <p className="text-4xl mb-4">🏢</p>
-                        <p className="font-bold uppercase tracking-widest text-xs">No se encontraron resultados</p>
+                      <div className="text-center py-16 text-[#71717a]">
+                        <p className="text-4xl mb-3">🏢</p>
+                        <p className="font-bold uppercase tracking-wider text-xs">No se encontraron resultados</p>
                       </div>
                     )}
                   </div>
@@ -768,39 +830,39 @@ export default function SuperAdminPage() {
 
             {/* ────────────────── TAB: AJUSTES CENTRALES ────────────────── */}
             {pestaña === 'ajustes' && (
-              <div className="bg-[#0c0c0c] border border-zinc-900 rounded-2xl p-6 sm:p-8 space-y-6 shadow-2xl animate-in fade-in duration-200">
+              <div className="bg-white border border-[#e4e4e7] rounded-2xl p-6 sm:p-8 space-y-6 shadow-sm animate-fadeIn">
                 <div>
-                  <h3 className="font-serif font-black text-lg text-white mb-1">⚙️ Ajustes Globales de Facturación SaaS</h3>
-                  <p className="text-zinc-500 text-xs">Configura los parámetros financieros del core LoyaltyApp.</p>
+                  <h3 className="font-bold text-base text-[#09090b] mb-1">⚙️ Ajustes Globales de Facturación SaaS</h3>
+                  <p className="text-[#71717a] text-xs">Configura los parámetros financieros del núcleo LoyaltyApp.</p>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 border-t border-zinc-900 pt-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 border-t border-[#f4f4f5] pt-6">
                   <div className="space-y-2">
-                    <label className="text-[10px] text-zinc-400 uppercase font-black block">Costo unitario por crédito/mes (MXN)</label>
+                    <label className="text-[10px] text-[#52525b] uppercase font-bold block">Costo unitario por crédito/mes (MXN)</label>
                     <div className="relative">
                       <input
                         type="number"
                         value={precioCredito}
                         onChange={e => setPrecioCredito(Number(e.target.value))}
-                        className="w-full bg-black/50 border border-zinc-800 rounded-xl pl-9 pr-4 py-3 text-sm font-mono text-amber-500 font-bold focus:outline-none focus:border-purple-600"
+                        className="input-clean pl-9 text-sm font-mono text-[#09090b] font-bold focus:border-[#dc2626]"
                       />
-                      <DollarSign className="w-4 h-4 text-zinc-500 absolute left-3 top-3.5" />
+                      <DollarSign className="w-4 h-4 text-[#71717a] absolute left-3 top-3.5" />
                     </div>
-                    <p className="text-[9px] text-zinc-500">Este valor se usará para calcular ingresos del dashboard e importes en modales de renovación.</p>
+                    <p className="text-[10px] text-[#71717a]">Este valor se utilizará para calcular los ingresos del panel y los importes en modales de renovación.</p>
                   </div>
 
-                  <div className="space-y-2 bg-zinc-950/40 border border-zinc-900 rounded-xl p-4 flex flex-col justify-center">
-                    <p className="text-xs font-bold text-purple-400">¿Cómo funciona?</p>
-                    <p className="text-[10px] text-zinc-400 leading-relaxed mt-1">
+                  <div className="space-y-2 bg-[#fafafa] border border-[#e4e4e7] rounded-xl p-4 flex flex-col justify-center">
+                    <p className="text-xs font-bold text-[#dc2626]">¿Cómo funciona?</p>
+                    <p className="text-[11px] text-[#52525b] leading-relaxed mt-1">
                       Cada crédito equivale a **1 mes de suscripción activa** para cualquier negocio registrado. Al ajustar el costo, los cálculos de renovación y creación facturarán automáticamente a este nuevo valor configurado en el sistema.
                     </p>
                   </div>
                 </div>
 
-                <div className="border-t border-zinc-900 pt-6 flex justify-end">
+                <div className="border-t border-[#f4f4f5] pt-6 flex justify-end">
                   <button
                     onClick={guardarPrecioCredito}
-                    className="bg-gradient-to-r from-purple-700 to-purple-900 text-white font-black px-6 py-3 rounded-xl text-xs uppercase tracking-widest hover:brightness-110 transition-all shadow-[0_0_15px_rgba(168,85,247,0.3)]"
+                    className="btn-primary px-6 py-3 text-xs uppercase tracking-wider"
                   >
                     💾 Guardar Ajustes Centrales
                   </button>
@@ -812,39 +874,39 @@ export default function SuperAdminPage() {
         </main>
       </div>
 
-      {/* ── MODAL: REGISTRAR TENANT SAAS ── */}
+      {/* ── MODAL: REGISTRAR TENANT SAAS (Clean Canvas) ── */}
       {modalRegistrar && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 sm:p-8 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white border border-[#e4e4e7] rounded-2xl p-6 sm:p-8 w-full max-w-lg shadow-xl max-h-[90vh] overflow-y-auto animate-fadeIn">
             <div className="flex justify-between items-start mb-4">
               <div>
-                <h2 className="text-xl font-black text-white">Registrar Nuevo Negocio</h2>
-                <p className="text-zinc-500 text-xs">Crea un Tenant SaaS y su cuenta de mostrador</p>
+                <h2 className="text-lg font-bold text-[#09090b]">Registrar Nuevo Negocio</h2>
+                <p className="text-[#71717a] text-xs">Crea un Tenant SaaS y su cuenta de mostrador</p>
               </div>
-              <button onClick={() => setModalRegistrar(false)} className="text-zinc-550 hover:text-white text-xl">✕</button>
+              <button onClick={() => setModalRegistrar(false)} className="text-[#a1a1aa] hover:text-[#52525b] text-lg font-bold">✕</button>
             </div>
 
             <form onSubmit={registrarNegocio} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-[10px] text-zinc-400 uppercase font-black block mb-1">Nombre del Negocio</label>
+                  <label className="text-[10px] text-[#52525b] uppercase font-bold block mb-1">Nombre del Negocio *</label>
                   <input
                     type="text"
                     value={nuevoBiz.nombre}
                     onChange={e => setNuevoBiz(prev => ({ ...prev, nombre: e.target.value }))}
                     placeholder="Ej: Tacos El Padrino"
-                    className="w-full bg-black/50 border border-zinc-800 rounded-xl px-3 py-2.5 text-white text-xs focus:outline-none focus:border-purple-650"
+                    className="input-clean text-xs focus:border-[#dc2626]"
                     required
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-zinc-400 uppercase font-black block mb-1">Subdominio / Slug</label>
+                  <label className="text-[10px] text-[#52525b] uppercase font-bold block mb-1">Subdominio / Slug *</label>
                   <input
                     type="text"
                     value={nuevoBiz.slug}
                     onChange={e => setNuevoBiz(prev => ({ ...prev, slug: e.target.value }))}
                     placeholder="Ej: elpadrino"
-                    className="w-full bg-black/50 border border-zinc-800 rounded-xl px-3 py-2.5 text-white text-xs focus:outline-none focus:border-purple-655"
+                    className="input-clean text-xs focus:border-[#dc2626]"
                     required
                   />
                 </div>
@@ -852,23 +914,23 @@ export default function SuperAdminPage() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-[10px] text-zinc-400 uppercase font-black block mb-1">Dueño (Nombre)</label>
+                  <label className="text-[10px] text-[#52525b] uppercase font-bold block mb-1">Dueño (Nombre)</label>
                   <input
                     type="text"
                     value={nuevoBiz.ownerName}
                     onChange={e => setNuevoBiz(prev => ({ ...prev, ownerName: e.target.value }))}
                     placeholder="Ej: Pedro Infante"
-                    className="w-full bg-black/50 border border-zinc-800 rounded-xl px-3 py-2.5 text-white text-xs focus:outline-none focus:border-purple-650"
+                    className="input-clean text-xs focus:border-[#dc2626]"
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-zinc-400 uppercase font-black block mb-1">Dueño (Email / Usuario)</label>
+                  <label className="text-[10px] text-[#52525b] uppercase font-bold block mb-1">Dueño (Email / Usuario) *</label>
                   <input
                     type="email"
                     value={nuevoBiz.ownerEmail}
                     onChange={e => setNuevoBiz(prev => ({ ...prev, ownerEmail: e.target.value }))}
                     placeholder="Ej: pedro@mail.com"
-                    className="w-full bg-black/50 border border-zinc-800 rounded-xl px-3 py-2.5 text-white text-xs focus:outline-none focus:border-purple-650"
+                    className="input-clean text-xs focus:border-[#dc2626]"
                     required
                   />
                 </div>
@@ -877,11 +939,11 @@ export default function SuperAdminPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <div className="flex justify-between items-center mb-1">
-                    <label className="text-[10px] text-zinc-400 uppercase font-black">Contraseña / PIN</label>
+                    <label className="text-[10px] text-[#52525b] uppercase font-bold">Contraseña / PIN *</label>
                     <button
                       type="button"
                       onClick={generarPasswordRegistro}
-                      className="text-[9px] text-purple-400 hover:text-purple-300 font-bold uppercase tracking-wider"
+                      className="text-[9px] text-[#dc2626] hover:text-red-750 font-bold uppercase tracking-wider"
                     >
                       ⚡ Generar
                     </button>
@@ -891,16 +953,16 @@ export default function SuperAdminPage() {
                     value={nuevoBiz.pin}
                     onChange={e => setNuevoBiz(prev => ({ ...prev, pin: e.target.value }))}
                     placeholder="Ej: 9999"
-                    className="w-full bg-black/50 border border-zinc-800 rounded-xl px-3 py-2.5 text-white text-xs font-mono text-center focus:outline-none focus:border-purple-650"
+                    className="input-clean text-xs font-mono text-center focus:border-[#dc2626]"
                     required
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-zinc-400 uppercase font-black block mb-1">Plan Contratado</label>
+                  <label className="text-[10px] text-[#52525b] uppercase font-bold block mb-1">Plan Contratado *</label>
                   <select
                     value={nuevoBiz.plan}
                     onChange={e => setNuevoBiz(prev => ({ ...prev, plan: e.target.value }))}
-                    className="w-full bg-black/50 border border-zinc-800 rounded-xl px-3 py-2.5 text-white text-xs focus:outline-none focus:border-purple-650"
+                    className="input-clean text-xs bg-[#fafafa] border-[#e4e4e7] text-[#09090b] focus:border-[#dc2626] font-sans"
                   >
                     <option value="mensual">Mensual (1 Crédito)</option>
                     <option value="semestral">Semestral (6 Créditos)</option>
@@ -911,26 +973,26 @@ export default function SuperAdminPage() {
               </div>
 
               <div>
-                <label className="text-[10px] text-zinc-400 uppercase font-black block mb-1">Créditos a Cargar</label>
+                <label className="text-[10px] text-[#52525b] uppercase font-bold block mb-1">Créditos a Cargar *</label>
                 <input
                   type="number"
                   min={1}
                   max={99}
                   value={nuevoBiz.creditos}
                   onChange={e => setNuevoBiz(prev => ({ ...prev, creditos: Number(e.target.value) }))}
-                  className="w-full bg-black/50 border border-zinc-800 rounded-xl px-3 py-2.5 text-white text-xs focus:outline-none focus:border-purple-650"
+                  className="input-clean text-xs focus:border-[#dc2626]"
                   required
                 />
               </div>
 
-              <div className="bg-zinc-950/40 rounded-xl p-4 border border-zinc-800 text-xs">
-                <div className="flex justify-between mb-1">
-                  <span className="text-zinc-500">Transacción:</span>
-                  <span className="text-purple-400 font-bold">Carga de Tenant</span>
+              <div className="bg-[#fafafa] border border-[#e4e4e7] rounded-xl p-4 text-xs space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-[#71717a]">Transacción:</span>
+                  <span className="text-[#dc2626] font-bold">Carga de Tenant</span>
                 </div>
-                <div className="flex justify-between border-t border-zinc-800 pt-1.5 mt-1.5">
-                  <span className="text-zinc-500">Costo Final MXN:</span>
-                  <span className="text-amber-400 font-black">
+                <div className="flex justify-between border-t border-[#e4e4e7] pt-2 mt-2">
+                  <span className="text-[#09090b] font-bold">Costo Final MXN:</span>
+                  <span className="text-amber-600 font-bold">
                     ${nuevoBiz.plan === 'demo' ? 0 : (Number(nuevoBiz.creditos) * precioCredito).toLocaleString()} MXN
                   </span>
                 </div>
@@ -940,14 +1002,14 @@ export default function SuperAdminPage() {
                 <button
                   type="button"
                   onClick={() => setModalRegistrar(false)}
-                  className="flex-1 border border-zinc-800 text-zinc-400 font-bold py-2.5 rounded-xl text-xs hover:border-zinc-700 transition-colors"
+                  className="flex-1 border border-[#e4e4e7] text-[#52525b] font-bold py-2.5 rounded-xl text-xs hover:bg-[#fafafa] transition-colors"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={creando}
-                  className="flex-1 bg-gradient-to-r from-purple-700 to-purple-900 text-white font-black py-2.5 rounded-xl text-xs hover:brightness-110 transition-all disabled:opacity-50"
+                  className="flex-1 btn-primary py-2.5 text-xs disabled:opacity-50"
                 >
                   {creando ? 'Registrando...' : '🚀 Guardar y Cargar'}
                 </button>
@@ -984,6 +1046,7 @@ export default function SuperAdminPage() {
   )
 }
 
+// ── MODAL: AJUSTAR Y RENOVAR SUSCRIPCIÓN (Clean Canvas) ──
 function RenovarModal({
   business,
   precioMes,
@@ -1036,65 +1099,65 @@ function RenovarModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 w-full max-w-md shadow-2xl">
-        <h2 className="text-xl font-black text-white mb-1">Ajustar / Renovar Suscripción</h2>
-        <p className="text-zinc-400 text-sm mb-6">{business.nombre}</p>
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white border border-[#e4e4e7] rounded-2xl p-6 sm:p-8 w-full max-w-md shadow-xl animate-fadeIn">
+        <h2 className="text-lg font-bold text-[#09090b] mb-1">Ajustar / Renovar Suscripción</h2>
+        <p className="text-[#71717a] text-xs mb-6">{business.nombre}</p>
 
         <div className="space-y-4">
           <div>
-            <label className="text-xs text-zinc-400 uppercase tracking-widest font-bold block mb-2">
+            <label className="text-[10px] text-[#52525b] uppercase font-bold block mb-2">
               Meses / Ajuste de Créditos (Suma o Resta)
             </label>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center justify-center gap-4">
               <button 
                 onClick={() => setMeses(Math.max(-12, meses - 1))}
-                className="w-10 h-10 rounded-lg bg-zinc-800 border border-zinc-700 text-white font-bold hover:bg-zinc-700 transition-colors"
+                className="w-10 h-10 rounded-lg bg-[#fafafa] border border-[#e4e4e7] text-[#09090b] font-bold hover:bg-[#f4f4f5] transition-colors"
               >
                 −
               </button>
-              <span className="text-4xl font-black text-white w-16 text-center">{meses > 0 ? `+${meses}` : meses}</span>
+              <span className="text-3xl font-bold text-[#09090b] w-16 text-center">{meses > 0 ? `+${meses}` : meses}</span>
               <button 
                 onClick={() => setMeses(Math.min(24, meses + 1))}
-                className="w-10 h-10 rounded-lg bg-zinc-800 border border-zinc-700 text-white font-bold hover:bg-zinc-700 transition-colors"
+                className="w-10 h-10 rounded-lg bg-[#fafafa] border border-[#e4e4e7] text-[#09090b] font-bold hover:bg-[#f4f4f5] transition-colors"
               >
                 +
               </button>
             </div>
           </div>
 
-          <label className="flex items-center gap-3 cursor-pointer bg-blue-955/30 border border-blue-900/40 rounded-xl p-4">
+          <label className="flex items-center gap-3 cursor-pointer bg-blue-50 border border-blue-100 rounded-xl p-4">
             <input 
               type="checkbox" 
               checked={esDemo} 
               onChange={e => setEsDemo(e.target.checked)}
-              className="w-4 h-4 accent-blue-500" 
+              className="w-4 h-4 accent-blue-650" 
             />
             <div>
-              <p className="text-sm font-bold text-blue-400">Modo Demo (Gratis)</p>
-              <p className="text-xs text-zinc-500">No consume créditos de facturación</p>
+              <p className="text-sm font-bold text-blue-600">Modo Demo (Gratis)</p>
+              <p className="text-[11px] text-[#52525b]">No consume créditos de facturación</p>
             </div>
           </label>
 
-          <div className="bg-zinc-950/40 rounded-xl p-4 border border-zinc-800">
-            <div className="flex justify-between text-sm mb-2">
-              <span className="text-zinc-450">Duración:</span>
-              <span className="text-white font-bold">
+          <div className="bg-[#fafafa] border border-[#e4e4e7] rounded-xl p-4 text-xs space-y-2">
+            <div className="flex justify-between">
+              <span className="text-[#71717a]">Duración:</span>
+              <span className="text-[#09090b] font-bold">
                 {meses < 0 
                   ? `Reducción: ${Math.abs(meses)} mes(es) (-${Math.abs(meses) * 30} días)` 
                   : `Aumento: ${meses} mes(es) (+${meses * 30} días)`}
               </span>
             </div>
-            <div className="flex justify-between text-sm mb-2">
-              <span className="text-zinc-455">Tipo:</span>
-              <span className={esDemo ? 'text-blue-400 font-bold' : (meses < 0 ? 'text-red-400 font-bold' : 'text-green-400 font-bold')}>
+            <div className="flex justify-between">
+              <span className="text-[#71717a]">Tipo:</span>
+              <span className={`font-bold uppercase ${esDemo ? 'text-blue-600' : (meses < 0 ? 'text-red-650' : 'text-green-600')}`}>
                 {esDemo ? 'DEMO (Regalo)' : (meses < 0 ? 'DEDUCCIÓN' : 'COMPRADO')}
               </span>
             </div>
             {!esDemo && (
-              <div className="flex justify-between text-sm border-t border-zinc-800 pt-2 mt-2">
-                <span className="text-zinc-455">Ajuste MXN:</span>
-                <span className={`font-black text-lg ${meses < 0 ? 'text-red-400' : 'text-amber-450'}`}>
+              <div className="flex justify-between border-t border-[#e4e4e7] pt-2 mt-2">
+                <span className="text-[#09090b] font-bold">Ajuste MXN:</span>
+                <span className={`font-bold text-base ${meses < 0 ? 'text-red-650' : 'text-amber-600'}`}>
                   {meses < 0 ? `-$${Math.abs(meses * precioMes).toLocaleString()}` : `$${(meses * precioMes).toLocaleString()}`}
                 </span>
               </div>
@@ -1105,16 +1168,16 @@ function RenovarModal({
         <div className="flex gap-3 mt-6">
           <button 
             onClick={onClose}
-            className="flex-1 border border-zinc-750 text-zinc-400 font-bold py-3 rounded-xl text-sm hover:border-zinc-500 transition-colors"
+            className="flex-1 border border-[#e4e4e7] text-[#52525b] font-bold py-2.5 rounded-xl text-xs hover:bg-[#fafafa] transition-colors"
           >
             Cancelar
           </button>
           <button 
             onClick={renovar} 
             disabled={cargando}
-            className="flex-1 bg-gradient-to-r from-green-700 to-green-900 text-white font-black py-3 rounded-xl text-sm hover:brightness-110 transition-all disabled:opacity-50"
+            className="flex-1 btn-primary py-2.5 text-xs disabled:opacity-50"
           >
-            {cargando ? 'Procesando...' : `✅ Confirmar Renovación`}
+            {cargando ? 'Procesando...' : `Confirmar`}
           </button>
         </div>
       </div>
@@ -1122,7 +1185,7 @@ function RenovarModal({
   )
 }
 
-// ── Modal de Historial ─────────────────────────────────────────────────────
+// ── MODAL: HISTORIAL DE TRANSACCIONES SAAS (Clean Canvas) ──
 function HistorialModal({ business, onClose }: { business: Business; onClose: () => void }) {
   const [historial, setHistorial] = useState<CreditTransaction[]>([])
 
@@ -1135,36 +1198,36 @@ function HistorialModal({ business, onClose }: { business: Business; onClose: ()
   }, [business.id])
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-zinc-900 border border-zinc-850 rounded-2xl p-6 w-full max-w-lg shadow-2xl max-h-[80vh] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white border border-[#e4e4e7] rounded-2xl p-6 sm:p-8 w-full max-w-lg shadow-xl max-h-[80vh] overflow-hidden flex flex-col animate-fadeIn">
         <div className="flex justify-between items-start mb-4">
           <div>
-            <h2 className="text-xl font-black text-white">Historial de Conexiones</h2>
-            <p className="text-zinc-400 text-sm">{business.nombre}</p>
+            <h2 className="text-lg font-bold text-[#09090b]">Historial del Comercio</h2>
+            <p className="text-[#71717a] text-xs">{business.nombre}</p>
           </div>
-          <button onClick={onClose} className="text-zinc-550 hover:text-white text-xl">✕</button>
+          <button onClick={onClose} className="text-[#a1a1aa] hover:text-[#52525b] text-lg font-bold">✕</button>
         </div>
-        <div className="overflow-y-auto flex-1 space-y-2 pr-1">
+        <div className="overflow-y-auto flex-1 space-y-3 pr-1">
           {historial.length === 0 ? (
-            <p className="text-zinc-550 text-sm text-center py-8">Sin historial registrado</p>
+            <p className="text-[#a1a1aa] text-xs text-center py-8">Sin historial de transacciones en el ledger</p>
           ) : (
             historial.map(tx => (
-              <div key={tx.id} className="bg-zinc-950/40 rounded-xl p-4 border border-zinc-800">
+              <div key={tx.id} className="bg-[#fafafa] border border-[#e4e4e7] rounded-xl p-4">
                 <div className="flex justify-between items-start">
-                  <div>
-                    <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
-                      tx.tipo === 'demo' ? 'bg-blue-955 text-blue-450' :
-                      tx.tipo === 'renovacion' ? 'bg-green-955 text-green-450' :
-                      'bg-zinc-800 text-zinc-400'
+                  <div className="space-y-1">
+                    <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                      tx.tipo === 'demo' ? 'bg-blue-50 text-blue-600 border border-blue-100' :
+                      tx.tipo === 'renovacion' ? 'bg-green-50 text-green-600 border border-green-100' :
+                      'bg-zinc-50 text-zinc-600 border border-zinc-200'
                     }`}>{tx.tipo}</span>
-                    <p className="text-white font-bold text-sm mt-1">{tx.notas || '—'}</p>
+                     <p className="text-[#09090b] font-bold text-xs mt-1.5">{tx.notas || '—'}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-amber-450 font-black">{tx.creditos} crédito{tx.creditos !== 1 ? 's' : ''}</p>
-                    {tx.monto_mxn > 0 && <p className="text-zinc-500 text-xs">${tx.monto_mxn.toLocaleString()} MXN</p>}
+                    <p className="text-amber-600 font-bold">+{tx.creditos} mes{tx.creditos !== 1 ? 'es' : ''}</p>
+                    {tx.monto_mxn > 0 && <p className="text-[#71717a] text-[10px] font-mono">${tx.monto_mxn.toLocaleString()} MXN</p>}
                   </div>
                 </div>
-                <p className="text-zinc-550 text-[10px] mt-2 font-mono">
+                <p className="text-[#a1a1aa] text-[9px] mt-2 font-mono">
                   {new Date(tx.created_at).toLocaleString('es-MX')}
                 </p>
               </div>
@@ -1176,7 +1239,7 @@ function HistorialModal({ business, onClose }: { business: Business; onClose: ()
   )
 }
 
-// Modal de Edición de Negocio (SuperAdmin)
+// ── MODAL: EDITAR NEGOCIO / SUSCRIPCIÓN (Clean Canvas) ──
 function EditarBusinessModal({
   business,
   onClose,
@@ -1197,11 +1260,12 @@ function EditarBusinessModal({
   const [creditosTotales, setCreditosTotales] = useState(business.creditos_totales)
   const [creditosUsados, setCreditosUsados] = useState(business.creditos_usados)
   
-  // Cambiar PIN/Contraseña directamente desde SuperAdmin
-  const [nuevoPin, setNuevoPin] = useState('')
+  // Buscar PIN/Contraseña actual de la base de datos
+  const adminUser = business.business_users?.find(u => u.rol === 'admin_comercio')
+  const [nuevoPin, setNuevoPin] = useState(adminUser?.pin || '')
   const [cargando, setCargando] = useState(false)
 
-  // Generador de contraseñas nativo y reactivo
+  // Generador de PIN/Contraseñas reactivo
   const generarPassword = () => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghkmnpqrstuvwxyz23456789!@#$'
     let pass = 'VIP!'
@@ -1235,18 +1299,22 @@ function EditarBusinessModal({
 
       if (error) throw error
 
-      // 2. Si se ingresó una nueva contraseña/PIN, actualizarla en business_users del dueño
+      // 2. Si se ingresó/modificó el PIN/Contraseña, actualizarla en business_users del dueño
       if (nuevoPin.trim()) {
         const { error: pinError } = await supabase
           .from('business_users')
-          .update({ pin: nuevoPin.trim() })
+          .update({ 
+            pin: nuevoPin.trim(),
+            email: ownerEmail.trim().toLowerCase(),
+            nombre: ownerName.trim()
+          })
           .eq('business_id', business.id)
           .eq('rol', 'admin_comercio')
         
         if (pinError) throw pinError
       }
 
-      alert('✅ Negocio actualizado con éxito absoluto')
+      alert('✅ Negocio y Credenciales actualizados con éxito absoluto')
       onSuccess()
     } catch (err: any) {
       alert('Error al actualizar el negocio: ' + err.message)
@@ -1272,35 +1340,35 @@ function EditarBusinessModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 sm:p-8 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white border border-[#e4e4e7] rounded-2xl p-6 sm:p-8 w-full max-w-lg shadow-xl max-h-[90vh] overflow-y-auto animate-fadeIn">
         <div className="flex justify-between items-start mb-4">
           <div>
-            <h2 className="text-xl font-black text-white">Editar Negocio / Suscripción</h2>
-            <p className="text-zinc-500 text-xs">Gestión y auditoría del Tenant: {business.nombre}</p>
+            <h2 className="text-lg font-bold text-[#09090b]">Editar Negocio / Suscripción</h2>
+            <p className="text-[#71717a] text-xs">Gestión y auditoría de accesos del comercio</p>
           </div>
-          <button onClick={onClose} className="text-zinc-550 hover:text-white text-xl">✕</button>
+          <button onClick={onClose} className="text-[#a1a1aa] hover:text-[#52525b] text-lg font-bold">✕</button>
         </div>
 
         <form onSubmit={guardar} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-[10px] text-zinc-400 uppercase font-black block mb-1">Nombre del Negocio</label>
+              <label className="text-[10px] text-[#52525b] uppercase font-bold block mb-1">Nombre del Negocio *</label>
               <input
                 type="text"
                 value={nombre}
                 onChange={e => setNombre(e.target.value)}
-                className="w-full bg-black/50 border border-zinc-800 rounded-xl px-3 py-2.5 text-white text-xs focus:outline-none focus:border-purple-650"
+                className="input-clean text-xs focus:border-[#dc2626]"
                 required
               />
             </div>
             <div>
-              <label className="text-[10px] text-zinc-400 uppercase font-black block mb-1">Subdominio / Slug</label>
+              <label className="text-[10px] text-[#52525b] uppercase font-bold block mb-1">Subdominio / Slug *</label>
               <input
                 type="text"
                 value={slug}
                 onChange={e => setSlug(e.target.value)}
-                className="w-full bg-black/50 border border-zinc-800 rounded-xl px-3 py-2.5 text-white text-xs focus:outline-none"
+                className="input-clean text-xs font-mono focus:border-[#dc2626]"
                 required
               />
             </div>
@@ -1308,21 +1376,21 @@ function EditarBusinessModal({
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-[10px] text-zinc-400 uppercase font-black block mb-1">Dueño (Nombre)</label>
+              <label className="text-[10px] text-[#52525b] uppercase font-bold block mb-1">Dueño (Nombre)</label>
               <input
                 type="text"
                 value={ownerName}
                 onChange={e => setOwnerName(e.target.value)}
-                className="w-full bg-black/50 border border-zinc-800 rounded-xl px-3 py-2.5 text-white text-xs focus:outline-none focus:border-purple-650"
+                className="input-clean text-xs focus:border-[#dc2626]"
               />
             </div>
             <div>
-              <label className="text-[10px] text-zinc-400 uppercase font-black block mb-1">Dueño (Email)</label>
+              <label className="text-[10px] text-[#52525b] uppercase font-bold block mb-1">Dueño (Email / Usuario) *</label>
               <input
                 type="email"
                 value={ownerEmail}
                 onChange={e => setOwnerEmail(e.target.value)}
-                className="w-full bg-black/50 border border-zinc-800 rounded-xl px-3 py-2.5 text-white text-xs focus:outline-none focus:border-purple-650"
+                className="input-clean text-xs focus:border-[#dc2626]"
                 required
               />
             </div>
@@ -1330,11 +1398,11 @@ function EditarBusinessModal({
 
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <label className="text-[10px] text-zinc-400 uppercase font-black block mb-1">Plan</label>
+              <label className="text-[10px] text-[#52525b] uppercase font-bold block mb-1">Plan</label>
               <select
                 value={plan}
                 onChange={e => setPlan(e.target.value)}
-                className="w-full bg-black/50 border border-zinc-800 rounded-xl px-3 py-2.5 text-white text-xs focus:outline-none focus:border-purple-650"
+                className="input-clean text-xs bg-[#fafafa] border-[#e4e4e7] text-[#09090b] focus:border-[#dc2626] font-sans"
               >
                 <option value="gratis">Gratis</option>
                 <option value="mensual">Mensual</option>
@@ -1344,11 +1412,11 @@ function EditarBusinessModal({
               </select>
             </div>
             <div>
-              <label className="text-[10px] text-zinc-400 uppercase font-black block mb-1">Estado</label>
+              <label className="text-[10px] text-[#52525b] uppercase font-bold block mb-1">Estado</label>
               <select
                 value={estado}
                 onChange={e => setEstado(e.target.value as any)}
-                className="w-full bg-black/50 border border-zinc-800 rounded-xl px-3 py-2.5 text-white text-xs focus:outline-none focus:border-purple-650"
+                className="input-clean text-xs bg-[#fafafa] border-[#e4e4e7] text-[#09090b] focus:border-[#dc2626] font-sans"
               >
                 <option value="activo">Activo</option>
                 <option value="demo">Demo</option>
@@ -1362,41 +1430,41 @@ function EditarBusinessModal({
                   type="checkbox"
                   checked={esDemo}
                   onChange={e => setEsDemo(e.target.checked)}
-                  className="w-4 h-4 accent-purple-600"
+                  className="w-4 h-4 accent-[#dc2626]"
                 />
-                <span className="text-[10px] text-zinc-350 uppercase font-black">Es Demo</span>
+                <span className="text-[10px] text-[#3f3f46] uppercase font-bold select-none">Es Demo</span>
               </label>
             </div>
           </div>
 
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <label className="text-[10px] text-zinc-400 uppercase font-black block mb-1">Créditos Usados</label>
+              <label className="text-[10px] text-[#52525b] uppercase font-bold block mb-1">Créditos Usados *</label>
               <input
                 type="number"
                 value={creditosUsados}
                 onChange={e => setCreditosUsados(Number(e.target.value))}
-                className="w-full bg-black/50 border border-zinc-800 rounded-xl px-3 py-2.5 text-white text-xs focus:outline-none focus:border-purple-650"
+                className="input-clean text-xs focus:border-[#dc2626]"
                 required
               />
             </div>
             <div>
-              <label className="text-[10px] text-zinc-400 uppercase font-black block mb-1">Créditos Totales</label>
+              <label className="text-[10px] text-[#52525b] uppercase font-bold block mb-1">Créditos Totales *</label>
               <input
                 type="number"
                 value={creditosTotales}
                 onChange={e => setCreditosTotales(Number(e.target.value))}
-                className="w-full bg-black/50 border border-zinc-800 rounded-xl px-3 py-2.5 text-white text-xs focus:outline-none focus:border-purple-650"
+                className="input-clean text-xs focus:border-[#dc2626]"
                 required
               />
             </div>
             <div>
               <div className="flex justify-between items-center mb-1">
-                <label className="text-[10px] text-zinc-400 uppercase font-black">Cambiar PIN</label>
+                <label className="text-[10px] text-[#52525b] uppercase font-bold">Cambiar PIN *</label>
                 <button
                   type="button"
                   onClick={generarPassword}
-                  className="text-[8px] text-purple-400 hover:text-purple-300 font-bold uppercase tracking-wider"
+                  className="text-[9px] text-[#dc2626] hover:text-red-750 font-bold uppercase tracking-wider"
                 >
                   ⚡ Generar
                 </button>
@@ -1405,44 +1473,45 @@ function EditarBusinessModal({
                 type="text"
                 value={nuevoPin}
                 onChange={e => setNuevoPin(e.target.value)}
-                placeholder="Pin de rescate"
-                className="w-full bg-black/50 border border-zinc-800 rounded-xl px-3 py-2.5 text-white text-xs font-mono text-center focus:outline-none focus:border-purple-650"
+                placeholder="Pin / Clave"
+                className="input-clean text-xs font-mono text-center focus:border-[#dc2626]"
+                required
               />
             </div>
           </div>
 
           <div>
-            <label className="text-[10px] text-zinc-400 uppercase font-black block mb-1">Fecha de Vencimiento</label>
+            <label className="text-[10px] text-[#52525b] uppercase font-bold block mb-1">Fecha de Vencimiento *</label>
             <input
               type="datetime-local"
               value={fechaVencimiento}
               onChange={e => setFechaVencimiento(e.target.value)}
-              className="w-full bg-black/50 border border-zinc-800 rounded-xl px-3 py-2.5 text-white text-xs focus:outline-none focus:border-purple-650"
+              className="input-clean text-xs focus:border-[#dc2626]"
               required
             />
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-zinc-800">
+          <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-[#f4f4f5] justify-between items-center">
             <button
               type="button"
               onClick={eliminarNegocio}
               disabled={cargando}
-              className="bg-red-955/40 hover:bg-red-900/40 border border-red-900/60 text-red-400 hover:text-white font-black py-2.5 rounded-xl text-xs uppercase tracking-widest transition-all px-4"
+              className="w-full sm:w-auto bg-red-50 border border-red-200 text-red-650 hover:bg-red-100 hover:text-red-750 font-bold py-2.5 rounded-xl text-xs uppercase tracking-wider transition-all px-4"
             >
               🗑️ Eliminar Negocio
             </button>
-            <div className="flex gap-2 flex-1 sm:justify-end">
+            <div className="flex gap-2 w-full sm:w-auto">
               <button
                 type="button"
                 onClick={onClose}
-                className="border border-zinc-800 text-zinc-400 font-bold py-2.5 rounded-xl text-xs hover:border-zinc-500 transition-colors px-4"
+                className="flex-1 border border-[#e4e4e7] text-[#52525b] font-bold py-2.5 rounded-xl text-xs hover:bg-[#fafafa] transition-colors px-4"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
                 disabled={cargando}
-                className="bg-gradient-to-r from-purple-700 to-purple-900 text-white font-black py-2.5 rounded-xl text-xs hover:brightness-110 transition-all px-6"
+                className="flex-1 btn-primary py-2.5 text-xs px-6 disabled:opacity-50"
               >
                 {cargando ? 'Guardando...' : '💾 Guardar Cambios'}
               </button>
