@@ -16,7 +16,7 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey)
 const PASS_TYPE_IDENTIFIER = 'pass.com.laburreria.vip'
 const TEAM_IDENTIFIER = 'R8K4HJ594Q'
 
-// ── Certificados hardcodeados (fallback de último recurso) ────────────────────
+// ── Certificados de respaldo (fallback de último recurso) ────────────────────
 const CERT_FALLBACK = `-----BEGIN CERTIFICATE-----
 MIIGGjCCBQKgAwIBAgIQJEz86++dmd8xtTG3btOFvzANBgkqhkiG9w0BAQsFADB1
 MUQwQgYDVQQDDDtBcHBsZSBXb3JsZHdpZGUgRGV2ZWxvcGVyIFJlbGF0aW9ucyBD
@@ -37,6 +37,7 @@ BQcwAoYhaHR0cDovL2NlcnRzLmFwcGxlLmNvbS93d2RyZzQuZGVyMDEGCCsGAQUF
 BzABhiVodHRwOi8vb2NzcC5hcHBsZS5jb20vb2NzcDAzLXd3ZHJnNDA0MIIBHgYD
 VR0gBIIBFTCCAREwggENBgkqhkiG92NkBQEwgf8wgcMGCCsGAQUFBwICMIG2DIGz
 UmVsaWFuY2Ugb24gdGhpcyBjZXJ0aWZpY2F0ZSBieSBhbnkgcGFydHkgYXNzdW1l
+Y2Ygb2YgdGhpcyBjZXJ0aWZpY2F0ZSBieSBhbnkgcGFydHkgYXNzdW1l
 cyBhY2NlcHRhbmNlIG9mIHRoZSB0aGVuIGFwcGxpY2FibGUgc3RhbmRhcmQgdGVy
 bXMgYW5kIGNvbmRpdGlvbnMgb2YgdXNlLCBjZXJ0aWZpY2F0ZSBwb2xpY3kgYW5k
 IGNlcnRpZmljYXRpb24gcHJhY3RpY2Ugc3RhdGVtZW50cy4wNwYIKwYBBQUHAgEW
@@ -82,54 +83,18 @@ UdGuw8xv9dK4fCBXbLEP8F2M7nXzIUlWTmPoQS5LjGdoKq5lK5W9NGg78HO1zJZu
 DiwrugDPatu4KRuN0WK87TJeJw==
 -----END PRIVATE KEY-----`
 
-// ── Función: leer certificados con lógica híbrida ─────────────────────────────
+// ── Función: leer certificados con lógica híbrida priorizando base64 para producción ──
 function leerCertificados(): { signerCert: string; signerKey: string; wwdrCert: string } {
-  let signerCert = CERT_FALLBACK
-  let signerKey = KEY_FALLBACK
+  let signerCert = ''
+  let signerKey = ''
   let wwdrCert = ''
 
-  // Paso 1: Intentar leer archivos físicos del filesystem (dev local)
-  try {
-    const passPemPath = path.resolve(process.cwd(), 'pass.pem')
-    if (fs.existsSync(passPemPath)) {
-      signerCert = fs.readFileSync(passPemPath, 'utf8')
-      console.log('[AppleWallet] ✅ Certificado cargado desde pass.pem (filesystem)')
-    }
-  } catch (e: any) { console.warn('[AppleWallet] No se pudo leer pass.pem:', e.message) }
-
-  try {
-    const llavePemPath = path.resolve(process.cwd(), 'llave.pem')
-    if (fs.existsSync(llavePemPath)) {
-      signerKey = fs.readFileSync(llavePemPath, 'utf8')
-      console.log('[AppleWallet] ✅ Llave privada cargada desde llave.pem (filesystem)')
-    } else {
-      // Probar alternativas de nombre
-      const alts = ['llave_maestra.key', 'LlaveBurreria.key', 'llave_clasica.pem', 'llave_burreria.key']
-      for (const alt of alts) {
-        const altPath = path.resolve(process.cwd(), alt)
-        if (fs.existsSync(altPath)) {
-          signerKey = fs.readFileSync(altPath, 'utf8')
-          console.log(`[AppleWallet] ✅ Llave cargada desde ${alt}`)
-          break
-        }
-      }
-    }
-  } catch (e: any) { console.warn('[AppleWallet] No se pudo leer llave.pem:', e.message) }
-
-  try {
-    const wwdrPath = path.resolve(process.cwd(), 'wwdr.pem')
-    if (fs.existsSync(wwdrPath)) {
-      wwdrCert = fs.readFileSync(wwdrPath, 'utf8')
-      console.log('[AppleWallet] ✅ WWDR cargado desde wwdr.pem (filesystem)')
-    }
-  } catch (e: any) { console.warn('[AppleWallet] No se pudo leer wwdr.pem:', e.message) }
-
-  // Paso 2: Si no hay archivos físicos, intentar variables de entorno Base64 (Vercel)
-  if (!wwdrCert && process.env.APPLE_WWDR_CERT) {
+  // Paso 1: Intentar leer variables de entorno Base64 (máxima estabilidad en producción en Vercel)
+  if (process.env.APPLE_WWDR_CERT) {
     try {
       wwdrCert = Buffer.from(process.env.APPLE_WWDR_CERT, 'base64').toString('utf8')
-      console.log('[AppleWallet] ✅ WWDR cargado desde variable APPLE_WWDR_CERT (Base64 env)')
-    } catch (e: any) { console.warn('[AppleWallet] Error decodificando APPLE_WWDR_CERT:', e.message) }
+      console.log('[AppleWallet] ✅ WWDR cargado desde APPLE_WWDR_CERT (Base64 env)')
+    } catch (e: any) { console.error('[AppleWallet] Error decodificando APPLE_WWDR_CERT:', e.message) }
   }
 
   if (process.env.APPLE_SIGNER_CERT) {
@@ -139,7 +104,7 @@ function leerCertificados(): { signerCert: string; signerKey: string; wwdrCert: 
         signerCert = decoded
         console.log('[AppleWallet] ✅ Certificado cargado desde APPLE_SIGNER_CERT (Base64 env)')
       }
-    } catch (e: any) { console.warn('[AppleWallet] Error decodificando APPLE_SIGNER_CERT:', e.message) }
+    } catch (e: any) { console.error('[AppleWallet] Error decodificando APPLE_SIGNER_CERT:', e.message) }
   }
 
   if (process.env.APPLE_SIGNER_KEY) {
@@ -149,8 +114,50 @@ function leerCertificados(): { signerCert: string; signerKey: string; wwdrCert: 
         signerKey = decoded
         console.log('[AppleWallet] ✅ Llave cargada desde APPLE_SIGNER_KEY (Base64 env)')
       }
-    } catch (e: any) { console.warn('[AppleWallet] Error decodificando APPLE_SIGNER_KEY:', e.message) }
+    } catch (e: any) { console.error('[AppleWallet] Error decodificando APPLE_SIGNER_KEY:', e.message) }
   }
+
+  // Paso 2: Intentar leer archivos físicos si no están presentes las variables de entorno (para desarrollo local)
+  if (!wwdrCert || !signerCert || !signerKey) {
+    console.log('[AppleWallet] 🔍 Intentando cargar certificados desde archivos físicos del servidor...')
+    try {
+      const wwdrPath = path.resolve(process.cwd(), 'wwdr.pem')
+      if (fs.existsSync(wwdrPath) && !wwdrCert) {
+        wwdrCert = fs.readFileSync(wwdrPath, 'utf8')
+        console.log('[AppleWallet] ✅ WWDR cargado desde wwdr.pem (filesystem)')
+      }
+    } catch (e: any) { console.warn('[AppleWallet] No se pudo leer wwdr.pem:', e.message) }
+
+    try {
+      const passPemPath = path.resolve(process.cwd(), 'pass.pem')
+      if (fs.existsSync(passPemPath) && !signerCert) {
+        signerCert = fs.readFileSync(passPemPath, 'utf8')
+        console.log('[AppleWallet] ✅ Certificado cargado desde pass.pem (filesystem)')
+      }
+    } catch (e: any) { console.warn('[AppleWallet] No se pudo leer pass.pem:', e.message) }
+
+    try {
+      const llavePemPath = path.resolve(process.cwd(), 'llave.pem')
+      if (fs.existsSync(llavePemPath) && !signerKey) {
+        signerKey = fs.readFileSync(llavePemPath, 'utf8')
+        console.log('[AppleWallet] ✅ Llave cargada desde llave.pem (filesystem)')
+      } else if (!signerKey) {
+        const alts = ['llave_maestra.key', 'LlaveBurreria.key', 'llave_clasica.pem', 'llave_burreria.key']
+        for (const alt of alts) {
+          const altPath = path.resolve(process.cwd(), alt)
+          if (fs.existsSync(altPath)) {
+            signerKey = fs.readFileSync(altPath, 'utf8')
+            console.log(`[AppleWallet] ✅ Llave cargada desde ${alt}`)
+            break
+          }
+        }
+      }
+    } catch (e: any) { console.warn('[AppleWallet] No se pudo leer llave.pem:', e.message) }
+  }
+
+  // Fallbacks de último recurso
+  if (!signerCert) signerCert = CERT_FALLBACK
+  if (!signerKey) signerKey = KEY_FALLBACK
 
   return { signerCert, signerKey, wwdrCert }
 }
@@ -180,7 +187,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // Leer certificados con lógica híbrida
+    // Leer certificados con lógica híbrida priorizando variables Base64
     const { signerCert, signerKey, wwdrCert } = leerCertificados()
 
     // Construir el PKPass usando passkit-generator (CJS)

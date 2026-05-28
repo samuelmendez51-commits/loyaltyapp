@@ -14,41 +14,45 @@ function RuletaVIP({
   business,
   cliente,
   onCerrar,
+  onResetPuntos,
 }: {
   premios: Premio[]
   business: any
   cliente: any
   onCerrar: () => void
+  onResetPuntos: () => void
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [girando, setGirando] = useState(false)
   const [premioGanado, setPremioGanado] = useState<Premio | null>(null)
   const [anguloActual, setAnguloActual] = useState(0)
   const animRef = useRef<number | undefined>(undefined)
-
-  const premiosList = premios.length > 0 ? premios : [
-    { id: '1', nombre: 'Café Gratis', estampillas_requeridas: 10 },
-    { id: '2', nombre: 'Postre Sorpresa', estampillas_requeridas: 10 },
-    { id: '3', nombre: 'Bebida Grande', estampillas_requeridas: 10 },
-    { id: '4', nombre: '20% Descuento', estampillas_requeridas: 10 },
-  ]
-
+ 
+  const premiosList = (business?.premios_ruleta && Array.isArray(business.premios_ruleta) && business.premios_ruleta.length > 0)
+    ? business.premios_ruleta.map((p: string, i: number) => ({ id: String(i), nombre: p, estampillas_requeridas: 10 }))
+    : (premios.length > 0 ? premios : [
+        { id: '1', nombre: 'Café Gratis', estampillas_requeridas: 10 },
+        { id: '2', nombre: 'Postre Sorpresa', estampillas_requeridas: 10 },
+        { id: '3', nombre: 'Bebida Grande', estampillas_requeridas: 10 },
+        { id: '4', nombre: '20% Descuento', estampillas_requeridas: 10 },
+      ])
+ 
   const COLORES = ['#dc2626', '#ef4444', '#b91c1c', '#991b1b', '#f87171', '#fca5a5']
-
+ 
   const dibujarRuleta = (angulo: number) => {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
-
+ 
     const cx = canvas.width / 2
     const cy = canvas.height / 2
     const radio = cx - 8
     const n = premiosList.length
     const arcAngle = (2 * Math.PI) / n
-
+ 
     ctx.clearRect(0, 0, canvas.width, canvas.height)
-
+ 
     // Sombra exterior
     ctx.save()
     ctx.beginPath()
@@ -58,11 +62,11 @@ function RuletaVIP({
     ctx.fillStyle = '#ffffff'
     ctx.fill()
     ctx.restore()
-
-    premiosList.forEach((premio, i) => {
+ 
+    premiosList.forEach((premio: any, i: number) => {
       const startAngle = angulo + i * arcAngle - Math.PI / 2
       const endAngle = startAngle + arcAngle
-
+ 
       // Sector
       ctx.beginPath()
       ctx.moveTo(cx, cy)
@@ -73,7 +77,7 @@ function RuletaVIP({
       ctx.strokeStyle = '#ffffff'
       ctx.lineWidth = 2
       ctx.stroke()
-
+ 
       // Texto del premio
       ctx.save()
       ctx.translate(cx, cy)
@@ -83,13 +87,13 @@ function RuletaVIP({
       ctx.font = `bold ${Math.min(13, 80 / n)}px Inter, sans-serif`
       ctx.shadowColor = 'rgba(0,0,0,0.3)'
       ctx.shadowBlur = 4
-
+ 
       const maxLen = 14
       const txt = premio.nombre.length > maxLen ? premio.nombre.substring(0, maxLen) + '…' : premio.nombre
       ctx.fillText(txt, radio - 14, 5)
       ctx.restore()
     })
-
+ 
     // Centro
     ctx.beginPath()
     ctx.arc(cx, cy, 28, 0, 2 * Math.PI)
@@ -106,7 +110,7 @@ function RuletaVIP({
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     ctx.fillText('VIP', cx, cy)
-
+ 
     // Flecha indicadora (arriba)
     ctx.beginPath()
     ctx.moveTo(cx - 12, cy - radio - 4)
@@ -116,15 +120,15 @@ function RuletaVIP({
     ctx.fillStyle = '#dc2626'
     ctx.fill()
   }
-
+ 
   useEffect(() => {
     dibujarRuleta(anguloActual)
   }, [anguloActual, premiosList.length])
-
+ 
   const girar = () => {
     if (girando || premioGanado) return
     setGirando(true)
-
+ 
     const n = premiosList.length
     const arcAngle = (2 * Math.PI) / n
     const idxGanador = Math.floor(Math.random() * n)
@@ -133,7 +137,7 @@ function RuletaVIP({
     const anguloInicial = anguloActual
     const duracion = 4500
     const inicio = performance.now()
-
+ 
     const animar = (ahora: number) => {
       const elapsed = ahora - inicio
       const t = Math.min(elapsed / duracion, 1)
@@ -141,7 +145,7 @@ function RuletaVIP({
       const angulo = anguloInicial + anguloObjetivo * eased
       setAnguloActual(angulo)
       dibujarRuleta(angulo)
-
+ 
       if (t < 1) {
         animRef.current = requestAnimationFrame(animar)
       } else {
@@ -149,23 +153,53 @@ function RuletaVIP({
         setPremioGanado(premiosList[idxGanador])
       }
     }
-
+ 
     animRef.current = requestAnimationFrame(animar)
   }
-
+ 
   useEffect(() => {
     return () => { if (animRef.current) cancelAnimationFrame(animRef.current) }
   }, [])
-
-  const enviarPorWhatsApp = () => {
+ 
+  const enviarPorWhatsApp = async () => {
     if (!premioGanado) return
-    const tel = business?.telefono_whatsapp || ''
-    const timestamp = Date.now()
-    const msg = `¡Hola! Quiero cobrar mi premio ganado en la Ruleta LoyaltyApp: ${premioGanado.nombre} (ID Validación Única: ${cliente.id}-${timestamp})`
+    
+    // 1. Resetear sellos en Supabase si la regla está activa
+    const resetActivo = business?.reiniciar_sellos_ruleta !== false
+    if (resetActivo) {
+      try {
+        await supabase
+          .from('clientes')
+          .update({ puntos: 0 })
+          .eq('id', cliente.id)
+        
+        onResetPuntos()
+      } catch (e) {
+        console.error('[Ruleta] Error al resetear puntos:', e)
+      }
+    }
+ 
+    // 2. Registrar en premios_canjes
+    try {
+      await supabase
+        .from('premios_canjes')
+        .insert({
+          cliente_id: cliente.id,
+          premio_nombre: premioGanado.nombre,
+          estado: 'Pendiente'
+        })
+    } catch (e) {
+      console.error('[Ruleta] Error al guardar premios_canjes:', e)
+    }
+ 
+    // 3. Abrir WhatsApp con mensaje simplificado sin IDs extensos
+    const tel = (business?.telefono_whatsapp || '').replace(/\D/g, '')
+    const msg = `¡Hola! Quiero cobrar mi premio ganado en la Ruleta LoyaltyApp: ${premioGanado.nombre}`
     const url = `https://wa.me/${tel}?text=${encodeURIComponent(msg)}`
     window.open(url, '_blank')
+    onCerrar()
   }
-
+ 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden animate-slideUp">
@@ -180,7 +214,7 @@ function RuletaVIP({
             <p className="text-xs text-[#71717a] mt-0.5">¡Has completado tu tarjeta! Gira para ganar</p>
           </div>
         </div>
-
+ 
         {/* Ruleta Canvas */}
         <div className="p-6 flex flex-col items-center gap-5">
           {!premioGanado ? (
@@ -425,6 +459,7 @@ export default function TarjetaLealtadFinal() {
           business={business}
           cliente={cliente}
           onCerrar={() => setMostrarRuleta(false)}
+          onResetPuntos={() => setCliente((prev: any) => prev ? { ...prev, puntos: 0 } : null)}
         />
       )}
 
@@ -586,61 +621,100 @@ export default function TarjetaLealtadFinal() {
 
       {/* ── Vista: Menú Digital ── */}
       {vistaActiva === 'menu' && (
-        <div className="max-w-sm mx-auto pt-8 px-4 animate-fadeIn">
-          <h2 className="text-xl font-bold text-[#09090b] mb-6">Menú Digital</h2>
-          {menuDigital ? (
-            <div className="space-y-4">
-              {menuDigital.url_consumo_local && (
+        <div className="max-w-sm mx-auto pt-8 px-4 space-y-5 animate-fadeIn">
+          {/* Header del portal */}
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl overflow-hidden border border-[#e4e4e7] shadow-sm bg-white shrink-0">
+              <img
+                src={business?.logo_url || '/logo.png'}
+                alt={business?.nombre || 'LoyaltyApp'}
+                className="w-full h-full object-cover"
+                onError={(e) => { (e.target as HTMLImageElement).src = '/logo.png' }}
+              />
+            </div>
+            <div>
+              <p className="text-xs text-[#71717a] font-medium">Carta & Club VIP</p>
+              <h1 className="text-base font-bold text-[#09090b] tracking-tight">{business?.nombre || 'LoyaltyApp'}</h1>
+            </div>
+          </div>
+
+          {/* Tarjeta Unificada / Sección Integrada */}
+          <div className="bg-white rounded-3xl shadow-[0_4px_24px_rgba(0,0,0,0.08)] border border-[#f0f0f0] overflow-hidden p-6 space-y-5">
+            <div>
+              <p className="text-[10px] font-semibold text-[#dc2626] uppercase tracking-wider">Menú y Catálogos</p>
+              <h3 className="text-lg font-bold text-[#09090b] tracking-tight mt-0.5">Nuestra Carta Digital</h3>
+            </div>
+
+            {/* Listado de Catálogos */}
+            <div className="space-y-3">
+              {menuDigital?.url_consumo_local && (
                 <a
                   href={menuDigital.url_consumo_local}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="block bg-white border border-[#e4e4e7] rounded-2xl p-5 shadow-sm hover:shadow-md transition-all"
+                  className="flex items-center gap-3 bg-[#fafafa] border border-[#e4e4e7] rounded-2xl p-4 hover:bg-[#fef2f2] transition-colors"
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 bg-[#fef2f2] rounded-xl flex items-center justify-center">
-                      <UtensilsCrossed className="w-6 h-6 text-[#dc2626]" />
-                    </div>
-                    <div>
-                      <p className="font-bold text-[#09090b]">Menú — Comer Aquí</p>
-                      <p className="text-xs text-[#71717a]">Ver carta completa para mesa</p>
-                    </div>
+                  <div className="w-10 h-10 bg-white border border-[#e4e4e7] rounded-xl flex items-center justify-center shrink-0">
+                    <span className="text-lg">📋</span>
                   </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-sm text-[#09090b] truncate">Catálogo PDF (Comer Aquí)</p>
+                    <p className="text-[11px] text-[#71717a] truncate">Menú oficial para consumo en mesa</p>
+                  </div>
+                  <span className="text-xs font-bold text-[#dc2626] shrink-0">Ver →</span>
                 </a>
               )}
-              {menuDigital.url_domicilio && (
+
+              {menuDigital?.url_domicilio && (
                 <a
                   href={menuDigital.url_domicilio}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="block bg-white border border-[#e4e4e7] rounded-2xl p-5 shadow-sm hover:shadow-md transition-all"
+                  className="flex items-center gap-3 bg-[#fafafa] border border-[#e4e4e7] rounded-2xl p-4 hover:bg-[#fef2f2] transition-colors"
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 bg-[#fef2f2] rounded-xl flex items-center justify-center">
-                      <Bell className="w-6 h-6 text-[#dc2626]" />
-                    </div>
-                    <div>
-                      <p className="font-bold text-[#09090b]">Menú — Domicilio</p>
-                      <p className="text-xs text-[#71717a]">Ver carta para pedidos a domicilio</p>
-                    </div>
+                  <div className="w-10 h-10 bg-white border border-[#e4e4e7] rounded-xl flex items-center justify-center shrink-0">
+                    <span className="text-lg">🛵</span>
                   </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-sm text-[#09090b] truncate">Catálogo Web (Domicilio)</p>
+                    <p className="text-[11px] text-[#71717a] truncate">Pide directamente a domicilio</p>
+                  </div>
+                  <span className="text-xs font-bold text-[#dc2626] shrink-0">Ver →</span>
                 </a>
               )}
-              {!menuDigital.url_consumo_local && !menuDigital.url_domicilio && (
-                <div className="bg-white rounded-2xl p-8 text-center border border-[#e4e4e7]">
-                  <p className="text-4xl mb-3">🍽️</p>
-                  <p className="font-bold text-[#09090b]">Menú en preparación</p>
-                  <p className="text-xs text-[#71717a] mt-1">El negocio está actualizando su carta digital.</p>
+
+              {(!menuDigital?.url_consumo_local && !menuDigital?.url_domicilio) && (
+                <div className="bg-[#fafafa] rounded-2xl p-6 text-center border border-[#e4e4e7]">
+                  <p className="text-3xl mb-1.5">🍽️</p>
+                  <p className="font-bold text-sm text-[#09090b]">Menú No Disponible</p>
+                  <p className="text-xs text-[#71717a] mt-0.5">El negocio no ha configurado sus cartas digitales.</p>
                 </div>
               )}
             </div>
-          ) : (
-            <div className="bg-white rounded-2xl p-8 text-center border border-[#e4e4e7] shadow-sm">
-              <p className="text-4xl mb-3">🍽️</p>
-              <p className="font-bold text-[#09090b]">Menú No Disponible</p>
-              <p className="text-xs text-[#71717a] mt-1">El negocio aún no ha configurado su menú digital.</p>
+
+            {/* Invitación al Club VIP */}
+            <div className="border-t border-[#f0f0f0] pt-5">
+              <div className="bg-gradient-to-br from-[#fef2f2] to-[#fffaf8] border border-[#fecaca] rounded-2xl p-4 flex flex-col gap-3">
+                <div className="flex gap-2.5 items-start">
+                  <div className="w-9 h-9 rounded-xl bg-white border border-[#fca5a5] flex items-center justify-center shrink-0">
+                    <span className="text-lg">🎟️</span>
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-[#dc2626] uppercase tracking-wider">¡Club de Lealtad VIP!</h4>
+                    <p className="text-xs text-[#52525b] mt-0.5 leading-relaxed">
+                      Acumula sellos en cada compra para ganar postres, bebidas o comidas gratis en sucursal.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setVistaActiva('tarjeta')}
+                  className="w-full bg-[#dc2626] hover:bg-[#b91c1c] text-white text-xs font-bold py-2.5 px-4 rounded-xl transition-all shadow-[0_2px_8px_rgba(220,38,38,0.25)] flex items-center justify-center gap-1.5"
+                >
+                  Ver Mi Tarjeta VIP
+                </button>
+              </div>
             </div>
-          )}
+          </div>
         </div>
       )}
 
@@ -653,7 +727,7 @@ export default function TarjetaLealtadFinal() {
               <div className="bg-white border border-[#e4e4e7] rounded-2xl p-5 shadow-sm">
                 <p className="text-sm text-[#71717a] mb-4">Haz tu pedido directamente por WhatsApp con el negocio.</p>
                 <a
-                  href={`https://wa.me/${business.telefono_whatsapp}?text=${encodeURIComponent(`Hola! Soy ${cliente.nombre} (Socio VIP ID: ${cliente.id.substring(0, 8)}) y quiero hacer un pedido.`)}`}
+                  href={`https://wa.me/${(business.telefono_whatsapp || '').replace(/\D/g, '')}?text=${encodeURIComponent(`Hola! Soy ${cliente.nombre} (Socio VIP ID: ${cliente.id.substring(0, 8)}) y quiero hacer un pedido.`)}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="btn-primary w-full py-3.5 text-sm flex items-center justify-center gap-2"

@@ -139,19 +139,32 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Falta el ID del cliente' }, { status: 400 })
     }
 
-    // 1. Leer credenciales de entorno
-    const issuerId = process.env.GOOGLE_WALLET_ISSUER_ID || REAL_ISSUER_ID
+    // 1. Leer credenciales de entorno de Vercel
+    const issuerId = REAL_ISSUER_ID
     const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL
-    const privateKey = (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n').trim()
+    
+    // Parseo robusto y seguro de la clave privada de Google
+    let rawPrivateKey = process.env.GOOGLE_PRIVATE_KEY || ''
+    
+    // Sanitizar comillas añadidas por Vercel
+    if (rawPrivateKey.startsWith('"') && rawPrivateKey.endsWith('"')) {
+      rawPrivateKey = rawPrivateKey.substring(1, rawPrivateKey.length - 1)
+    }
+    if (rawPrivateKey.startsWith("'") && rawPrivateKey.endsWith("'")) {
+      rawPrivateKey = rawPrivateKey.substring(1, rawPrivateKey.length - 1)
+    }
+    
+    // Corregir los escapes de saltos de línea literales
+    const privateKey = rawPrivateKey.replace(/\\n/g, '\n').trim()
 
     const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://loyaltyapp.vercel.app'
     const classId = `${issuerId}.${REAL_CLASS_SUFFIX}`
     const safeId = id.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase().substring(0, 40)
     const objectId = `${issuerId}.obj_${safeId}`
 
-    // Si no hay credenciales completas → simulación
+    // Si no hay credenciales completas → simulación controlada
     if (!clientEmail || !privateKey) {
-      console.warn('[GoogleWallet] ⚠️ Sin credenciales. Modo simulación.')
+      console.warn('[GoogleWallet] ⚠️ Sin credenciales de Vercel. Modo simulación.')
       return NextResponse.json({
         url: `/google-wallet-simulacion?id=${id}&nombre=${encodeURIComponent(nombre)}&puntos=${puntos}&business_name=${encodeURIComponent(businessName)}`
       })
@@ -161,7 +174,7 @@ export async function POST(req: Request) {
     const accessToken = await getGoogleAccessToken(clientEmail, privateKey)
     if (!accessToken) {
       console.error('[GoogleWallet] No se pudo obtener access token OAuth2')
-      return NextResponse.json({ error: 'Error de autenticación con Google' }, { status: 500 })
+      return NextResponse.json({ error: 'Error de autenticación con Google Wallet' }, { status: 500 })
     }
 
     // 3. Asegurar que la LoyaltyClass existe (autosanable)
@@ -207,7 +220,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // 5. Firmar JWT con la private_key
+    // 5. Firmar JWT con la private_key corregida
     const privateKeyObj = await importPKCS8(privateKey, 'RS256')
     const token = await new SignJWT(payload)
       .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
@@ -218,13 +231,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ url: saveUrl })
 
   } catch (error: any) {
-    console.error('[GoogleWallet] Error detallado en POST handler:', {
-      message: error.message,
-      stack: error.stack,
-      code: error.code,
-    })
+    console.error('[GoogleWallet] Error crítico en JWT signature:', error.message)
     return NextResponse.json(
-      { error: 'Error al generar el pase de Google Wallet: ' + error.message },
+      { error: 'Error al firmar token de Google Wallet: ' + error.message },
       { status: 500 }
     )
   }

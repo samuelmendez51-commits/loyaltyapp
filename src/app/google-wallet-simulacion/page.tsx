@@ -1,10 +1,10 @@
 'use client'
 
 import { useSearchParams } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import Link from 'next/link'
 
-export default function GoogleWalletSimulacion() {
+function SimulationContent() {
   const searchParams = useSearchParams()
   const id = searchParams.get('id') || 'demo-client'
   const nombre = searchParams.get('nombre') || 'Socio VIP'
@@ -131,5 +131,17 @@ export default function GoogleWalletSimulacion() {
         </button>
       </div>
     </main>
+  )
+}
+
+export default function GoogleWalletSimulacion() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-[#0c0c0d] text-white flex items-center justify-center">
+        <div className="w-10 h-10 border-2 border-zinc-700 border-t-white rounded-full animate-spin" />
+      </div>
+    }>
+      <SimulationContent />
+    </Suspense>
   )
 }
