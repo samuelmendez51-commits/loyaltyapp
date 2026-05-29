@@ -908,7 +908,7 @@ export default function DashboardPage() {
       />
 
       {/* ── SIDEBAR ── */}
-      <aside className={`bg-white border-r border-[#e4e4e7] transition-all duration-300 flex flex-col justify-between z-30 shrink-0 sticky top-0 h-screen shadow-[1px_0_0_#e4e4e7] ${sidebarExpanded ? 'w-64' : 'w-[72px]'}`}>
+      <aside className={`hidden md:flex flex-col bg-white border-r border-[#e4e4e7] transition-all duration-300 justify-between z-30 shrink-0 sticky top-0 h-screen shadow-[1px_0_0_#e4e4e7] ${sidebarExpanded ? 'w-64' : 'w-[72px]'}`}>
         <div className="flex flex-col">
           {/* Logo */}
           <div className="h-16 border-b border-[#e4e4e7] flex items-center justify-between px-4">
@@ -1012,7 +1012,7 @@ export default function DashboardPage() {
         </header>
 
         {/* ── CONTENIDO MAIN ── */}
-        <main className="flex-1 p-6 space-y-6 overflow-y-auto">
+        <main className="flex-1 p-6 space-y-6 overflow-y-auto pb-24 md:pb-6">
           {business && <CountdownBanner business={business} />}
 
           {/* ══════════════════════════════════════════
@@ -2016,6 +2016,37 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+
+      {/* ── BOTTOM APP BAR (Solo móvil < 768px) ── */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-[#e4e4e7] shadow-[0_-4px_24px_rgba(0,0,0,0.06)]">
+        <div className="flex items-stretch justify-around h-16 safe-area-inset-bottom">
+          {[
+            { id: 'metricas',       label: 'Inicio',    icon: LayoutDashboard },
+            { id: 'lealtad',        label: 'Lealtad',   icon: CreditCard },
+            { id: 'empleados',      label: 'Personal',  icon: Users },
+            { id: 'configuracion',  label: 'Config',    icon: Settings },
+            { id: 'menus',          label: 'Menús',     icon: QrCode },
+          ].map(tab => {
+            const TabIcon = tab.icon
+            const isActive = pestaña === tab.id
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setPestaña(tab.id)}
+                className={`flex-1 flex flex-col items-center justify-center gap-1 transition-all duration-150 ${
+                  isActive ? 'text-[#dc2626]' : 'text-[#a1a1aa]'
+                }`}
+              >
+                <TabIcon className={`w-5 h-5 transition-transform duration-150 ${ isActive ? 'scale-110' : 'scale-100'}`} />
+                <span className={`text-[10px] font-semibold tracking-tight leading-none ${ isActive ? 'text-[#dc2626]' : 'text-[#a1a1aa]'}`}>
+                  {tab.label}
+                </span>
+                {isActive && <span className="absolute bottom-0 w-8 h-0.5 bg-[#dc2626] rounded-full" />}
+              </button>
+            )
+          })}
+        </div>
+      </nav>
 
     </div>
   )
