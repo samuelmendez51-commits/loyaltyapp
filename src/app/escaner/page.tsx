@@ -70,7 +70,7 @@ export default function EscanerTrabajadores() {
     try {
       const decoded = atob(criterio.trim())
       const parsed = JSON.parse(decoded)
-      if (parsed.seguro === 'LOYALTYAPP-VIP-CANJE' && parsed.cliente_id) {
+      if ((parsed.seguro === 'LOYALTYAPP-VIP-CANJE' || parsed.seguro === 'LOYALTYCLUB-VIP-CANJE') && parsed.cliente_id) {
         criterioLimpio = parsed.cliente_id
         alert(`🏆 ¡Pase QR Cifrado VIP Validado!\nSocio: ${parsed.nombre}\nFidelidad: ${parsed.puntos}/10 sellos.\nListo para canjear premio mayor.`);
       }

@@ -475,7 +475,7 @@ export default function SuperAdminPage() {
               </div>
               {sidebarExpanded && (
                 <span className="font-bold text-[#09090b] text-sm tracking-tight truncate">
-                  LoyaltyApp
+                  LoyaltyClub
                 </span>
               )}
             </div>
@@ -514,7 +514,7 @@ export default function SuperAdminPage() {
         <div className="p-4 border-t border-[#e4e4e7]">
           {sidebarExpanded && (
             <p className="text-center text-[#a1a1aa] text-[9px] uppercase tracking-widest mt-1 font-mono">
-              LoyaltyApp v14 · SaaS Master
+              LoyaltyClub v14 · SaaS Master
             </p>
           )}
         </div>
@@ -755,7 +755,7 @@ export default function SuperAdminPage() {
                               {/* Nombre */}
                               <td className="px-4 py-4">
                                 <p className="font-bold text-[#09090b] text-sm group-hover:text-[#dc2626] transition-colors">{b.nombre}</p>
-                                <p className="text-[#71717a] font-mono text-xs">loyaltyapp.vercel.app/{b.slug}</p>
+                                <p className="text-[#71717a] font-mono text-xs">{b.slug}.loyaltyclub.mx</p>
                               </td>
                               {/* Credenciales de Acceso (REQUERIDO) */}
                               <td className="px-4 py-4 min-w-[200px]">
@@ -833,7 +833,7 @@ export default function SuperAdminPage() {
               <div className="bg-white border border-[#e4e4e7] rounded-2xl p-6 sm:p-8 space-y-6 shadow-sm animate-fadeIn">
                 <div>
                   <h3 className="font-bold text-base text-[#09090b] mb-1">⚙️ Ajustes Globales de Facturación SaaS</h3>
-                  <p className="text-[#71717a] text-xs">Configura los parámetros financieros del núcleo LoyaltyApp.</p>
+                  <p className="text-[#71717a] text-xs">Configura los parámetros financieros del núcleo LoyaltyClub.</p>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 border-t border-[#f4f4f5] pt-6">

@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server'
 // ── Constantes del Issuer ──────────────────────────────────────────────────────
 const REAL_ISSUER_ID = '3388000000023143249'
 const REAL_CLASS_SUFFIX = 'CLASE_BURRERIA'
-const LOGO_OFICIAL = 'https://laburreriaclub.vercel.app/logo-burreria.png'
+const LOGO_OFICIAL = 'https://laburreria.loyaltyclub.mx/logo-burreria.png'
 
 // ── Payload de la Clase de Lealtad ────────────────────────────────────────────
 function buildLoyaltyClass(classId: string, siteUrl: string, businessName: string) {
@@ -104,7 +104,7 @@ async function asegurarClaseExiste(classId: string, accessToken: string, busines
 
   // 2. POST: Crear la clase
   try {
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://loyaltyapp.vercel.app'
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://loyaltyclub.mx'
     const clasePayload = buildLoyaltyClass(classId, siteUrl, businessName)
     const createRes = await fetch(baseUrl, {
       method: 'POST',
@@ -157,7 +157,7 @@ export async function POST(req: Request) {
     // Corregir los escapes de saltos de línea literales
     const privateKey = rawPrivateKey.replace(/\\n/g, '\n').trim()
 
-    const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://loyaltyapp.vercel.app'
+    const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://loyaltyclub.mx'
     const classId = `${issuerId}.${REAL_CLASS_SUFFIX}`
     const safeId = id.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase().substring(0, 40)
     const objectId = `${issuerId}.obj_${safeId}`

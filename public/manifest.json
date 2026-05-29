@@ -1,6 +1,6 @@
 {
-  "name": "LoyaltyApp — Panel de Control",
-  "short_name": "LoyaltyApp",
+  "name": "LoyaltyClub — Panel de Control",
+  "short_name": "LoyaltyClub",
   "description": "Sistema enterprise de fidelidad y lealtad para restaurantes. Panel de control para administradores y staff.",
   "start_url": "/",
   "scope": "/",

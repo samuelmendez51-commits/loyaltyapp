@@ -686,11 +686,11 @@ export default function AjustesPage() {
                   <p className="text-[10px] text-zinc-500 uppercase font-black mb-2">Link para Compartir con Clientes</p>
                   <div className="flex items-center gap-2">
                     <code className="text-red-400 font-mono text-xs flex-1 bg-black/50 px-3 py-2 rounded-lg truncate">
-                      loyaltyapp.vercel.app/{config.slug}/menu
+                      {config.slug}.loyaltyclub.mx/menu
                     </code>
                     <button
                       onClick={() => {
-                        navigator.clipboard.writeText(`https://loyaltyapp.vercel.app/${config.slug}/menu`)
+                        navigator.clipboard.writeText(`https://${config.slug}.loyaltyclub.mx/menu`)
                         setSuccess('¡Link copiado!')
                         setTimeout(() => setSuccess(''), 2000)
                       }}

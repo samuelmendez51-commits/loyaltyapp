@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import DashboardPage from '../../dashboard/page'
+import DashboardPage from '../../../dashboard/page'
 
 export default function DynamicDashboardPage() {
   const params = useParams()

@@ -35,8 +35,13 @@ export default function LoginPage() {
     if (typeof window !== 'undefined') {
       const host = window.location.hostname
       const parts = host.split('.')
+      let slug = ''
       if (parts.length > 2 && parts[0] !== 'www' && parts[0] !== 'localhost') {
-        const slug = parts[0]
+        slug = parts[0]
+      } else if (parts.length > 1 && parts[1] === 'localhost') {
+        slug = parts[0]
+      }
+      if (slug) {
         supabase
           .from('businesses')
           .select('nombre, logo_url')
@@ -56,12 +61,18 @@ export default function LoginPage() {
     return () => window.removeEventListener('beforeinstallprompt', handlePrompt)
   }, [])
 
-  const setCookies = (rol: string, nombre: string, businessId: string, branchId: string, userId: string) => {
+  const setCookies = (rol: string, nombre: string, businessId: string, branchId: string, userId: string, businessSlug: string = '') => {
     const maxAge = recordarme ? '; Max-Age=86400' : ''
-    const base = `; path=/; SameSite=Strict${maxAge}`
+    // En producción (loyaltyclub.mx), configurar Domain base para compartir sesión entre subdominios.
+    // SameSite=Lax es necesario cuando se usa Domain cross-subdomain.
+    const isProduction = typeof window !== 'undefined' && window.location.hostname.includes('loyaltyclub.mx')
+    const domainAttr = isProduction ? '; Domain=.loyaltyclub.mx' : ''
+    const sameSite = isProduction ? 'Lax' : 'Strict'
+    const base = `; path=/${domainAttr}; SameSite=${sameSite}${maxAge}`
     document.cookie = `session_rol=${rol}${base}`
     document.cookie = `session_user=${nombre}${base}`
     document.cookie = `session_business_id=${businessId}${base}`
+    document.cookie = `session_business_slug=${businessSlug}${base}`
     document.cookie = `session_branch_id=${branchId}${base}`
     document.cookie = `session_user_id=${userId}${base}`
   }
@@ -71,10 +82,37 @@ export default function LoginPage() {
       const urlParams = new URLSearchParams(window.location.search)
       const redirect = urlParams.get('redirect')
       if (redirect) return redirect
+
+      const host = window.location.hostname
+      const parts = host.split('.')
+      const runsOnSubdomain = (parts.length > 2 && parts[0] !== 'www' && parts[0] !== 'localhost') || (parts.length > 1 && parts[1] === 'localhost')
+
+      if (rol === 'superadmin') return '/superadmin'
+      
+      if (rol === 'admin_comercio') {
+        if (runsOnSubdomain) {
+          return '/dashboard'
+        } else {
+          if (slug) {
+            const domain = host.includes('loyaltyclub.mx') ? 'loyaltyclub.mx' : 'localhost:3000'
+            return `https://${slug}.${domain}/dashboard`
+          }
+          return '/dashboard'
+        }
+      }
+
+      // Empleado / Cajero
+      if (runsOnSubdomain) {
+        return '/escaner'
+      } else {
+        if (slug) {
+          const domain = host.includes('loyaltyclub.mx') ? 'loyaltyclub.mx' : 'localhost:3000'
+          return `https://${slug}.${domain}/escaner`
+        }
+        return '/escaner'
+      }
     }
-    if (rol === 'superadmin') return '/superadmin'
-    if (rol === 'admin_comercio') return slug ? `/${slug}/dashboard` : '/dashboard'
-    return '/escaner'
+    return '/login'
   }
 
   const loginConEmail = async (e: React.FormEvent) => {
@@ -116,7 +154,24 @@ export default function LoginPage() {
         return
       }
 
-      setCookies(data.rol, data.nombre, data.business_id, data.branch_id || '', data.id)
+      let currentSlug = ''
+      if (typeof window !== 'undefined') {
+        const host = window.location.hostname
+        const parts = host.split('.')
+        if (parts.length > 2 && parts[0] !== 'www' && parts[0] !== 'localhost') {
+          currentSlug = parts[0]
+        } else if (parts.length > 1 && parts[1] === 'localhost') {
+          currentSlug = parts[0]
+        }
+      }
+
+      if (currentSlug && biz?.slug !== currentSlug) {
+        setError(`Este usuario pertenece al comercio "${biz?.nombre || 'otro comercio'}" y no está autorizado para acceder desde este subdominio.`)
+        setCargando(false)
+        return
+      }
+
+      setCookies(data.rol, data.nombre, data.business_id, data.branch_id || '', data.id, biz?.slug || '')
       const target = obtenerRedireccionUrl(data.rol, biz?.slug || '')
       setTimeout(() => { window.location.href = target }, 300)
       setCargando(false)
@@ -163,7 +218,24 @@ export default function LoginPage() {
         return
       }
 
-      setCookies(data.rol, data.nombre, data.business_id, data.branch_id || '', data.id)
+      let currentSlug = ''
+      if (typeof window !== 'undefined') {
+        const host = window.location.hostname
+        const parts = host.split('.')
+        if (parts.length > 2 && parts[0] !== 'www' && parts[0] !== 'localhost') {
+          currentSlug = parts[0]
+        } else if (parts.length > 1 && parts[1] === 'localhost') {
+          currentSlug = parts[0]
+        }
+      }
+
+      if (currentSlug && biz?.slug !== currentSlug) {
+        setError(`Este PIN pertenece a otro comercio y no está autorizado para acceder desde este subdominio.`)
+        setCargando(false)
+        return
+      }
+
+      setCookies(data.rol, data.nombre, data.business_id, data.branch_id || '', data.id, biz?.slug || '')
       const target = obtenerRedireccionUrl(data.rol, biz?.slug || '')
       setTimeout(() => { window.location.href = target }, 300)
       setCargando(false)
@@ -248,9 +320,10 @@ export default function LoginPage() {
         creado_por: 'self_onboarding'
       })
 
-      setCookies('admin_comercio', user.nombre, biz.id, '', user.id)
-      alert(`🎉 ¡Negocio registrado con éxito!\nPágina: loyaltyapp.vercel.app/${slugFormateado}/dashboard`)
-      setTimeout(() => { window.location.href = `/${slugFormateado}/dashboard` }, 300)
+      const domain = typeof window !== 'undefined' && window.location.hostname.includes('loyaltyclub.mx') ? 'loyaltyclub.mx' : 'localhost:3000'
+      setCookies('admin_comercio', user.nombre, biz.id, '', user.id, biz.slug || '')
+      alert(`🎉 ¡Negocio registrado con éxito!\nPortal: https://${slugFormateado}.${domain}/dashboard`)
+      setTimeout(() => { window.location.href = `https://${slugFormateado}.${domain}/dashboard` }, 300)
 
     } catch (err: any) {
       setError(err.message || 'Error durante el registro')
@@ -503,7 +576,7 @@ export default function LoginPage() {
                 />
                 {regSlug && (
                   <p className="text-xs text-[#71717a] font-mono mt-1">
-                    🌐 <strong>loyaltyapp.vercel.app/{regSlug}/dashboard</strong>
+                    🌐 <strong>{regSlug}.loyaltyclub.mx/dashboard</strong>
                   </p>
                 )}
               </div>
@@ -549,7 +622,7 @@ export default function LoginPage() {
         )}
 
         <p className="text-center text-[#a1a1aa] text-xs">
-          LoyaltyApp Enterprise · SaaS Multi-Tenant
+          LoyaltyClub Enterprise · SaaS Multi-Tenant
         </p>
       </div>
     </main>

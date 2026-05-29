@@ -1,5 +1,5 @@
-const CACHE_NAME = 'loyaltyapp-v2';
-const CACHE_STATIC = 'loyaltyapp-static-v2';
+const CACHE_NAME = 'loyaltyclub-v2';
+const CACHE_STATIC = 'loyaltyclub-static-v2';
 const OFFLINE_URL = '/';
 
 const ASSETS_STATIC = [
@@ -101,7 +101,7 @@ self.addEventListener('fetch', (event) => {
 // ── PUSH NOTIFICATIONS ───────────────────────────────────────────
 self.addEventListener('push', (event) => {
   const data = event.data ? event.data.json() : {
-    title: 'LoyaltyApp 🏆',
+    title: 'LoyaltyClub 🏆',
     body: '¡Tienes una actualización importante!'
   };
 

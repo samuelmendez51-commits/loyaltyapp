@@ -11,13 +11,13 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-  title: 'LoyaltyApp — Sistema Enterprise de Fidelidad',
+  title: 'LoyaltyClub — Sistema Enterprise de Fidelidad',
   description: 'Plataforma SaaS multi-tenant para programas de lealtad en restaurantes. Panel de control premium.',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'LoyaltyApp',
+    title: 'LoyaltyClub',
   },
 }
 
@@ -33,7 +33,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="theme-color" content="#ffffff" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta name="apple-mobile-web-app-title" content="LoyaltyApp" />
+        <meta name="apple-mobile-web-app-title" content="LoyaltyClub" />
         <link rel="apple-touch-icon" href="/logo.png" />
       </head>
       <body
@@ -45,8 +45,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             if ('serviceWorker' in navigator) {
               window.addEventListener('load', function() {
                 navigator.serviceWorker.register('/service-worker.js', { scope: '/' })
-                  .then(function(reg) { console.log('[LoyaltyApp] SW registrado:', reg.scope); })
-                  .catch(function(err) { console.log('[LoyaltyApp] SW error:', err); });
+                  .then(function(reg) { console.log('[LoyaltyClub] SW registrado:', reg.scope); })
+                  .catch(function(err) { console.log('[LoyaltyClub] SW error:', err); });
               });
             }
           `}
