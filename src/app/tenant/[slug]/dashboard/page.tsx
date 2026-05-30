@@ -805,7 +805,7 @@ export default function DashboardPage() {
       if (file) {
         const fileExt = file.name.split('.').pop()
         const fileName = `${businessId}/menu-${tipo}-${Date.now()}.${fileExt}`
-        const { error: uploadErr } = await supabase.storage.from('menu-images').upload(fileName, file, { cacheControl: '3600', upsert: true })
+        const { error: uploadErr } = await supabase.storage.from('menu-images').upload(fileName, file, { cacheControl: '3600', upsert: true, contentType: file.type || 'application/octet-stream' })
         if (uploadErr) throw uploadErr
         const { data: urlData } = supabase.storage.from('menu-images').getPublicUrl(fileName)
         archivoUrl = urlData.publicUrl
