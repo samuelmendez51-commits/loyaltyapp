@@ -206,6 +206,14 @@ export default function DashboardPage() {
   const [reiniciarSellosAuto, setReiniciarSellosAuto] = useState(true)
   const [guardandoPromociones, setGuardandoPromociones] = useState(false)
 
+  // ── RULETA INTERMEDIA (Gamificación por Rangos de Sellos) ───────────────────
+  const [ruletaConfig, setRuletaConfig] = useState<any>({})
+  const [nuevoSelloAct, setNuevoSelloAct] = useState('3')
+  const [nuevoP1, setNuevoP1] = useState('')
+  const [nuevoP2, setNuevoP2] = useState('')
+  const [nuevoP3, setNuevoP3] = useState('')
+  const [nuevoP4, setNuevoP4] = useState('')
+
   // ── OPERACIÓN DE PREMIOS (CANJES) ───────────────────────────────────────────
   const [premiosCanjesList, setPremiosCanjesList] = useState<any[]>([])
   const [cargandoCanjes, setCargandoCanjes] = useState(false)
@@ -485,6 +493,7 @@ export default function DashboardPage() {
 
   // ── cargarPremiosRuleta ───────────────────────────────────────────────────────
   const cargarPremiosRuleta = async (bId: string) => {
+    // 1. Cargar datos básicos de ruleta (que existen en todas las versiones)
     const { data } = await supabase
       .from('businesses')
       .select('premios_ruleta, reiniciar_sellos_ruleta')
@@ -502,6 +511,21 @@ export default function DashboardPage() {
         setReiniciarSellosAuto(data.reiniciar_sellos_ruleta)
       }
     }
+
+    // 2. Cargar de forma defensiva ruleta_config por si la columna no existe aún
+    try {
+      const { data: configData, error } = await supabase
+        .from('businesses')
+        .select('ruleta_config')
+        .eq('id', bId)
+        .maybeSingle()
+      
+      if (!error && configData && configData.ruleta_config) {
+        setRuletaConfig(configData.ruleta_config)
+      }
+    } catch (err) {
+      console.warn("La columna ruleta_config no está disponible en la base de datos.", err)
+    }
   }
 
   // ── guardarPremiosRuleta ──────────────────────────────────────────────────────
@@ -511,11 +535,14 @@ export default function DashboardPage() {
     setGuardandoPromociones(true)
     try {
       const arrPremios = [premio1.trim(), premio2.trim(), premio3.trim(), premio4.trim()]
+      
+      // Intentar actualizar todo incluyendo ruleta_config
       const { error } = await supabase
         .from('businesses')
         .update({
           premios_ruleta: arrPremios,
-          reiniciar_sellos_ruleta: reiniciarSellosAuto
+          reiniciar_sellos_ruleta: reiniciarSellosAuto,
+          ruleta_config: ruletaConfig
         } as any)
         .eq('id', businessId)
       
@@ -524,14 +551,64 @@ export default function DashboardPage() {
       cargarDatos()
     } catch (e: any) {
       console.error(e)
-      if (e.message?.includes('schema cache') || e.message?.includes('premios_ruleta')) {
-        alert('⚠️ Error de Caché de Supabase:\n\nLas nuevas columnas o tablas aún no se han registrado correctamente en la caché de tu base de datos.\n\nPor favor, asegúrate de ejecutar la migración SQL "migration_v14_tabs_geopush.sql" en tu Editor SQL de Supabase y después ejecuta el siguiente comando:\n\nNOTIFY pgrst, \'reload schema\';\n\npara refrescar la caché de inmediato.')
+      // Si la columna ruleta_config no existe en DB, guardar al menos la configuración básica
+      if (e.message?.includes('ruleta_config') || e.message?.includes('column "ruleta_config" does not exist')) {
+        try {
+          const { error: errRetry } = await supabase
+            .from('businesses')
+            .update({
+              premios_ruleta: [premio1.trim(), premio2.trim(), premio3.trim(), premio4.trim()],
+              reiniciar_sellos_ruleta: reiniciarSellosAuto
+            })
+            .eq('id', businessId)
+          if (errRetry) throw errRetry
+          alert('✅ Configuración básica de Ruleta guardada con éxito.\n\n⚠️ NOTA: Los rangos intermedios no se guardaron porque la columna "ruleta_config" no existe en la base de datos. Por favor ejecuta la migración SQL.')
+          cargarDatos()
+        } catch (retryErr: any) {
+          alert('Error al reintentar guardar configuración básica: ' + retryErr.message)
+        }
+      } else if (e.message?.includes('schema cache') || e.message?.includes('premios_ruleta')) {
+        alert('⚠️ Error de Caché de Supabase:\n\nLas nuevas columnas o tablas aún no se han registrado correctamente en la caché de tu base de datos.\n\nPor favor, asegúrate de ejecutar la migración SQL y recargar la caché.')
       } else {
         alert('Error al guardar ruleta: ' + e.message)
       }
     } finally {
       setGuardandoPromociones(false)
     }
+  }
+
+  // ── Acciones de Ruleta Intermedia ──────────────────────────────────────────
+  const agregarOActualizarRuletaIntermedia = () => {
+    if (!nuevoP1.trim() || !nuevoP2.trim() || !nuevoP3.trim() || !nuevoP4.trim()) {
+      alert('Por favor ingresa los 4 premios para esta ruleta intermedia.')
+      return
+    }
+    const sellos = String(nuevoSelloAct)
+    const premios = [nuevoP1.trim(), nuevoP2.trim(), nuevoP3.trim(), nuevoP4.trim()]
+    
+    setRuletaConfig((prev: any) => ({
+      ...prev,
+      [sellos]: {
+        activo: true,
+        premios
+      }
+    }))
+
+    // Limpiar campos
+    setNuevoP1('')
+    setNuevoP2('')
+    setNuevoP3('')
+    setNuevoP4('')
+    alert(`✅ Ruleta configurada temporalmente para ${sellos} sellos.\n\n⚠️ IMPORTANTE: Recuerda presionar el botón "Guardar Configuración de Ruleta" al final de la pestaña para salvar permanentemente los cambios en la base de datos.`)
+  }
+
+  const eliminarRuletaIntermedia = (sello: string) => {
+    setRuletaConfig((prev: any) => {
+      const copy = { ...prev }
+      delete copy[sello]
+      return copy
+    })
+    alert(`❌ Ruleta intermedia para ${sello} sellos eliminada temporalmente. Recuerda guardar cambios al final de la pestaña para confirmar.`)
   }
 
   // ── cargarPremiosCanjes ───────────────────────────────────────────────────────
@@ -1863,6 +1940,92 @@ export default function DashboardPage() {
                 <button onClick={guardarPremiosRuleta} disabled={guardandoPromociones} className="btn-primary py-3 px-6 text-sm">
                   {guardandoPromociones ? 'Guardando Ruleta...' : 'Guardar Configuración de Ruleta'}
                 </button>
+              </div>
+
+              {/* ── Ruletas Intermedias (Premios por Rango de Sellos) ── */}
+              <div className="bg-white border border-[#e4e4e7] p-6 rounded-2xl shadow-sm space-y-6">
+                <div>
+                  <h3 className="font-bold text-sm text-[#09090b] mb-1">Ruletas Intermedias (Gamificación por Rango de Sellos)</h3>
+                  <p className="text-xs text-[#71717a]">Configura ruletas adicionales que se activen cuando el cliente tenga un número específico de sellos acumulados (ej. a los 3 o 7 sellos) antes de completar la tarjeta entera.</p>
+                </div>
+
+                <div className="bg-[#fafafa] border border-[#e4e4e7] p-5 rounded-2xl space-y-4">
+                  <h4 className="font-bold text-[10px] text-[#52525b] uppercase tracking-wider">Nueva Ruleta Intermedia</h4>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 items-end">
+                    <div className="sm:col-span-2 md:col-span-1">
+                      <label className={LBL}>Sello de Activación</label>
+                      <select value={nuevoSelloAct} onChange={e => setNuevoSelloAct(e.target.value)} className={IC}>
+                        {[...Array(Number(maxStamps) || 10)].map((_, i) => (
+                          <option key={i+1} value={i+1}>{i+1} ★</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={LBL}>Sector 1</label>
+                      <input type="text" value={nuevoP1} onChange={e => setNuevoP1(e.target.value)} className={IC} placeholder="Ej. Galleta" />
+                    </div>
+                    <div>
+                      <label className={LBL}>Sector 2</label>
+                      <input type="text" value={nuevoP2} onChange={e => setNuevoP2(e.target.value)} className={IC} placeholder="Ej. Refresco" />
+                    </div>
+                    <div>
+                      <label className={LBL}>Sector 3</label>
+                      <input type="text" value={nuevoP3} onChange={e => setNuevoP3(e.target.value)} className={IC} placeholder="Ej. Papas" />
+                    </div>
+                    <div>
+                      <label className={LBL}>Sector 4</label>
+                      <input type="text" value={nuevoP4} onChange={e => setNuevoP4(e.target.value)} className={IC} placeholder="Ej. Descuento" />
+                    </div>
+                  </div>
+
+                  <button onClick={agregarOActualizarRuletaIntermedia} className="btn-primary py-2.5 px-4 text-xs font-bold flex items-center justify-center gap-1.5 self-start">
+                    <Plus className="w-3.5 h-3.5" /> Configurar Esta Ruleta
+                  </button>
+                </div>
+
+                {/* Listado de ruletas configuradas */}
+                <div className="space-y-3">
+                  <h4 className="font-bold text-[10px] text-[#09090b] uppercase tracking-wider">Ruletas Activas por Rango</h4>
+                  
+                  {Object.keys(ruletaConfig || {}).length === 0 ? (
+                    <div className="text-center py-6 bg-[#fafafa] border border-dashed border-[#e4e4e7] rounded-2xl text-[#71717a] text-xs">
+                      No hay ruletas intermedias configuradas. La ruleta solo se activará al llenar completamente la tarjeta.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {Object.entries(ruletaConfig || {}).map(([sello, data]: any) => (
+                        <div key={sello} className="border border-[#e4e4e7] rounded-2xl p-4 bg-white shadow-sm flex flex-col justify-between gap-3 relative overflow-hidden group">
+                          {/* Badge de Sello */}
+                          <div className="absolute top-3 right-3 bg-amber-100 border border-amber-200 text-amber-700 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full">
+                            {sello} ★
+                          </div>
+                          
+                          <div className="space-y-2">
+                            <h5 className="font-bold text-xs text-[#09090b]">Al alcanzar {sello} {Number(sello) === 1 ? 'sello' : 'sellos'}</h5>
+                            <ul className="text-xs text-[#52525b] space-y-1 bg-[#fafafa] p-2.5 rounded-xl border border-[#f4f4f5]">
+                              {data.premios.map((p: string, idx: number) => (
+                                <li key={idx} className="flex items-center gap-1.5 truncate">
+                                  <span className="text-red-500 font-extrabold">Sector {idx+1}:</span> {p}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+
+                          <button onClick={() => eliminarRuletaIntermedia(sello)} className="text-xs font-bold text-red-500 hover:text-red-700 flex items-center gap-1 mt-1 transition-colors self-start">
+                            <Trash2 className="w-3.5 h-3.5" /> Eliminar Ruleta
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-2 border-t border-[#f4f4f5] flex justify-end">
+                  <button onClick={guardarPremiosRuleta} disabled={guardandoPromociones} className="btn-primary py-3 px-6 text-sm">
+                    {guardandoPromociones ? 'Guardando...' : '💾 Guardar Todo y Aplicar'}
+                  </button>
+                </div>
               </div>
             </div>
           )}

@@ -28,14 +28,20 @@ function RuletaVIP({
   const [anguloActual, setAnguloActual] = useState(0)
   const animRef = useRef<number | undefined>(undefined)
  
-  const premiosList = (business?.premios_ruleta && Array.isArray(business.premios_ruleta) && business.premios_ruleta.length > 0)
-    ? business.premios_ruleta.map((p: string, i: number) => ({ id: String(i), nombre: p, estampillas_requeridas: 10 }))
-    : (premios.length > 0 ? premios : [
-        { id: '1', nombre: 'Café Gratis', estampillas_requeridas: 10 },
-        { id: '2', nombre: 'Postre Sorpresa', estampillas_requeridas: 10 },
-        { id: '3', nombre: 'Bebida Grande', estampillas_requeridas: 10 },
-        { id: '4', nombre: '20% Descuento', estampillas_requeridas: 10 },
-      ])
+  const sellosActuales = cliente?.puntos || 0
+  const configRango = business?.ruleta_config?.[String(sellosActuales)]
+  
+  const premiosList = (configRango && configRango.activo && Array.isArray(configRango.premios) && configRango.premios.length > 0)
+    ? configRango.premios.map((p: string, i: number) => ({ id: String(i), nombre: p, estampillas_requeridas: sellosActuales }))
+    : ((business?.premios_ruleta && Array.isArray(business.premios_ruleta) && business.premios_ruleta.length > 0)
+        ? business.premios_ruleta.map((p: string, i: number) => ({ id: String(i), nombre: p, estampillas_requeridas: 10 }))
+        : (premios.length > 0 ? premios : [
+            { id: '1', nombre: 'Café Gratis', estampillas_requeridas: 10 },
+            { id: '2', nombre: 'Postre Sorpresa', estampillas_requeridas: 10 },
+            { id: '3', nombre: 'Bebida Grande', estampillas_requeridas: 10 },
+            { id: '4', nombre: '20% Descuento', estampillas_requeridas: 10 },
+          ])
+      )
  
   const COLORES = ['#dc2626', '#ef4444', '#b91c1c', '#991b1b', '#f87171', '#fca5a5']
  
@@ -440,6 +446,9 @@ export default function TarjetaLealtadFinal() {
   const sellosMarcados = cliente?.puntos || 0
   const tarjetaCompleta = sellosMarcados >= sellosTotales
 
+  const activeRuletaRange = business?.ruleta_config?.[String(sellosMarcados)]
+  const tieneRuletaActiva = tarjetaCompleta || (activeRuletaRange && activeRuletaRange.activo && Array.isArray(activeRuletaRange.premios) && activeRuletaRange.premios.length >= 4)
+
   if (cargando) return (
     <div className="min-h-screen flex items-center justify-center bg-[#fafafa]">
       <div className="text-center space-y-3">
@@ -529,8 +538,8 @@ export default function TarjetaLealtadFinal() {
             <div className="px-6 py-4">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs font-semibold text-[#71717a]">
-                  {tarjetaCompleta
-                    ? '🏆 ¡Tarjeta Completa!'
+                  {tieneRuletaActiva
+                    ? '🏆 ¡Ruleta de Premios Activa!'
                     : `Faltan ${sellosTotales - sellosMarcados} sellos`}
                 </p>
                 <span className="text-sm font-bold text-[#09090b]">{sellosMarcados}/{sellosTotales}</span>
@@ -545,7 +554,7 @@ export default function TarjetaLealtadFinal() {
 
             {/* QR / Acción principal */}
             <div className="px-6 pb-6 flex flex-col items-center gap-4">
-              {tarjetaCompleta ? (
+              {tieneRuletaActiva ? (
                 <button
                   onClick={() => setMostrarRuleta(true)}
                   className="btn-primary w-full py-4 text-base animate-bounce flex items-center justify-center gap-2"
