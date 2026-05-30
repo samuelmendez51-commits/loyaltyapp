@@ -346,7 +346,18 @@ export default function SuperAdminPage() {
 
       if (errUser) throw errUser
 
-      // 3. Registrar transacción en ledger
+      // 3. Crear plantilla de recompensas ("cascarón") en loyalty_rewards
+      const { error: errRewards } = await supabase
+        .from('loyalty_rewards')
+        .insert([
+          { business_id: biz.id, sello_requerido: 3, nombre: 'Premio Intermedio 1', descripcion: 'Sello 3 alcanzado', tipo: 'intermedio', activo: true },
+          { business_id: biz.id, sello_requerido: 7, nombre: 'Premio Intermedio 2', descripcion: 'Sello 7 alcanzado', tipo: 'intermedio', activo: true },
+          { business_id: biz.id, sello_requerido: 10, nombre: 'Premio Mayor Final', descripcion: '¡Sello 10 completo! Premio Mayor', tipo: 'final', activo: true }
+        ])
+
+      if (errRewards) throw errRewards
+
+      // 4. Registrar transacción en ledger
       await supabase.from('credit_transactions').insert({
         business_id: biz.id,
         tipo: nuevoBiz.plan === 'demo' ? 'demo' : 'renovacion',

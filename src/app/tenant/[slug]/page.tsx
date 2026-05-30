@@ -13,6 +13,7 @@ interface Business {
   color_primario: string
   estado: string
   bloqueado_manual: boolean
+  banner_url?: string | null
 }
 
 export default function TenantLandingPage() {
@@ -30,7 +31,7 @@ export default function TenantLandingPage() {
       try {
         const { data, error: dbError } = await supabase
           .from('businesses')
-          .select('id, nombre, slug, logo_url, color_primario, estado, bloqueado_manual')
+          .select('id, nombre, slug, logo_url, color_primario, estado, bloqueado_manual, banner_url')
           .eq('slug', slug)
           .maybeSingle()
 
@@ -115,16 +116,35 @@ export default function TenantLandingPage() {
 
       <div className="w-full max-w-[400px] space-y-8 relative z-10 animate-fadeIn">
         {/* Card Principal de Branding */}
-        <div className="bg-white rounded-3xl shadow-[0_4px_24px_rgba(0,0,0,0.08)] border border-[#f0f0f0] p-8 text-center space-y-6">
+        <div className="bg-white rounded-3xl shadow-[0_4px_24px_rgba(0,0,0,0.08)] border border-[#f0f0f0] overflow-hidden text-center">
           
-          {/* Logo dinámico */}
-          <div className="w-20 h-20 mx-auto rounded-3xl overflow-hidden border border-[#e4e4e7] shadow-sm bg-white flex items-center justify-center">
-            {business.logo_url ? (
-              <img src={business.logo_url} alt={business.nombre} className="w-full h-full object-cover" />
-            ) : (
-              <span className="text-3xl text-zinc-400">🏪</span>
-            )}
-          </div>
+          {/* Portada si existe */}
+          {business.banner_url && (
+            <div className="h-28 w-full relative bg-zinc-100 border-b border-[#f4f4f5]">
+              <img 
+                src={business.banner_url.startsWith('http') || business.banner_url.startsWith('/') || business.banner_url.startsWith('data:') ? business.banner_url : `/${business.banner_url}`} 
+                alt="" 
+                className="w-full h-full object-cover opacity-90" 
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
+            </div>
+          )}
+
+          <div className="p-8 space-y-6">
+            {/* Logo dinámico (con margen negativo para superponer sobre la portada) */}
+            <div className={`w-20 h-20 mx-auto rounded-3xl overflow-hidden border border-[#e4e4e7] shadow-sm bg-white flex items-center justify-center relative z-10 ${
+              business.banner_url ? '-mt-16 border-white ring-4 ring-white' : ''
+            }`}>
+              {business.logo_url ? (
+                <img 
+                  src={business.logo_url.startsWith('http') || business.logo_url.startsWith('/') || business.logo_url.startsWith('data:') ? business.logo_url : `/${business.logo_url}`} 
+                  alt={business.nombre} 
+                  className="w-full h-full object-cover" 
+                />
+              ) : (
+                <span className="text-3xl text-zinc-400">🏪</span>
+              )}
+            </div>
 
           <div className="space-y-1.5">
             <h1 className="text-2xl font-bold text-[#09090b] tracking-tight">
@@ -158,6 +178,7 @@ export default function TenantLandingPage() {
             </button>
           </div>
         </div>
+      </div>
 
         {/* Footer corporativo sutil */}
         <div className="text-center space-y-1">

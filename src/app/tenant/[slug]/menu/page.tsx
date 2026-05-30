@@ -882,8 +882,12 @@ _Pedido procesado a través de LoyaltyApp VIP_`
         <div className="absolute bottom-0 left-0 right-0 p-6 flex items-end gap-4">
           <div className="w-16 h-16 bg-zinc-800 rounded-2xl border border-amber-500/20 flex items-center justify-center overflow-hidden shadow-[0_0_20px_rgba(251,191,36,0.3)]">
             {business.logo_url ? (
-              business.logo_url.startsWith('http') || business.logo_url.startsWith('/') || business.logo_url.startsWith('data:') ? (
-                <img src={business.logo_url} alt="" className="w-full h-full object-cover" />
+              business.logo_url.startsWith('http') || business.logo_url.startsWith('/') || business.logo_url.startsWith('data:') || business.logo_url.endsWith('.png') || business.logo_url.endsWith('.jpg') || business.logo_url.endsWith('.svg') || business.logo_url.endsWith('.jpeg') || business.logo_url.endsWith('.webp') ? (
+                <img 
+                  src={business.logo_url.startsWith('http') || business.logo_url.startsWith('/') || business.logo_url.startsWith('data:') ? business.logo_url : `/${business.logo_url}`} 
+                  alt="" 
+                  className="w-full h-full object-cover" 
+                />
               ) : (
                 <span className="text-3xl">{business.logo_url}</span>
               )

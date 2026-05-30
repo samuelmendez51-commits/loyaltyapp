@@ -3,12 +3,13 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import { useParams } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
 import {
   LayoutDashboard, Users, UtensilsCrossed, Map, Settings,
   UserCheck, TrendingUp, QrCode, UserPlus, MoreVertical,
   Menu as MenuIcon, ChevronLeft, ChevronRight, LogOut,
-  RefreshCw, HelpCircle, Download, AlertTriangle, Clock,
+  RefreshCw, HelpCircle, Download, AlertTriangle, Clock, Loader2,
   FileSpreadsheet, Check, Plus, Trash2, DollarSign,
   PieChart as PieIcon, BarChart3 as BarIcon, PhoneCall,
   Smartphone, Radio, Pencil, Send,
@@ -122,6 +123,9 @@ function ModalAjuste({ modal, motivo, setMotivo, guardando, onConfirmar, onCerra
 
 // ── DASHBOARD PRINCIPAL ───────────────────────────────────────────────────────
 export default function DashboardPage() {
+  // ── Tenant: slug extraído del subdominio vía rewrite del middleware ──────────
+  const slug = (useParams().slug as string) || ''
+
   const [pestaña, setPestaña] = useState('metricas')
   const [sidebarExpanded, setSidebarExpanded] = useState(true)
   const [quickToolsOpen, setQuickToolsOpen] = useState(false)
@@ -177,6 +181,14 @@ export default function DashboardPage() {
   const [guardandoAjuste, setGuardandoAjuste] = useState(false)
   const [maxStamps, setMaxStamps] = useState('10')
   const [clienteSeleccionadoModal, setClienteSeleccionadoModal] = useState<Cliente | null>(null)
+
+  // ── SOCIOS VIP EDICIÓN ──
+  const [clienteAEditar, setClienteAEditar] = useState<Cliente | null>(null)
+  const [editCliNombre, setEditCliNombre] = useState('')
+  const [editCliTelefono, setEditCliTelefono] = useState('')
+  const [editCliEmail, setEditCliEmail] = useState('')
+  const [editCliFechaNacimiento, setEditCliFechaNacimiento] = useState('')
+  const [guardandoEdicionCli, setGuardandoEdicionCli] = useState(false)
 
   // ── CONFIGURACIÓN GEOPUSH ──────────────────────────────────────────────────
   const [geoPushLat, setGeoPushLat] = useState(19.421583)
@@ -249,28 +261,28 @@ export default function DashboardPage() {
       if (quickToolsRef.current && !quickToolsRef.current.contains(e.target as Node)) setQuickToolsOpen(false)
     }
     document.addEventListener('mousedown', handleOutsideClick)
-    cargarDatos()
+    // slug disponible tras hidratación → cargar datos del tenant correcto
+    if (slug) cargarDatos()
     return () => {
       window.removeEventListener('beforeinstallprompt', handlePrompt)
       document.removeEventListener('mousedown', handleOutsideClick)
     }
-  }, [])
+  }, [slug]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Cargar Datos ─────────────────────────────────────────────────────────────
   const cargarDatos = async () => {
+    // Guardia: esperar a que el slug esté disponible (hidratación del cliente)
+    if (!slug) return
     setCargando(true)
-    const businessId = getCookieVal('session_business_id')
-    const activeBizId = businessId || ''
 
-    // Negocio
+    // ── Negocio: cargado por slug del subdominio (inyectado por el middleware) ──
     let bizData: Business | null = null
-    if (activeBizId) {
-      const { data: biz } = await supabase.from('businesses').select('*').eq('id', activeBizId).maybeSingle()
-      if (biz) bizData = biz as Business
-    } else {
-      const { data: biz } = await supabase.from('businesses').select('*').eq('slug', 'laburreria').maybeSingle()
-      if (biz) bizData = biz as Business
-    }
+    const { data: biz } = await supabase
+      .from('businesses')
+      .select('*')
+      .eq('slug', slug)
+      .maybeSingle()
+    if (biz) bizData = biz as Business
 
     if (bizData) {
       setBusiness(bizData)
@@ -307,7 +319,7 @@ export default function DashboardPage() {
     }
 
     // Clientes
-    const bizIdFinal = activeBizId || bizData?.id || ''
+    const bizIdFinal = bizData?.id || ''
     let qCli = supabase.from('clientes').select('*').order('created_at', { ascending: false })
     if (bizIdFinal) qCli = qCli.eq('business_id', bizIdFinal)
     const { data: dataClientes } = await qCli
@@ -737,7 +749,7 @@ export default function DashboardPage() {
     try {
       const { data: prog, error } = await supabase.from('programas_fidelidad').insert({
         business_id: businessId,
-        tipo_programa: 'estampillas',
+        tipo_programa: tipoSeleccionado || 'estampillas',
         nombre_club: nombreClub.trim(),
         estampillas_max_dia: maxDiaFinal,
         total_estampillas: totalFinal,
@@ -820,6 +832,53 @@ export default function DashboardPage() {
     if (!confirm('¿Eliminar este socio VIP definitivamente?')) return
     await supabase.from('clientes').delete().eq('id', id)
     cargarDatos()
+  }
+
+  const abrirEditarCliente = (c: Cliente) => {
+    setClienteAEditar(c)
+    setEditCliNombre(c.nombre || '')
+    setEditCliTelefono(c.telefono || '')
+    setEditCliEmail(c.email || '')
+    setEditCliFechaNacimiento(c.fecha_nacimiento || '')
+  }
+
+  const guardarEdicionCliente = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!clienteAEditar) return
+    if (!editCliNombre.trim() || !editCliTelefono.trim()) {
+      alert('Nombre y teléfono son obligatorios')
+      return
+    }
+
+    const telLimpio = editCliTelefono.replace(/\D/g, '')
+    if (telLimpio.length !== 10) {
+      alert('El teléfono debe tener exactamente 10 dígitos.')
+      return
+    }
+
+    setGuardandoEdicionCli(true)
+    try {
+      const { error } = await supabase
+        .from('clientes')
+        .update({
+          nombre: editCliNombre.trim(),
+          telefono: telLimpio,
+          email: editCliEmail.trim() || null,
+          fecha_nacimiento: editCliFechaNacimiento || null
+        })
+        .eq('id', clienteAEditar.id)
+
+      if (error) throw error
+
+      alert('✅ Datos del socio actualizados exitosamente')
+      setClienteAEditar(null)
+      cargarDatos()
+    } catch (err: any) {
+      console.error('Error al editar cliente:', err)
+      alert('Error al guardar cambios: ' + err.message)
+    } finally {
+      setGuardandoEdicionCli(false)
+    }
   }
 
   const exportarCSV = () => {
@@ -1119,6 +1178,9 @@ export default function DashboardPage() {
                               <div className="flex gap-2">
                                 <button onClick={() => abrirModalAjuste(c.id, c.nombre, c.puntos, 'resta')} className="w-8 h-8 rounded-lg border border-[#e4e4e7] hover:bg-[#fafafa] text-[#52525b] transition-colors flex items-center justify-center font-bold">−</button>
                                 <button onClick={() => abrirModalAjuste(c.id, c.nombre, c.puntos, 'suma')} className="w-8 h-8 rounded-lg bg-[#fef2f2] border border-[#fecaca] text-[#dc2626] hover:bg-red-50 transition-colors flex items-center justify-center font-bold">+</button>
+                                <button onClick={() => abrirEditarCliente(c)} className="w-8 h-8 rounded-lg border border-[#e4e4e7] hover:bg-[#fafafa] text-[#52525b] hover:text-[#dc2626] transition-colors flex items-center justify-center">
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
                                 <button onClick={() => eliminarCliente(c.id)} className="w-8 h-8 rounded-lg border border-[#e4e4e7] hover:bg-red-50 hover:border-red-200 text-[#a1a1aa] hover:text-red-500 transition-colors flex items-center justify-center">
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
@@ -1610,11 +1672,23 @@ export default function DashboardPage() {
                       <div key={prog.id} className="bg-[#fafafa] border border-[#e4e4e7] p-4 rounded-xl flex items-center justify-between">
                         <div>
                           <div className="flex items-center gap-2 mb-1">
-                            <span className="bg-amber-100 text-amber-700 text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase">⭐ Estampillas</span>
+                            <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase ${
+                              prog.tipo_programa === 'gift_card' ? 'bg-purple-100 text-purple-700' :
+                              prog.tipo_programa === 'niveles' ? 'bg-blue-100 text-blue-700' :
+                              'bg-amber-100 text-amber-700'
+                            }`}>
+                              {prog.tipo_programa === 'gift_card' ? '🎁 Tarjeta de Regalo' :
+                               prog.tipo_programa === 'niveles' ? '🏆 Visitas / Niveles' :
+                               '⭐ Estampillas'}
+                            </span>
                             {prog.activo && <span className="bg-green-100 text-green-700 text-[10px] font-bold px-2.5 py-0.5 rounded-full">Activo</span>}
                           </div>
                           <p className="font-semibold text-sm text-[#09090b]">{prog.nombre_club}</p>
-                          <p className="text-xs text-[#71717a] mt-0.5">{prog.total_estampillas} sellos requeridos · Máx {prog.estampillas_max_dia} al día</p>
+                          <p className="text-xs text-[#71717a] mt-0.5">
+                            {prog.tipo_programa === 'gift_card' ? 'Saldo digital recargable' :
+                             prog.tipo_programa === 'niveles' ? `${prog.total_estampillas} visitas meta · Máx ${prog.estampillas_max_dia} al día` :
+                             `${prog.total_estampillas} sellos requeridos · Máx ${prog.estampillas_max_dia} al día`}
+                          </p>
                         </div>
                       </div>
                     ))}
@@ -1625,19 +1699,45 @@ export default function DashboardPage() {
                 {mostrarCrearPrograma && (
                   <div className="border border-[#e4e4e7] rounded-xl p-5 space-y-5 animate-slideUp">
                     <div className="flex justify-between items-center border-b border-[#f4f4f5] pb-3">
-                      <h4 className="font-bold text-sm text-[#09090b]">Nuevo Programa de Estampillas</h4>
+                      <h4 className="font-bold text-sm text-[#09090b]">
+                        {tipoSeleccionado === 'gift_card' ? 'Nueva Tarjeta de Regalo / Monedero' :
+                         tipoSeleccionado === 'niveles' ? 'Nuevo Programa de Visitas / Niveles' :
+                         'Nuevo Programa de Estampillas'}
+                      </h4>
                       <button onClick={() => setMostrarCrearPrograma(false)} className="text-[#a1a1aa] hover:text-[#71717a]"><X className="w-4 h-4" /></button>
                     </div>
 
                     {pasoLealtad === 'selector' && (
                       <div className="space-y-4">
-                        <p className="text-xs text-[#71717a]">¿Deseas iniciar con el modelo estándar de Estampillas y Sellos?</p>
-                        <div
-                          onClick={() => { setTipoSeleccionado('estampillas'); setPasoLealtad('config') }}
-                          className="border border-[#dc2626] bg-[#fef2f2] p-4 rounded-xl cursor-pointer hover:shadow-sm transition-all"
-                        >
-                          <p className="font-bold text-sm text-[#dc2626]">⭐ Tarjeta de Estampillas / Sellos</p>
-                          <p className="text-xs text-[#71717a] mt-1">El cliente acumula sellos en su mostrador y gira para obtener beneficios finales.</p>
+                        <p className="text-xs text-[#71717a]">Selecciona el tipo de tarjeta/programa de lealtad que deseas configurar:</p>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div
+                            onClick={() => { setTipoSeleccionado('estampillas'); setPasoLealtad('config') }}
+                            className="border border-[#e4e4e7] hover:border-[#dc2626] hover:bg-[#fef2f2] p-4 rounded-xl cursor-pointer hover:shadow-sm transition-all text-center flex flex-col items-center justify-center space-y-2 group"
+                          >
+                            <span className="w-10 h-10 rounded-full bg-[#fef2f2] group-hover:bg-[#fde2e2] flex items-center justify-center text-xl">⭐</span>
+                            <p className="font-bold text-xs text-[#09090b] group-hover:text-[#dc2626]">Tarjeta de Estampillas</p>
+                            <p className="text-[10px] text-[#71717a]">Acumula sellos en consumos para obtener un premio mayor o intermedios.</p>
+                          </div>
+
+                          <div
+                            onClick={() => { setTipoSeleccionado('niveles'); setPasoLealtad('config') }}
+                            className="border border-[#e4e4e7] hover:border-blue-600 hover:bg-blue-50 p-4 rounded-xl cursor-pointer hover:shadow-sm transition-all text-center flex flex-col items-center justify-center space-y-2 group"
+                          >
+                            <span className="w-10 h-10 rounded-full bg-blue-50 group-hover:bg-blue-100 flex items-center justify-center text-xl">🏆</span>
+                            <p className="font-bold text-xs text-[#09090b] group-hover:text-blue-600">Visitas / Niveles VIP</p>
+                            <p className="text-[10px] text-[#71717a]">Premia a tus socios según la frecuencia de visitas o niveles VIP alcanzados.</p>
+                          </div>
+
+                          <div
+                            onClick={() => { setTipoSeleccionado('gift_card'); setPasoLealtad('config') }}
+                            className="border border-[#e4e4e7] hover:border-purple-600 hover:bg-purple-50 p-4 rounded-xl cursor-pointer hover:shadow-sm transition-all text-center flex flex-col items-center justify-center space-y-2 group"
+                          >
+                            <span className="w-10 h-10 rounded-full bg-purple-50 group-hover:bg-purple-100 flex items-center justify-center text-xl">🎁</span>
+                            <p className="font-bold text-xs text-[#09090b] group-hover:text-purple-650">Gift Card / Regalo</p>
+                            <p className="text-[10px] text-[#71717a]">Permite a los socios acumular o recargar saldo prepagado digital para canjes.</p>
+                          </div>
                         </div>
                       </div>
                     )}
@@ -1963,6 +2063,74 @@ export default function DashboardPage() {
                 <Send className="w-4 h-4" /> Enviar Alerta "Tarjeta Llena" 📲
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: EDITAR SOCIO VIP ── */}
+      {clienteAEditar && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl p-6 border border-[#e4e4e7] animate-slideUp">
+            <div className="flex justify-between items-center mb-4 border-b border-[#f4f4f5] pb-3">
+              <h3 className="font-bold text-sm text-[#09090b]">Editar Socio VIP</h3>
+              <button onClick={() => setClienteAEditar(null)} className="w-7 h-7 bg-[#fafafa] rounded-full flex items-center justify-center hover:bg-[#f4f4f5]">
+                <X className="w-4 h-4 text-[#71717a]" />
+              </button>
+            </div>
+
+            <form onSubmit={guardarEdicionCliente} className="space-y-4">
+              <div>
+                <label className={LBL}>Nombre Completo *</label>
+                <input 
+                  type="text" 
+                  value={editCliNombre} 
+                  onChange={e => setEditCliNombre(e.target.value)} 
+                  className={IC} 
+                  placeholder="Ej. Yareli Lozano"
+                  required 
+                />
+              </div>
+              <div>
+                <label className={LBL}>Teléfono (10 dígitos) *</label>
+                <input 
+                  type="tel" 
+                  maxLength={10}
+                  value={editCliTelefono} 
+                  onChange={e => setEditCliTelefono(e.target.value.replace(/\D/g, ''))} 
+                  className={IC} 
+                  placeholder="Ej. 3221234567"
+                  required 
+                />
+              </div>
+              <div>
+                <label className={LBL}>Email (Opcional)</label>
+                <input 
+                  type="email" 
+                  value={editCliEmail} 
+                  onChange={e => setEditCliEmail(e.target.value)} 
+                  className={IC} 
+                  placeholder="Ej. yareli@gmail.com"
+                />
+              </div>
+              <div>
+                <label className={LBL}>Fecha de Nacimiento (Opcional)</label>
+                <input 
+                  type="date" 
+                  value={editCliFechaNacimiento} 
+                  onChange={e => setEditCliFechaNacimiento(e.target.value)} 
+                  className={IC} 
+                  style={{ colorScheme: 'light' }}
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button type="button" onClick={() => setClienteAEditar(null)} className="flex-1 border border-[#e4e4e7] py-2.5 rounded-xl text-xs font-semibold text-[#52525b] hover:bg-[#fafafa]">Cancelar</button>
+                <button type="submit" disabled={guardandoEdicionCli} className="flex-1 btn-primary py-2.5 text-xs font-bold flex items-center justify-center gap-1.5">
+                  {guardandoEdicionCli && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  {guardandoEdicionCli ? 'Guardando...' : 'Guardar Cambios'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

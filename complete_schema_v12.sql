@@ -469,7 +469,9 @@ BEGIN
   NEW.updated_at = NOW();
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public;
 
 DROP TRIGGER IF EXISTS update_businesses_updated_at ON businesses;
 CREATE TRIGGER update_businesses_updated_at
@@ -512,7 +514,9 @@ BEGIN
     OR EXTRACT(DAY FROM NOW() - MAX(te.created_at)) >= 21
   ORDER BY dias_inactivo DESC NULLS LAST;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public;
 
 -- =============================================
 -- FUNCIÓN: Detectar Velocidad de Escaneo (Fraude)
@@ -536,7 +540,9 @@ BEGIN
     
   RETURN v_count >= p_umbral;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public;
 
 -- =============================================
 -- UPGRADES SEGUROS DE ESQUEMA V12
