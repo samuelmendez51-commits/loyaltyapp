@@ -175,6 +175,42 @@ export default function DashboardPage() {
   const [subiendoMenuDomicilio, setSubiendoMenuDomicilio] = useState(false)
   const [tipoQR, setTipoQR] = useState<'local' | 'domicilio'>('local')
 
+  // ── ESTADOS DEL MENÚ DINÁMICO ──
+  const [subPestañaMenu, setSubPestañaMenu] = useState<'archivos' | 'categorias' | 'productos'>('archivos')
+  const [menuGroups, setMenuGroups] = useState<any[]>([])
+  const [menuProducts, setMenuProducts] = useState<any[]>([])
+  
+  // Categoría Form / Edición
+  const [grupoAEditar, setGrupoAEditar] = useState<any>(null)
+  const [nombreGrupo, setNombreGrupo] = useState('')
+  const [descGrupo, setDescGrupo] = useState('')
+  const [tipoMenuGrupo, setTipoMenuGrupo] = useState<'mesa' | 'delivery' | 'ambos'>('ambos')
+  const [ordenGrupo, setOrdenGrupo] = useState(0)
+  const [activoGrupo, setActivoGrupo] = useState(true)
+  const [guardandoGrupo, setGuardandoGrupo] = useState(false)
+
+  // Producto Form / Edición
+  const [productoAEditar, setProductoAEditar] = useState<any>(null)
+  const [nombreProd, setNombreProd] = useState('')
+  const [descProd, setDescProd] = useState('')
+  const [precioProd, setPrecioProd] = useState('')
+  const [imagenProdUrl, setImagenProdUrl] = useState('')
+  const [disponibleProd, setDisponibleProd] = useState(true)
+  const [esUpsellProd, setEsUpsellProd] = useState(false)
+  const [groupIdProd, setGroupIdProd] = useState('')
+  const [subiendoImgProd, setSubiendoImgProd] = useState(false)
+  const [guardandoProd, setGuardandoProd] = useState(false)
+
+  // Modificadores Form / Edición
+  const [modificadorAEditar, setModificadorAEditar] = useState<any>(null)
+  const [nombreMod, setNombreMod] = useState('')
+  const [requeridoMod, setRequeridoMod] = useState(false)
+  const [opcionesMod, setOpcionesMod] = useState<{ id?: string; nombre: string; precio_extra: number }[]>([])
+  const [nuevaOpNombre, setNuevaOpNombre] = useState('')
+  const [nuevaOpPrecio, setNuevaOpPrecio] = useState('0')
+  const [guardandoMod, setGuardandoMod] = useState(false)
+
+
   // ── SOCIOS VIP ──────────────────────────────────────────────────────────────
   const [sociosSospechosos, setSociosSospechosos] = useState<Record<string, boolean>>({})
   const [modalAjusteSocio, setModalAjusteSocio] = useState<{ id: string; nombre: string; puntos: number; direccion: 'suma' | 'resta' } | null>(null)
@@ -425,6 +461,7 @@ export default function DashboardPage() {
       await cargarGeoPush(bId)
       await cargarPremiosRuleta(bId)
       await cargarPremiosCanjes()
+      await cargarDatosMenu(bId)
     }
 
     // Clientes
@@ -927,6 +964,266 @@ export default function DashboardPage() {
       alert('Error: ' + e.message)
     } finally {
       tipo === 'local' ? setSubiendoMenuLocal(false) : setSubiendoMenuDomicilio(false)
+    }
+  }
+
+  // ── GESTIÓN DE MENÚ DINÁMICO (Categorías, Productos, Modificadores) ───────────
+  const cargarDatosMenu = async (bId: string) => {
+    try {
+      const { data: groups } = await supabase
+        .from('menu_groups')
+        .select('*')
+        .eq('business_id', bId)
+        .order('orden')
+      if (groups) setMenuGroups(groups)
+
+      const { data: products } = await supabase
+        .from('menu_products')
+        .select('*, product_modifiers(*, modifier_options(*))')
+        .eq('business_id', bId)
+        .order('nombre')
+      if (products) setMenuProducts(products)
+    } catch (e) {
+      console.error('Error loading dynamic menu:', e)
+    }
+  }
+
+  const guardarCategoria = async () => {
+    const businessId = activeBizId || getCookieVal('session_business_id') || business?.id
+    if (!businessId || !nombreGrupo.trim()) return alert('Nombre obligatorio')
+    setGuardandoGrupo(true)
+
+    const payload = {
+      business_id: businessId,
+      nombre: nombreGrupo.trim(),
+      descripcion: descGrupo.trim(),
+      tipo_menu: tipoMenuGrupo,
+      orden: Number(ordenGrupo) || 0,
+      activo: activoGrupo
+    }
+
+    let error = null
+    if (grupoAEditar) {
+      const { error: err } = await supabase
+        .from('menu_groups')
+        .update(payload)
+        .eq('id', grupoAEditar.id)
+      error = err
+    } else {
+      const { error: err } = await supabase
+        .from('menu_groups')
+        .insert(payload)
+      error = err
+    }
+
+    setGuardandoGrupo(false)
+    if (error) {
+      alert('Error al guardar categoría: ' + error.message)
+    } else {
+      alert('✅ Categoría guardada exitosamente')
+      setGrupoAEditar(null)
+      setNombreGrupo('')
+      setDescGrupo('')
+      setTipoMenuGrupo('ambos')
+      setOrdenGrupo(0)
+      setActivoGrupo(true)
+      cargarDatosMenu(businessId)
+    }
+  }
+
+  const borrarCategoria = async (id: string) => {
+    if (!confirm('¿Estás seguro de eliminar esta categoría? Se desvincularán sus productos.')) return
+    const businessId = activeBizId || getCookieVal('session_business_id') || business?.id
+    if (!businessId) return
+    
+    const { error } = await supabase
+      .from('menu_groups')
+      .delete()
+      .eq('id', id)
+
+    if (error) {
+      alert('Error al eliminar: ' + error.message)
+    } else {
+      alert('✅ Categoría eliminada')
+      cargarDatosMenu(businessId)
+    }
+  }
+
+  const guardarProducto = async () => {
+    const businessId = activeBizId || getCookieVal('session_business_id') || business?.id
+    if (!businessId || !nombreProd.trim() || !precioProd || !groupIdProd) {
+      return alert('Completa los campos obligatorios: Nombre, Precio y Categoría')
+    }
+    setGuardandoProd(true)
+
+    const payload = {
+      business_id: businessId,
+      group_id: groupIdProd,
+      nombre: nombreProd.trim(),
+      descripcion: descProd.trim(),
+      precio: Number(precioProd) || 0,
+      imagen_url: imagenProdUrl.trim() || null,
+      disponible: disponibleProd,
+      es_upsell: esUpsellProd
+    }
+
+    let error = null
+    if (productoAEditar) {
+      const { error: err } = await supabase
+        .from('menu_products')
+        .update(payload)
+        .eq('id', productoAEditar.id)
+      error = err
+    } else {
+      const { error: err } = await supabase
+        .from('menu_products')
+        .insert(payload)
+      error = err
+    }
+
+    setGuardandoProd(false)
+    if (error) {
+      alert('Error al guardar producto: ' + error.message)
+    } else {
+      alert('✅ Producto guardado exitosamente')
+      setProductoAEditar(null)
+      setNombreProd('')
+      setDescProd('')
+      setPrecioProd('')
+      setImagenProdUrl('')
+      setDisponibleProd(true)
+      setEsUpsellProd(false)
+      setGroupIdProd('')
+      cargarDatosMenu(businessId)
+    }
+  }
+
+  const borrarProducto = async (id: string) => {
+    if (!confirm('¿Estás seguro de eliminar este producto y todos sus modificadores?')) return
+    const businessId = activeBizId || getCookieVal('session_business_id') || business?.id
+    if (!businessId) return
+
+    const { error } = await supabase
+      .from('menu_products')
+      .delete()
+      .eq('id', id)
+
+    if (error) {
+      alert('Error al eliminar producto: ' + error.message)
+    } else {
+      alert('✅ Producto eliminado')
+      cargarDatosMenu(businessId)
+    }
+  }
+
+  const subirImagenProd = async (file: File) => {
+    const businessId = activeBizId || getCookieVal('session_business_id') || business?.id
+    if (!businessId) return
+    setSubiendoImgProd(true)
+
+    try {
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${businessId}/prod-${Date.now()}.${fileExt}`
+      const { error: uploadErr } = await supabase.storage
+        .from('menu-images')
+        .upload(fileName, file, { cacheControl: '3600', upsert: true, contentType: file.type || 'application/octet-stream' })
+      if (uploadErr) {
+        alert('Error al subir: ' + uploadErr.message)
+        return
+      }
+      const { data: urlData } = supabase.storage.from('menu-images').getPublicUrl(fileName)
+      if (urlData?.publicUrl) {
+        setImagenProdUrl(urlData.publicUrl)
+        alert('✅ Imagen subida y asociada!')
+      }
+    } catch (e: any) {
+      alert('Error en subida: ' + e.message)
+    } finally {
+      setSubiendoImgProd(false)
+    }
+  }
+
+  const abrirGestorModificadores = (product: any) => {
+    setProductoAEditar(product)
+    setModificadorAEditar({ product_id: product.id })
+    setNombreMod('')
+    setRequeridoMod(false)
+    setOpcionesMod([])
+    setNuevaOpNombre('')
+    setNuevaOpPrecio('0')
+  }
+
+  const agregarOpcionMemoria = () => {
+    if (!nuevaOpNombre.trim()) return alert('Nombre de opción requerido')
+    setOpcionesMod(prev => [...prev, { nombre: nuevaOpNombre.trim(), precio_extra: Number(nuevaOpPrecio) || 0 }])
+    setNuevaOpNombre('')
+    setNuevaOpPrecio('0')
+  }
+
+  const quitarOpcionMemoria = (idx: number) => {
+    setOpcionesMod(prev => prev.filter((_, i) => i !== idx))
+  }
+
+  const guardarModificadorCompleto = async () => {
+    const businessId = activeBizId || getCookieVal('session_business_id') || business?.id
+    if (!businessId || !productoAEditar || !nombreMod.trim()) return alert('Nombre del grupo obligatorio')
+    setGuardandoMod(true)
+
+    // 1. Insertar el Modifier Group
+    const { data: modGroup, error: groupErr } = await supabase
+      .from('product_modifiers')
+      .insert({
+        product_id: productoAEditar.id,
+        nombre: nombreMod.trim(),
+        requerido: requeridoMod
+      })
+      .select()
+      .single()
+
+    if (groupErr || !modGroup) {
+      setGuardandoMod(false)
+      return alert('Error al crear grupo modificador: ' + groupErr?.message)
+    }
+
+    // 2. Insertar las opciones asociadas
+    if (opcionesMod.length > 0) {
+      const optionsPayload = opcionesMod.map(op => ({
+        modifier_id: modGroup.id,
+        nombre: op.nombre,
+        precio_extra: op.precio_extra
+      }))
+      const { error: optsErr } = await supabase
+        .from('modifier_options')
+        .insert(optionsPayload)
+      if (optsErr) {
+        alert('Error parcial al insertar opciones: ' + optsErr.message)
+      }
+    }
+
+    setGuardandoMod(false)
+    alert('✅ Grupo modificador guardado exitosamente')
+    setModificadorAEditar(null)
+    setNombreMod('')
+    setRequeridoMod(false)
+    setOpcionesMod([])
+    cargarDatosMenu(businessId)
+  }
+
+  const borrarModificador = async (modId: string) => {
+    if (!confirm('¿Estás seguro de eliminar este grupo de modificadores?')) return
+    const businessId = activeBizId || getCookieVal('session_business_id') || business?.id
+    if (!businessId) return
+
+    const { error } = await supabase
+      .from('product_modifiers')
+      .delete()
+      .eq('id', modId)
+
+    if (error) {
+      alert('Error: ' + error.message)
+    } else {
+      alert('✅ Modificador eliminado')
+      cargarDatosMenu(businessId)
     }
   }
 
@@ -1835,160 +2132,496 @@ export default function DashboardPage() {
           ══════════════════════════════════════════ */}
           {pestaña === 'menus' && (
             <div className="space-y-6 animate-fadeIn max-w-3xl">
+              {/* MODAL GESTOR DE MODIFICADORES */}
+              {modificadorAEditar && productoAEditar && (
+                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                  <div className="bg-white border border-[#e4e4e7] rounded-3xl p-6 w-full max-w-lg shadow-2xl relative max-h-[85vh] overflow-y-auto">
+                    <button 
+                      onClick={() => { setModificadorAEditar(null); setProductoAEditar(null); }}
+                      className="absolute top-4 right-4 w-8 h-8 rounded-full bg-[#fafafa] hover:bg-[#f4f4f5] flex items-center justify-center text-[#71717a] transition-colors"
+                    >
+                      ✕
+                    </button>
+                    
+                    <div className="mb-4">
+                      <span className="text-[10px] bg-red-50 text-[#dc2626] font-black uppercase px-2.5 py-0.5 rounded-full">Modificadores</span>
+                      <h3 className="text-lg font-bold text-[#09090b] tracking-tight mt-1">
+                        Ajustes para: <span className="text-[#dc2626]">{productoAEditar.nombre}</span>
+                      </h3>
+                      <p className="text-xs text-[#71717a]">Crea grupos (ej: Salsas, Tamaño) y agrega opciones con precios adicionales.</p>
+                    </div>
+
+                    {/* Formulario nuevo modificador */}
+                    <div className="bg-[#fafafa] border border-[#e4e4e7] p-5 rounded-2xl space-y-4 mb-6">
+                      <h4 className="text-xs font-bold text-[#09090b] uppercase tracking-wider">➕ Crear Nuevo Grupo Modificador</h4>
+                      
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className={LBL}>Nombre del Grupo (ej: Elige tu Salsa)</label>
+                          <input type="text" value={nombreMod} onChange={e => setNombreMod(e.target.value)} className={IC + ' bg-white'} placeholder="Sabor / Salsa / Tamaño" />
+                        </div>
+                        <div className="flex items-center pt-5">
+                          <label className="flex items-center gap-2 text-xs font-semibold text-[#3f3f46] cursor-pointer">
+                            <input type="checkbox" checked={requeridoMod} onChange={e => setRequeridoMod(e.target.checked)} className="rounded border-[#e4e4e7] text-[#dc2626] focus:ring-[#dc2626]" />
+                            ¿Es obligatorio seleccionar?
+                          </label>
+                        </div>
+                      </div>
+
+                      {/* Agregar opciones en memoria */}
+                      <div className="border-t border-[#e4e4e7] pt-4 space-y-3">
+                        <p className="text-[10px] font-bold text-[#71717a] uppercase tracking-wider">Opciones del Grupo</p>
+                        
+                        {/* Listita en memoria */}
+                        {opcionesMod.length > 0 && (
+                          <div className="flex flex-wrap gap-2 py-1">
+                            {opcionesMod.map((op, idx) => (
+                              <span key={idx} className="inline-flex items-center gap-1.5 bg-white border border-[#e4e4e7] rounded-lg px-2.5 py-1 text-xs font-semibold text-[#09090b]">
+                                {op.nombre} (+${op.precio_extra} MXN)
+                                <button type="button" onClick={() => quitarOpcionMemoria(idx)} className="text-[#dc2626] hover:text-red-700 font-bold ml-1">✕</button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="flex gap-2 items-end">
+                          <div className="flex-1">
+                            <label className="text-[10px] text-[#71717a] font-bold mb-1 block">Nombre Opción</label>
+                            <input type="text" value={nuevaOpNombre} onChange={e => setNuevaOpNombre(e.target.value)} className={IC + ' bg-white text-xs'} placeholder="Fresa / Habanero / Grande" />
+                          </div>
+                          <div className="w-28">
+                            <label className="text-[10px] text-[#71717a] font-bold mb-1 block">Precio Extra</label>
+                            <input type="number" value={nuevaOpPrecio} onChange={e => setNuevaOpPrecio(e.target.value)} className={IC + ' bg-white text-xs'} placeholder="0" />
+                          </div>
+                          <button type="button" onClick={agregarOpcionMemoria} className="bg-[#09090b] hover:bg-zinc-800 text-white text-xs font-bold px-3 py-3.5 rounded-xl transition-all">
+                            ➕ Opción
+                          </button>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={guardarModificadorCompleto}
+                        disabled={guardandoMod || !nombreMod}
+                        className="w-full btn-primary text-xs font-black py-3 rounded-xl uppercase tracking-widest transition-all"
+                      >
+                        {guardandoMod ? 'Guardando...' : '💾 Guardar Grupo Completo'}
+                      </button>
+                    </div>
+
+                    {/* Grupos existentes */}
+                    <div className="space-y-3">
+                      <h4 className="text-xs font-bold text-[#09090b] uppercase tracking-wider">⚙️ Grupos Modificadores Configurados</h4>
+                      {(!productoAEditar.product_modifiers || productoAEditar.product_modifiers.length === 0) ? (
+                        <p className="text-xs text-[#a1a1aa] italic">Este producto no cuenta con modificadores aún.</p>
+                      ) : (
+                        <div className="space-y-3.5">
+                          {productoAEditar.product_modifiers.map((mod: any) => (
+                            <div key={mod.id} className="border border-[#e4e4e7] bg-[#fafafa] rounded-2xl p-4 flex justify-between items-start gap-4">
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <h5 className="font-bold text-sm text-[#09090b]">{mod.nombre}</h5>
+                                  <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${mod.requerido ? 'bg-red-50 text-[#dc2626]' : 'bg-[#e4e4e7] text-[#52525b]'}`}>
+                                    {mod.requerido ? 'Requerido' : 'Opcional'}
+                                  </span>
+                                </div>
+                                <div className="flex flex-wrap gap-1.5 pt-1">
+                                  {mod.modifier_options?.map((opt: any) => (
+                                    <span key={opt.id} className="text-[10px] bg-white border border-[#e4e4e7] text-[#52525b] font-medium px-2 py-0.5 rounded-lg">
+                                      {opt.nombre} (+${opt.precio_extra} MXN)
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => borrarModificador(mod.id)}
+                                className="bg-red-50 border border-red-100 hover:bg-red-100 text-[#dc2626] font-bold p-2 rounded-xl transition-all shrink-0"
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* CONTENEDOR PRINCIPAL */}
               <div className="bg-white border border-[#e4e4e7] p-6 rounded-2xl shadow-sm space-y-6">
                 <div>
-                  <h3 className="font-bold text-[#09090b] mb-1">Cargar Menús y Enlaces Públicos</h3>
-                  <p className="text-xs text-[#71717a]">Configura dos menús independientes (Mesa local vs Domicilio) y visualiza el link público autogenerado.</p>
+                  <h3 className="font-bold text-[#09090b] mb-1">Configuración del Menú</h3>
+                  <p className="text-xs text-[#71717a]">Sube tus PDFs/Imágenes o crea un Menú Interactivo dinámico y autogestionable.</p>
                 </div>
 
-                {/* Tabs menú */}
+                {/* Sub-pestañas de menú */}
                 <div className="flex gap-2 border-b border-[#f4f4f5] pb-4">
                   {[
-                    { id: 'local', label: '🍽️ Consumo en Mesa / Local' },
-                    { id: 'domicilio', label: '🛵 Para Domicilio' }
-                  ].map(tab => (
+                    { id: 'archivos', label: '📁 Menús PDF / Enlaces' },
+                    { id: 'categorias', label: '🗂️ Categorías Dinámicas' },
+                    { id: 'productos', label: '🍔 Productos y Modificadores' }
+                  ].map(sub => (
                     <button
-                      key={tab.id}
-                      onClick={() => setTipoQR(tab.id as any)}
+                      key={sub.id}
+                      onClick={() => setSubPestañaMenu(sub.id as any)}
                       className={`px-4 py-2 text-xs font-bold rounded-xl transition-all border ${
-                        tipoQR === tab.id ? 'bg-[#fef2f2] border-[#dc2626] text-[#dc2626]' : 'bg-white border-[#e4e4e7] text-[#71717a] hover:bg-[#fafafa]'
+                        subPestañaMenu === sub.id ? 'bg-[#dc2626] text-white border-[#dc2626]' : 'bg-white border-[#e4e4e7] text-[#52525b] hover:bg-[#fafafa]'
                       }`}
                     >
-                      {tab.label}
+                      {sub.label}
                     </button>
                   ))}
                 </div>
 
-                {/* Menú local */}
-                {tipoQR === 'local' && (
-                  <div className="space-y-4">
-                    <div>
-                      <label className={LBL}>Cargar Menú Local (PDF/Imagen)</label>
-                      <div
-                        onClick={() => document.getElementById('menu-local-file')?.click()}
-                        className="border-2 border-dashed border-[#e4e4e7] hover:border-[#dc2626] rounded-2xl p-8 flex flex-col items-center justify-center cursor-pointer transition-colors hover:bg-[#fafafa]"
-                      >
-                        {subiendoMenuLocal ? (
-                          <div className="w-6 h-6 border-2 border-[#e4e4e7] border-t-[#dc2626] rounded-full animate-spin" />
-                        ) : (
-                          <div className="text-center space-y-1">
-                            <span className="text-3xl block">📁</span>
-                            <span className="text-sm font-semibold text-[#52525b]">Subir Menú de Mesa</span>
-                            <p className="text-xs text-[#a1a1aa]">PDF, JPG o PNG hasta 10MB</p>
+                {/* 1. CARGA DE ARCHIVOS / ESTATICO */}
+                {subPestañaMenu === 'archivos' && (
+                  <div className="space-y-6 animate-fadeIn">
+                    {/* Tabs menú */}
+                    <div className="flex gap-2 border-b border-[#f4f4f5] pb-4">
+                      {[
+                        { id: 'local', label: '🍽️ Consumo en Mesa / Local' },
+                        { id: 'domicilio', label: '🛵 Para Domicilio' }
+                      ].map(tab => (
+                        <button
+                          key={tab.id}
+                          onClick={() => setTipoQR(tab.id as any)}
+                          className={`px-4 py-2 text-xs font-bold rounded-xl transition-all border ${
+                            tipoQR === tab.id ? 'bg-[#fef2f2] border-[#dc2626] text-[#dc2626]' : 'bg-white border-[#e4e4e7] text-[#71717a] hover:bg-[#fafafa]'
+                          }`}
+                        >
+                          {tab.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Menú local */}
+                    {tipoQR === 'local' && (
+                      <div className="space-y-4">
+                        <div>
+                          <label className={LBL}>Cargar Menú Local (PDF/Imagen)</label>
+                          <div
+                            onClick={() => document.getElementById('menu-local-file')?.click()}
+                            className="border-2 border-dashed border-[#e4e4e7] hover:border-[#dc2626] rounded-2xl p-8 flex flex-col items-center justify-center cursor-pointer transition-colors hover:bg-[#fafafa]"
+                          >
+                            {subiendoMenuLocal ? (
+                              <div className="w-6 h-6 border-2 border-[#e4e4e7] border-t-[#dc2626] rounded-full animate-spin" />
+                            ) : (
+                              <div className="text-center space-y-1">
+                                <span className="text-3xl block">📁</span>
+                                <span className="text-sm font-semibold text-[#52525b]">Subir Menú de Mesa</span>
+                                <p className="text-xs text-[#a1a1aa]">PDF, JPG o PNG hasta 10MB</p>
+                              </div>
+                            )}
+                          </div>
+                          <input id="menu-local-file" type="file" accept="image/*,application/pdf" hidden onChange={e => { if (e.target.files?.[0]) guardarMenuDigital('local', e.target.files[0]) }} />
+                        </div>
+
+                        <div className="bg-[#fafafa] border border-[#e4e4e7] p-5 rounded-2xl space-y-3">
+                          <label className={LBL}>O ingresa el enlace web de tu menú local manualmente (ej: de Canva o Google Drive)</label>
+                          <div className="flex gap-2">
+                            <input
+                              type="url"
+                              value={menuLocal?.archivo_url || ''}
+                              onChange={e => {
+                                const val = e.target.value
+                                setMenuLocal((prev: any) => prev ? { ...prev, archivo_url: val } : { archivo_url: val, tipo: 'local' })
+                              }}
+                              className={IC + ' flex-1 bg-white'}
+                              placeholder="https://canva.com/design/... o https://drive.google.com/..."
+                            />
+                            <button
+                              onClick={() => guardarMenuDigital('local', null, menuLocal?.archivo_url)}
+                              className="btn-primary px-4 py-2 text-xs font-bold whitespace-nowrap"
+                            >
+                              Guardar Enlace
+                            </button>
+                          </div>
+                        </div>
+
+                        {menuLocal?.archivo_url && (
+                          <div className="bg-[#fafafa] border border-[#e4e4e7] p-5 rounded-2xl space-y-4">
+                            <div>
+                              <label className={LBL}>Link URL Público Generado</label>
+                              <div className="flex gap-2">
+                                <input type="text" readOnly value={menuLocal.archivo_url} className="input-clean text-xs flex-1 bg-white border border-[#e4e4e7] rounded-xl px-3 py-2 text-[#71717a] select-all" />
+                                <button onClick={() => { navigator.clipboard.writeText(menuLocal.archivo_url); alert('✅ URL de Menú Local copiado al portapapeles!') }} className="border border-[#e4e4e7] px-4 rounded-xl text-xs font-bold text-[#52525b] hover:bg-white transition-colors">Copiar Enlace</button>
+                              </div>
+                            </div>
+
+                            <div className="flex flex-col items-center gap-3 pt-3">
+                              <p className="text-xs font-bold text-[#52525b] uppercase tracking-wide">Código QR - Consumo en Mesa</p>
+                              <div className="bg-white p-3 rounded-2xl border border-[#e4e4e7]">
+                                <QRCodeSVG value={menuLocal.archivo_url} size={150} />
+                              </div>
+                            </div>
                           </div>
                         )}
                       </div>
-                      <input id="menu-local-file" type="file" accept="image/*,application/pdf" hidden onChange={e => { if (e.target.files?.[0]) guardarMenuDigital('local', e.target.files[0]) }} />
-                    </div>
+                    )}
 
-                    {/* O ingresar URL manual */}
-                    <div className="bg-[#fafafa] border border-[#e4e4e7] p-5 rounded-2xl space-y-3">
-                      <label className={LBL}>O ingresa el enlace web de tu menú local manualmente (ej: de Canva o Google Drive)</label>
-                      <div className="flex gap-2">
-                        <input
-                          type="url"
-                          value={menuLocal?.archivo_url || ''}
-                          onChange={e => {
-                            const val = e.target.value
-                            setMenuLocal((prev: any) => prev ? { ...prev, archivo_url: val } : { archivo_url: val, tipo: 'local' })
-                          }}
-                          className={IC + ' flex-1 bg-white'}
-                          placeholder="https://canva.com/design/... o https://drive.google.com/..."
-                        />
-                        <button
-                          onClick={() => guardarMenuDigital('local', null, menuLocal?.archivo_url)}
-                          className="btn-primary px-4 py-2 text-xs font-bold whitespace-nowrap"
-                        >
-                          Guardar Enlace
-                        </button>
-                      </div>
-                    </div>
-
-                    {menuLocal?.archivo_url && (
-                      <div className="bg-[#fafafa] border border-[#e4e4e7] p-5 rounded-2xl space-y-4">
+                    {tipoQR === 'domicilio' && (
+                      <div className="space-y-4">
                         <div>
-                          <label className={LBL}>Link URL Público Generado</label>
+                          <label className={LBL}>Cargar Menú Domicilio (PDF/Imagen)</label>
+                          <div
+                            onClick={() => document.getElementById('menu-domicilio-file')?.click()}
+                            className="border-2 border-dashed border-[#e4e4e7] hover:border-[#dc2626] rounded-2xl p-8 flex flex-col items-center justify-center cursor-pointer transition-colors hover:bg-[#fafafa]"
+                          >
+                            {subiendoMenuDomicilio ? (
+                              <div className="w-6 h-6 border-2 border-[#e4e4e7] border-t-[#dc2626] rounded-full animate-spin" />
+                            ) : (
+                              <div className="text-center space-y-1">
+                                <span className="text-3xl block">📁</span>
+                                <span className="text-sm font-semibold text-[#52525b]">Subir Menú de Domicilio</span>
+                                <p className="text-xs text-[#a1a1aa]">PDF, JPG o PNG hasta 10MB</p>
+                              </div>
+                            )}
+                          </div>
+                          <input id="menu-domicilio-file" type="file" accept="image/*,application/pdf" hidden onChange={e => { if (e.target.files?.[0]) guardarMenuDigital('domicilio', e.target.files[0]) }} />
+                        </div>
+
+                        <div className="bg-[#fafafa] border border-[#e4e4e7] p-5 rounded-2xl space-y-3">
+                          <label className={LBL}>O ingresa el enlace web de tu menú de domicilio manualmente (ej: de Canva o Google Drive)</label>
                           <div className="flex gap-2">
-                            <input type="text" readOnly value={menuLocal.archivo_url} className="input-clean text-xs flex-1 bg-white border border-[#e4e4e7] rounded-xl px-3 py-2 text-[#71717a] select-all" />
-                            <button onClick={() => { navigator.clipboard.writeText(menuLocal.archivo_url); alert('✅ URL de Menú Local copiado al portapapeles!') }} className="border border-[#e4e4e7] px-4 rounded-xl text-xs font-bold text-[#52525b] hover:bg-white transition-colors">Copiar Enlace</button>
+                            <input
+                              type="url"
+                              value={menuDomicilio?.archivo_url || ''}
+                              onChange={e => {
+                                const val = e.target.value
+                                setMenuDomicilio((prev: any) => prev ? { ...prev, archivo_url: val } : { archivo_url: val, tipo: 'domicilio' })
+                              }}
+                              className={IC + ' flex-1 bg-white'}
+                              placeholder="https://canva.com/design/... o https://drive.google.com/..."
+                            />
+                            <button
+                              onClick={() => guardarMenuDigital('domicilio', null, menuDomicilio?.archivo_url)}
+                              className="btn-primary px-4 py-2 text-xs font-bold whitespace-nowrap"
+                            >
+                              Guardar Enlace
+                            </button>
                           </div>
                         </div>
 
-                        {/* Generar QR preview */}
-                        <div className="flex flex-col items-center gap-3 pt-3">
-                          <p className="text-xs font-bold text-[#52525b] uppercase tracking-wide">Código QR - Consumo en Mesa</p>
-                          <div className="bg-white p-3 rounded-2xl border border-[#e4e4e7]">
-                            <QRCodeSVG value={menuLocal.archivo_url} size={150} />
+                        {menuDomicilio?.archivo_url && (
+                          <div className="bg-[#fafafa] border border-[#e4e4e7] p-5 rounded-2xl space-y-4">
+                            <div>
+                              <label className={LBL}>Link URL Público Generado</label>
+                              <div className="flex gap-2">
+                                <input type="text" readOnly value={menuDomicilio.archivo_url} className="input-clean text-xs flex-1 bg-white border border-[#e4e4e7] rounded-xl px-3 py-2 text-[#71717a] select-all" />
+                                <button onClick={() => { navigator.clipboard.writeText(menuDomicilio.archivo_url); alert('✅ URL de Menú Domicilio copiado!') }} className="border border-[#e4e4e7] px-4 rounded-xl text-xs font-bold text-[#52525b] hover:bg-white transition-colors">Copiar Enlace</button>
+                              </div>
+                            </div>
+
+                            <div className="flex flex-col items-center gap-3 pt-3">
+                              <p className="text-xs font-bold text-[#52525b] uppercase tracking-wide">Código QR - Domicilio</p>
+                              <div className="bg-white p-3 rounded-2xl border border-[#e4e4e7]">
+                                <QRCodeSVG value={menuDomicilio.archivo_url} size={150} />
+                              </div>
+                            </div>
                           </div>
-                        </div>
+                        )}
                       </div>
                     )}
                   </div>
                 )}
 
-                {/* Menú domicilio */}
-                {tipoQR === 'domicilio' && (
-                  <div className="space-y-4">
-                    <div>
-                      <label className={LBL}>Cargar Menú Domicilio (PDF/Imagen)</label>
-                      <div
-                        onClick={() => document.getElementById('menu-domicilio-file')?.click()}
-                        className="border-2 border-dashed border-[#e4e4e7] hover:border-[#dc2626] rounded-2xl p-8 flex flex-col items-center justify-center cursor-pointer transition-colors hover:bg-[#fafafa]"
-                      >
-                        {subiendoMenuDomicilio ? (
-                          <div className="w-6 h-6 border-2 border-[#e4e4e7] border-t-[#dc2626] rounded-full animate-spin" />
-                        ) : (
-                          <div className="text-center space-y-1">
-                            <span className="text-3xl block">📁</span>
-                            <span className="text-sm font-semibold text-[#52525b]">Subir Menú de Domicilio</span>
-                            <p className="text-xs text-[#a1a1aa]">PDF, JPG o PNG hasta 10MB</p>
+                {/* 2. GESTIÓN DE CATEGORÍAS */}
+                {subPestañaMenu === 'categorias' && (
+                  <div className="space-y-6 animate-fadeIn">
+                    {/* Formulario */}
+                    <div className="bg-[#fafafa] border border-[#e4e4e7] p-5 rounded-2xl space-y-4">
+                      <h4 className="text-xs font-bold text-[#09090b] uppercase tracking-wider">
+                        {grupoAEditar ? '✏️ Editar Categoría' : '➕ Agregar Nueva Categoría'}
+                      </h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className={LBL}>Nombre Categoría *</label>
+                          <input type="text" value={nombreGrupo} onChange={e => setNombreGrupo(e.target.value)} className={IC + ' bg-white'} placeholder="Alitas, Bebidas, Postres" />
+                        </div>
+                        <div>
+                          <label className={LBL}>Descripción corta</label>
+                          <input type="text" value={descGrupo} onChange={e => setDescGrupo(e.target.value)} className={IC + ' bg-white'} placeholder="Nuestras mejores recetas" />
+                        </div>
+                        <div>
+                          <label className={LBL}>Canal del menú</label>
+                          <select value={tipoMenuGrupo} onChange={e => setTipoMenuGrupo(e.target.value as any)} className={IC + ' bg-white'}>
+                            <option value="ambos">Ambos (Mesa y Domicilio)</option>
+                            <option value="mesa">Mesa (Sólo local)</option>
+                            <option value="delivery">Delivery (Sólo a domicilio)</option>
+                          </select>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className={LBL}>Orden visual</label>
+                            <input type="number" value={ordenGrupo} onChange={e => setOrdenGrupo(Number(e.target.value))} className={IC + ' bg-white'} />
                           </div>
-                        )}
+                          <div className="flex items-center pt-5">
+                            <label className="flex items-center gap-2 text-xs font-semibold text-[#3f3f46] cursor-pointer">
+                              <input type="checkbox" checked={activoGrupo} onChange={e => setActivoGrupo(e.target.checked)} className="rounded border-[#e4e4e7] text-[#dc2626] focus:ring-[#dc2626]" />
+                              ¿Activo?
+                            </label>
+                          </div>
+                        </div>
                       </div>
-                      <input id="menu-domicilio-file" type="file" accept="image/*,application/pdf" hidden onChange={e => { if (e.target.files?.[0]) guardarMenuDigital('domicilio', e.target.files[0]) }} />
-                    </div>
 
-                    {/* O ingresar URL manual */}
-                    <div className="bg-[#fafafa] border border-[#e4e4e7] p-5 rounded-2xl space-y-3">
-                      <label className={LBL}>O ingresa el enlace web de tu menú de domicilio manualmente (ej: de Canva o Google Drive)</label>
-                      <div className="flex gap-2">
-                        <input
-                          type="url"
-                          value={menuDomicilio?.archivo_url || ''}
-                          onChange={e => {
-                            const val = e.target.value
-                            setMenuDomicilio((prev: any) => prev ? { ...prev, archivo_url: val } : { archivo_url: val, tipo: 'domicilio' })
-                          }}
-                          className={IC + ' flex-1 bg-white'}
-                          placeholder="https://canva.com/design/... o https://drive.google.com/..."
-                        />
-                        <button
-                          onClick={() => guardarMenuDigital('domicilio', null, menuDomicilio?.archivo_url)}
-                          className="btn-primary px-4 py-2 text-xs font-bold whitespace-nowrap"
-                        >
-                          Guardar Enlace
+                      <div className="flex gap-3">
+                        {grupoAEditar && (
+                          <button onClick={() => { setGrupoAEditar(null); setNombreGrupo(''); setDescGrupo(''); setOrdenGrupo(0); setActivoGrupo(true); }} className="flex-1 border border-[#e4e4e7] text-[#52525b] hover:bg-white py-3 rounded-xl font-bold transition-all text-xs">Cancelar</button>
+                        )}
+                        <button onClick={guardarCategoria} disabled={guardandoGrupo || !nombreGrupo} className="flex-1 btn-primary py-3 rounded-xl text-xs font-black uppercase tracking-widest">
+                          {guardandoGrupo ? 'Guardando...' : '💾 Guardar Categoría'}
                         </button>
                       </div>
                     </div>
 
-                    {menuDomicilio?.archivo_url && (
-                      <div className="bg-[#fafafa] border border-[#e4e4e7] p-5 rounded-2xl space-y-4">
+                    {/* Tabla de existentes */}
+                    <div className="border border-[#e4e4e7] rounded-2xl overflow-hidden shadow-sm">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="table-header">
+                            <th className="px-4 py-3 text-xs font-bold text-[#52525b]">Nombre</th>
+                            <th className="px-4 py-3 text-xs font-bold text-[#52525b]">Canal</th>
+                            <th className="px-4 py-3 text-xs font-bold text-[#52525b]">Orden</th>
+                            <th className="px-4 py-3 text-xs font-bold text-[#52525b] text-right">Acciones</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {menuGroups.length === 0 ? (
+                            <tr>
+                              <td colSpan={4} className="px-4 py-8 text-center text-xs text-[#a1a1aa] italic">No hay categorías dinámicas creadas.</td>
+                            </tr>
+                          ) : (
+                            menuGroups.map(g => (
+                              <tr key={g.id} className="table-row">
+                                <td className="px-4 py-3 text-xs font-bold text-[#09090b]">
+                                  {g.nombre}
+                                  {g.descripcion && <p className="text-[10px] text-[#71717a] font-normal">{g.descripcion}</p>}
+                                </td>
+                                <td className="px-4 py-3 text-[10px] uppercase font-black tracking-wide text-[#71717a]">{g.tipo_menu}</td>
+                                <td className="px-4 py-3 text-xs font-mono font-bold text-[#52525b]">{g.orden}</td>
+                                <td className="px-4 py-3 text-right space-x-2">
+                                  <button onClick={() => { setGrupoAEditar(g); setNombreGrupo(g.nombre); setDescGrupo(g.descripcion || ''); setTipoMenuGrupo(g.tipo_menu); setOrdenGrupo(g.orden); setActivoGrupo(g.activo); }} className="text-xs border border-[#e4e4e7] hover:bg-[#fafafa] font-bold py-1.5 px-3 rounded-lg text-[#52525b] transition-all">Editar</button>
+                                  <button onClick={() => borrarCategoria(g.id)} className="text-xs bg-red-50 border border-red-100 hover:bg-red-100 font-bold py-1.5 px-3 rounded-lg text-[#dc2626] transition-all">Eliminar</button>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. GESTIÓN DE PRODUCTOS */}
+                {subPestañaMenu === 'productos' && (
+                  <div className="space-y-6 animate-fadeIn">
+                    {/* Formulario */}
+                    <div className="bg-[#fafafa] border border-[#e4e4e7] p-5 rounded-2xl space-y-4">
+                      <h4 className="text-xs font-bold text-[#09090b] uppercase tracking-wider">
+                        {productoAEditar ? '✏️ Editar Producto' : '➕ Agregar Nuevo Producto'}
+                      </h4>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
-                          <label className={LBL}>Link URL Público Generado</label>
+                          <label className={LBL}>Nombre Producto *</label>
+                          <input type="text" value={nombreProd} onChange={e => setNombreProd(e.target.value)} className={IC + ' bg-white'} placeholder="Alitas 16 piezas, Hamburguesa Especial" />
+                        </div>
+                        <div>
+                          <label className={LBL}>Categoría vinculada *</label>
+                          <select value={groupIdProd} onChange={e => setGroupIdProd(e.target.value)} className={IC + ' bg-white font-bold'}>
+                            <option value="">-- Elige Categoría --</option>
+                            {menuGroups.map(g => (
+                              <option key={g.id} value={g.id}>{g.nombre} ({g.tipo_menu})</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className={LBL}>Precio unitario ($) *</label>
+                          <input type="number" value={precioProd} onChange={e => setPrecioProd(e.target.value)} className={IC + ' bg-white'} placeholder="180" />
+                        </div>
+                        <div>
+                          <label className={LBL}>Imagen del producto (URL o Subir archivo)</label>
                           <div className="flex gap-2">
-                            <input type="text" readOnly value={menuDomicilio.archivo_url} className="input-clean text-xs flex-1 bg-white border border-[#e4e4e7] rounded-xl px-3 py-2 text-[#71717a] select-all" />
-                            <button onClick={() => { navigator.clipboard.writeText(menuDomicilio.archivo_url); alert('✅ URL de Menú Domicilio copiado!') }} className="border border-[#e4e4e7] px-4 rounded-xl text-xs font-bold text-[#52525b] hover:bg-white transition-colors">Copiar Enlace</button>
+                            <input type="text" value={imagenProdUrl} onChange={e => setImagenProdUrl(e.target.value)} className={IC + ' bg-white flex-1'} placeholder="https://..." />
+                            <label className="bg-[#09090b] hover:bg-zinc-800 text-white text-xs font-bold px-3 py-3 rounded-xl transition-all cursor-pointer flex items-center justify-center shrink-0">
+                              {subiendoImgProd ? 'Subiendo...' : '📸 Subir'}
+                              <input type="file" accept="image/*" hidden onChange={e => { if (e.target.files?.[0]) subirImagenProd(e.target.files[0]) }} />
+                            </label>
                           </div>
                         </div>
-
-                        <div className="flex flex-col items-center gap-3 pt-3">
-                          <p className="text-xs font-bold text-[#52525b] uppercase tracking-wide">Código QR - Domicilio</p>
-                          <div className="bg-white p-3 rounded-2xl border border-[#e4e4e7]">
-                            <QRCodeSVG value={menuDomicilio.archivo_url} size={150} />
-                          </div>
+                        <div className="sm:col-span-2">
+                          <label className={LBL}>Descripción del Producto / Ingredientes</label>
+                          <textarea value={descProd} onChange={e => setDescProd(e.target.value)} className={IC + ' bg-white h-20 py-2'} placeholder="Ingredientes, porciones, detalles..." />
+                        </div>
+                        <div className="flex items-center gap-6">
+                          <label className="flex items-center gap-2 text-xs font-semibold text-[#3f3f46] cursor-pointer">
+                            <input type="checkbox" checked={disponibleProd} onChange={e => setDisponibleProd(e.target.checked)} className="rounded border-[#e4e4e7] text-[#dc2626] focus:ring-[#dc2626]" />
+                            ¿Disponible hoy?
+                          </label>
+                          <label className="flex items-center gap-2 text-xs font-semibold text-[#3f3f46] cursor-pointer">
+                            <input type="checkbox" checked={esUpsellProd} onChange={e => setEsUpsellProd(e.target.checked)} className="rounded border-[#e4e4e7] text-[#dc2626] focus:ring-[#dc2626]" />
+                            ¿Ofrecer como Upsell al final?
+                          </label>
                         </div>
                       </div>
-                    )}
+
+                      <div className="flex gap-3 border-t border-[#e4e4e7] pt-4">
+                        {productoAEditar && (
+                          <button onClick={() => { setProductoAEditar(null); setNombreProd(''); setDescProd(''); setPrecioProd(''); setImagenProdUrl(''); setEsUpsellProd(false); setGroupIdProd(''); }} className="flex-1 border border-[#e4e4e7] text-[#52525b] hover:bg-white py-3 rounded-xl font-bold transition-all text-xs">Cancelar</button>
+                        )}
+                        <button onClick={guardarProducto} disabled={guardandoProd || !nombreProd || !precioProd || !groupIdProd} className="flex-1 btn-primary py-3 rounded-xl text-xs font-black uppercase tracking-widest">
+                          {guardandoProd ? 'Guardando...' : '💾 Guardar Producto'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Tabla de productos */}
+                    <div className="border border-[#e4e4e7] rounded-2xl overflow-hidden shadow-sm">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="table-header">
+                            <th className="px-4 py-3 text-xs font-bold text-[#52525b]">Producto</th>
+                            <th className="px-4 py-3 text-xs font-bold text-[#52525b]">Categoría</th>
+                            <th className="px-4 py-3 text-xs font-bold text-[#52525b]">Precio</th>
+                            <th className="px-4 py-3 text-xs font-bold text-[#52525b] text-right">Modificar</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {menuProducts.length === 0 ? (
+                            <tr>
+                              <td colSpan={4} className="px-4 py-8 text-center text-xs text-[#a1a1aa] italic">No hay productos dinámicos creados aún.</td>
+                            </tr>
+                          ) : (
+                            menuProducts.map(p => {
+                              const cat = menuGroups.find(g => g.id === p.group_id)
+                              return (
+                                <tr key={p.id} className="table-row">
+                                  <td className="px-4 py-3 text-xs font-bold text-[#09090b] flex items-center gap-3">
+                                    {p.imagen_url && (
+                                      <img src={p.imagen_url} alt="" className="w-10 h-10 rounded-lg object-cover border border-[#e4e4e7] shrink-0" />
+                                    )}
+                                    <div>
+                                      <span>{p.nombre}</span>
+                                      {p.es_upsell && <span className="text-[9px] bg-red-50 text-[#dc2626] font-black uppercase px-2.5 py-0.5 rounded-full ml-1.5 inline-block">Upsell</span>}
+                                      {p.product_modifiers && p.product_modifiers.length > 0 && (
+                                        <p className="text-[9px] text-[#71717a] font-medium mt-0.5">Modificadores: {p.product_modifiers.map((m: any) => m.nombre).join(', ')}</p>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-3 text-xs font-semibold text-[#52525b]">{cat?.nombre || 'Desvinculada'}</td>
+                                  <td className="px-4 py-3 text-xs font-mono font-bold text-[#dc2626]">${p.precio}</td>
+                                  <td className="px-4 py-3 text-right space-x-2">
+                                    <button onClick={() => abrirGestorModificadores(p)} className="text-xs border border-[#e4e4e7] hover:bg-[#fafafa] font-bold py-1.5 px-3 rounded-lg text-[#09090b] transition-all">⚙️ Modificadores</button>
+                                    <button onClick={() => { setProductoAEditar(p); setNombreProd(p.nombre); setDescProd(p.descripcion || ''); setPrecioProd(String(p.precio)); setImagenProdUrl(p.imagen_url || ''); setDisponibleProd(p.disponible); setEsUpsellProd(!!p.es_upsell); setGroupIdProd(p.group_id); }} className="text-xs border border-[#e4e4e7] hover:bg-[#fafafa] font-bold py-1.5 px-3 rounded-lg text-[#52525b] transition-all">Editar</button>
+                                    <button onClick={() => borrarProducto(p.id)} className="text-xs bg-red-50 border border-red-100 hover:bg-red-100 font-bold py-1.5 px-3 rounded-lg text-[#dc2626] transition-all">Eliminar</button>
+                                  </td>
+                                </tr>
+                              )
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 )}
               </div>

@@ -317,6 +317,9 @@ export async function POST(req: Request) {
 </head>
 <body>
   <div class="card">
+    <div style="text-align:left;margin-bottom:1.25rem;">
+      <a href="javascript:window.location.reload()" style="color:#71717a;text-decoration:none;font-size:12px;font-weight:650;display:inline-flex;align-items:center;gap:4px;transition:colors 0.2s;">← Regresar al Portal</a>
+    </div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
       <div>
         <p style="font-size:11px;color:#71717a;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;">${logoText}</p>
