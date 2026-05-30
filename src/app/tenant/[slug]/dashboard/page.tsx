@@ -10,7 +10,7 @@ import {
   UserCheck, TrendingUp, QrCode, UserPlus, MoreVertical,
   Menu as MenuIcon, ChevronLeft, ChevronRight, LogOut,
   RefreshCw, HelpCircle, Download, AlertTriangle, Clock, Loader2,
-  FileSpreadsheet, Check, Plus, Trash2, DollarSign,
+  FileSpreadsheet, Check, Plus, Trash2, DollarSign, Lock,
   PieChart as PieIcon, BarChart3 as BarIcon, PhoneCall,
   Smartphone, Radio, Pencil, Send,
   Star, Gift, CreditCard, ChevronDown, X, Check as CheckIcon,
@@ -205,6 +205,7 @@ export default function DashboardPage() {
   const [premio4, setPremio4] = useState('20% Descuento')
   const [reiniciarSellosAuto, setReiniciarSellosAuto] = useState(true)
   const [guardandoPromociones, setGuardandoPromociones] = useState(false)
+  const [montoMinimoRuleta, setMontoMinimoRuleta] = useState('0')
 
   // ── RULETA INTERMEDIA (Gamificación por Rangos de Sellos) ───────────────────
   const [ruletaConfig, setRuletaConfig] = useState<any>({})
@@ -535,6 +536,21 @@ export default function DashboardPage() {
     } catch (err) {
       console.warn("La columna ruleta_config no está disponible en la base de datos.", err)
     }
+
+    // 3. Cargar de forma defensiva monto_minimo_ruleta por si la columna no existe aún
+    try {
+      const { data: minData, error } = await supabase
+        .from('businesses')
+        .select('monto_minimo_ruleta')
+        .eq('id', bId)
+        .maybeSingle()
+      
+      if (!error && minData && minData.monto_minimo_ruleta !== undefined && minData.monto_minimo_ruleta !== null) {
+        setMontoMinimoRuleta(String(minData.monto_minimo_ruleta))
+      }
+    } catch (err) {
+      console.warn("La columna monto_minimo_ruleta no está disponible en la base de datos.", err)
+    }
   }
 
   // ── guardarPremiosRuleta ──────────────────────────────────────────────────────
@@ -545,13 +561,14 @@ export default function DashboardPage() {
     try {
       const arrPremios = [premio1.trim(), premio2.trim(), premio3.trim(), premio4.trim()]
       
-      // Intentar actualizar todo incluyendo ruleta_config
+      // Intentar actualizar todo incluyendo ruleta_config y monto_minimo_ruleta
       const { error } = await supabase
         .from('businesses')
         .update({
           premios_ruleta: arrPremios,
           reiniciar_sellos_ruleta: reiniciarSellosAuto,
-          ruleta_config: ruletaConfig
+          ruleta_config: ruletaConfig,
+          monto_minimo_ruleta: parseFloat(montoMinimoRuleta) || 0
         } as any)
         .eq('id', businessId)
       
@@ -560,8 +577,8 @@ export default function DashboardPage() {
       cargarDatos()
     } catch (e: any) {
       console.error(e)
-      // Si la columna ruleta_config no existe en DB, guardar al menos la configuración básica
-      if (e.message?.includes('ruleta_config') || e.message?.includes('column "ruleta_config" does not exist')) {
+      // Si la columna ruleta_config o monto_minimo_ruleta no existe en DB, guardar al menos la configuración básica
+      if (e.message?.includes('ruleta_config') || e.message?.includes('monto_minimo_ruleta') || e.message?.includes('column "')) {
         try {
           const { error: errRetry } = await supabase
             .from('businesses')
@@ -571,7 +588,7 @@ export default function DashboardPage() {
             })
             .eq('id', businessId)
           if (errRetry) throw errRetry
-          alert('✅ Configuración básica de Ruleta guardada con éxito.\n\n⚠️ NOTA: Los rangos intermedios no se guardaron porque la columna "ruleta_config" no existe en la base de datos. Por favor ejecuta la migración SQL.')
+          alert('✅ Configuración básica de Ruleta guardada con éxito.\n\n⚠️ NOTA: Los rangos intermedios y el monto mínimo no se guardaron porque las columnas no existen en la base de datos de Supabase. Por favor ejecuta la migración SQL.')
           cargarDatos()
         } catch (retryErr: any) {
           alert('Error al reintentar guardar configuración básica: ' + retryErr.message)
@@ -1953,106 +1970,189 @@ export default function DashboardPage() {
                     )}
 
                     {pasoLealtad === 'config' && (
-                      <div className="space-y-4">
-                        <div>
-                          <label className={LBL}>Nombre del Club</label>
-                          <input type="text" value={nombreClub} onChange={e => setNombreClub(e.target.value)} className={IC} placeholder="Ej: Club La Burrería VIP" />
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                        {/* Columna Izquierda: Formulario (7/12) */}
+                        <div className="lg:col-span-7 space-y-4">
                           <div>
-                            <label className={LBL}>Sellos Totales</label>
-                            <select value={totalSellos} onChange={e => setTotalSellos(e.target.value)} className={IC}>
-                              <option value="6">6 sellos</option>
-                              <option value="8">8 sellos</option>
-                              <option value="10">10 sellos</option>
-                              <option value="12">12 sellos</option>
-                            </select>
+                            <label className={LBL}>Nombre del Club</label>
+                            <input type="text" value={nombreClub} onChange={e => setNombreClub(e.target.value)} className={IC} placeholder="Ej: Club La Burrería VIP" />
                           </div>
-                          <div>
-                            <label className={LBL}>Sellos Max Diarios</label>
-                            <select value={maxDia} onChange={e => setMaxDia(e.target.value)} className={IC}>
-                              <option value="1">1 al día</option>
-                              <option value="2">2 al día</option>
-                              <option value="3">3 al día</option>
-                            </select>
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className={LBL}>Comportamiento de la Tarjeta al Llenar</label>
-                          <select value={comportamiento} onChange={e => setComportamiento(e.target.value as any)} className={IC}>
-                            <option value="reiniciar">Reiniciar automáticamente a 0 sellos</option>
-                            <option value="sin_limite">Sin límites - Sigue sumando de forma indefinida</option>
-                          </select>
-                        </div>
-
-                        {/* Exploradores de Archivos: Logo y Portada */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-[#f4f4f5]">
-                          {/* Logo (Top Left) */}
-                          <div className="space-y-1.5">
-                            <label className={LBL}>Logo del Programa (Esquina Sup. Izquierda)</label>
-                            <div className="flex flex-col gap-2">
-                              {progLogoUrl && !progLogoFile && (
-                                <div className="w-12 h-12 rounded-xl border border-[#e4e4e7] overflow-hidden bg-white relative group">
-                                  <img src={progLogoUrl} alt="Logo" className="w-full h-full object-cover" />
-                                  <button type="button" onClick={() => setProgLogoUrl('')} className="absolute inset-0 bg-black/40 text-white text-[10px] font-bold opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">Quitar</button>
-                                </div>
-                              )}
-                              <input 
-                                type="file" 
-                                accept="image/*" 
-                                onChange={e => { if (e.target.files?.[0]) setProgLogoFile(e.target.files[0]) }} 
-                                className="hidden" 
-                                id="prog-logo-file" 
-                              />
-                              <label 
-                                htmlFor="prog-logo-file" 
-                                className="border border-dashed border-[#e4e4e7] hover:border-[#dc2626] rounded-xl p-3 text-center cursor-pointer transition-colors hover:bg-[#fafafa] flex flex-col items-center justify-center gap-1"
-                              >
-                                <span className="text-lg">🖼️</span>
-                                <span className="text-[10px] font-semibold text-[#52525b] truncate w-full max-w-[180px]">
-                                  {progLogoFile ? progLogoFile.name : 'Seleccionar Logo'}
-                                </span>
-                              </label>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label className={LBL}>Sellos Totales</label>
+                              <select value={totalSellos} onChange={e => setTotalSellos(e.target.value)} className={IC}>
+                                <option value="6">6 sellos</option>
+                                <option value="8">8 sellos</option>
+                                <option value="10">10 sellos</option>
+                                <option value="12">12 sellos</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className={LBL}>Sellos Max Diarios</label>
+                              <select value={maxDia} onChange={e => setMaxDia(e.target.value)} className={IC}>
+                                <option value="1">1 al día</option>
+                                <option value="2">2 al día</option>
+                                <option value="3">3 al día</option>
+                              </select>
                             </div>
                           </div>
 
-                          {/* Portada / Banner (Top Part) */}
-                          <div className="space-y-1.5">
-                            <label className={LBL}>Imagen de Portada / Banner Superior</label>
-                            <div className="flex flex-col gap-2">
-                              {progPortadaUrl && !progPortadaFile && (
-                                <div className="h-12 w-full rounded-xl border border-[#e4e4e7] overflow-hidden bg-white relative group">
-                                  <img src={progPortadaUrl} alt="Portada" className="w-full h-full object-cover" />
-                                  <button type="button" onClick={() => setProgPortadaUrl('')} className="absolute inset-0 bg-black/40 text-white text-[10px] font-bold opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">Quitar</button>
-                                </div>
-                              )}
-                              <input 
-                                type="file" 
-                                accept="image/*" 
-                                onChange={e => { if (e.target.files?.[0]) setProgPortadaFile(e.target.files[0]) }} 
-                                className="hidden" 
-                                id="prog-portada-file" 
-                              />
-                              <label 
-                                htmlFor="prog-portada-file" 
-                                className="border border-dashed border-[#e4e4e7] hover:border-[#dc2626] rounded-xl p-3 text-center cursor-pointer transition-colors hover:bg-[#fafafa] flex flex-col items-center justify-center gap-1"
-                              >
-                                <span className="text-lg">🍕</span>
-                                <span className="text-[10px] font-semibold text-[#52525b] truncate w-full max-w-[180px]">
-                                  {progPortadaFile ? progPortadaFile.name : 'Seleccionar Portada'}
-                                </span>
-                              </label>
+                          <div>
+                            <label className={LBL}>Comportamiento de la Tarjeta al Llenar</label>
+                            <select value={comportamiento} onChange={e => setComportamiento(e.target.value as any)} className={IC}>
+                              <option value="reiniciar">Reiniciar automáticamente a 0 sellos</option>
+                              <option value="sin_limite">Sin límites - Sigue sumando de forma indefinida</option>
+                            </select>
+                          </div>
+
+                          {/* Exploradores de Archivos: Logo y Portada */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-[#f4f4f5]">
+                            {/* Logo (Top Left) */}
+                            <div className="space-y-1.5">
+                              <label className={LBL}>Logo del Programa (Esquina Sup. Izquierda)</label>
+                              <div className="flex flex-col gap-2">
+                                {progLogoUrl && !progLogoFile && (
+                                  <div className="w-12 h-12 rounded-xl border border-[#e4e4e7] overflow-hidden bg-white relative group">
+                                    <img src={progLogoUrl} alt="Logo" className="w-full h-full object-cover" />
+                                    <button type="button" onClick={() => setProgLogoUrl('')} className="absolute inset-0 bg-black/40 text-white text-[10px] font-bold opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">Quitar</button>
+                                  </div>
+                                )}
+                                <input 
+                                  type="file" 
+                                  accept="image/*" 
+                                  onChange={e => { if (e.target.files?.[0]) setProgLogoFile(e.target.files[0]) }} 
+                                  className="hidden" 
+                                  id="prog-logo-file" 
+                                />
+                                <label 
+                                  htmlFor="prog-logo-file" 
+                                  className="border border-dashed border-[#e4e4e7] hover:border-[#dc2626] rounded-xl p-3 text-center cursor-pointer transition-colors hover:bg-[#fafafa] flex flex-col items-center justify-center gap-1"
+                                >
+                                  <span className="text-lg">🖼️</span>
+                                  <span className="text-[10px] font-semibold text-[#52525b] truncate w-full max-w-[180px]">
+                                    {progLogoFile ? progLogoFile.name : 'Seleccionar Logo'}
+                                  </span>
+                                </label>
+                              </div>
                             </div>
+
+                            {/* Portada / Banner (Top Part) */}
+                            <div className="space-y-1.5">
+                              <label className={LBL}>Imagen de Portada / Banner Superior</label>
+                              <div className="flex flex-col gap-2">
+                                {progPortadaUrl && !progPortadaFile && (
+                                  <div className="h-12 w-full rounded-xl border border-[#e4e4e7] overflow-hidden bg-white relative group">
+                                    <img src={progPortadaUrl} alt="Portada" className="w-full h-full object-cover" />
+                                    <button type="button" onClick={() => setProgPortadaUrl('')} className="absolute inset-0 bg-black/40 text-white text-[10px] font-bold opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">Quitar</button>
+                                  </div>
+                                )}
+                                <input 
+                                  type="file" 
+                                  accept="image/*" 
+                                  onChange={e => { if (e.target.files?.[0]) setProgPortadaFile(e.target.files[0]) }} 
+                                  className="hidden" 
+                                  id="prog-portada-file" 
+                                />
+                                <label 
+                                  htmlFor="prog-portada-file" 
+                                  className="border border-dashed border-[#e4e4e7] hover:border-[#dc2626] rounded-xl p-3 text-center cursor-pointer transition-colors hover:bg-[#fafafa] flex flex-col items-center justify-center gap-1"
+                                >
+                                  <span className="text-lg">🍕</span>
+                                  <span className="text-[10px] font-semibold text-[#52525b] truncate w-full max-w-[180px]">
+                                    {progPortadaFile ? progPortadaFile.name : 'Seleccionar Portada'}
+                                  </span>
+                                </label>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex gap-2 pt-2">
+                            <button type="button" onClick={() => setPasoLealtad('selector')} className="border border-[#e4e4e7] px-4 py-2 rounded-xl text-xs font-bold text-[#52525b] hover:bg-[#fafafa]">Atrás</button>
+                            <button type="button" onClick={guardarProgramaEstampillas} disabled={guardandoPrograma || subiendoLogoProg || subiendoPortadaProg} className="btn-primary py-2.5 px-6 text-xs flex-1 flex items-center justify-center gap-1.5">
+                              {(guardandoPrograma || subiendoLogoProg || subiendoPortadaProg) && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                              {guardandoPrograma || subiendoLogoProg || subiendoPortadaProg ? 'Procesando e Imágenes...' : (programaAEditar ? '💾 Guardar Cambios' : 'Guardar y Continuar')}
+                            </button>
                           </div>
                         </div>
 
-                        <div className="flex gap-2 pt-2">
-                          <button type="button" onClick={() => setPasoLealtad('selector')} className="border border-[#e4e4e7] px-4 py-2 rounded-xl text-xs font-bold text-[#52525b] hover:bg-[#fafafa]">Atrás</button>
-                          <button type="button" onClick={guardarProgramaEstampillas} disabled={guardandoPrograma || subiendoLogoProg || subiendoPortadaProg} className="btn-primary py-2.5 px-6 text-xs flex-1 flex items-center justify-center gap-1.5">
-                            {(guardandoPrograma || subiendoLogoProg || subiendoPortadaProg) && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                            {guardandoPrograma || subiendoLogoProg || subiendoPortadaProg ? 'Procesando e Imágenes...' : (programaAEditar ? '💾 Guardar Cambios' : 'Guardar y Continuar')}
-                          </button>
+                        {/* Columna Derecha: Previsualizador del Celular (5/12) */}
+                        <div className="lg:col-span-5 flex flex-col items-center justify-center p-4 bg-[#fafafa] border border-[#e4e4e7] rounded-3xl space-y-4">
+                          <p className="text-[10px] font-bold text-[#71717a] uppercase tracking-widest">Vista Previa en Vivo (Cliente)</p>
+                          
+                          {/* Contenedor tipo pantalla móvil */}
+                          <div className="w-full max-w-[270px] bg-white rounded-[40px] shadow-lg border-[6px] border-[#09090b] overflow-hidden relative font-sans aspect-[9/16] shrink-0">
+                            {/* Notch simulada */}
+                            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-28 h-4 bg-[#09090b] rounded-b-xl z-20" />
+                            
+                            {/* Contenido de la tarjeta */}
+                            <div className="p-3 pt-6 space-y-3 h-full overflow-y-auto">
+                              {/* Header del negocio */}
+                              <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 rounded-xl overflow-hidden border border-[#e4e4e7] shadow-sm bg-white shrink-0">
+                                  <img
+                                    src={progLogoFile ? URL.createObjectURL(progLogoFile) : (progLogoUrl || business?.logo_url || '/logo.png')}
+                                    alt=""
+                                    className="w-full h-full object-cover"
+                                  />
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-[9px] text-[#71717a] font-medium leading-none">Club de Fidelización</p>
+                                  <h1 className="text-[11px] font-bold text-[#09090b] tracking-tight truncate leading-tight mt-0.5">{business?.nombre || 'La Burrería'}</h1>
+                                </div>
+                              </div>
+
+                              {/* Tarjeta Principal */}
+                              <div className="bg-white rounded-2xl shadow-md border border-[#f0f0f0] overflow-hidden">
+                                {/* Portada / Banner superior */}
+                                {progPortadaFile || progPortadaUrl ? (
+                                  <div className="h-16 w-full overflow-hidden relative">
+                                    <img 
+                                      src={progPortadaFile ? URL.createObjectURL(progPortadaFile) : progPortadaUrl} 
+                                      alt="" 
+                                      className="w-full h-full object-cover" 
+                                    />
+                                    <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
+                                  </div>
+                                ) : (
+                                  <div className="h-1 bg-gradient-to-r from-[#dc2626] via-[#ef4444] to-[#dc2626]" />
+                                )}
+
+                                {/* Nombre del cliente */}
+                                <div className="px-4 pt-3 pb-2">
+                                  <p className="text-[8px] font-semibold text-[#a1a1aa] uppercase tracking-widest">Socio VIP</p>
+                                  <h2 className="text-xs font-bold text-[#09090b] tracking-tight mt-0.5 truncate">{nombreClub || 'Club VIP La Burrería'}</h2>
+                                  <p className="text-[9px] text-[#a1a1aa] font-mono leading-none">ID: SOCIO123</p>
+                                </div>
+
+                                {/* Grid de Sellos */}
+                                <div className="px-3 py-2.5 bg-[#fafafa] border-y border-[#f0f0f0]">
+                                  <div className="grid grid-cols-5 gap-1.5 place-items-center">
+                                    {[...Array(totalSellos === 'otro' ? Number(totalSellosOtro || 10) : Number(totalSellos || 10))].map((_, i) => {
+                                      const marcado = i < 3 // Simular 3 sellos marcados
+                                      return (
+                                        <div key={i} className="flex justify-center items-center w-full">
+                                          {marcado ? (
+                                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#FFD700] via-[#FDB931] to-[#D4A017] flex items-center justify-center shadow-sm">
+                                              <span className="text-[#452000] text-xs font-black">★</span>
+                                            </div>
+                                          ) : (
+                                            <div className="w-7 h-7 rounded-full border border-dashed border-[#d4d4d8] flex items-center justify-center">
+                                              <span className="text-[#d4d4d8] text-[10px]">★</span>
+                                            </div>
+                                          )}
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                </div>
+
+                                {/* Progreso */}
+                                <div className="px-4 py-2 text-center text-[9px] font-semibold text-[#71717a]">
+                                  🏆 Simulación: 3/{totalSellos === 'otro' ? Number(totalSellosOtro || 10) : Number(totalSellos || 10)} sellos
+                                </div>
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     )}
@@ -2115,6 +2215,22 @@ export default function DashboardPage() {
                     <label className={LBL}>Premios de Ruleta - Sector 4</label>
                     <input type="text" value={premio4} onChange={e => setPremio4(e.target.value)} className={IC} required />
                   </div>
+                </div>
+
+                <div className="border-t border-[#f4f4f5] pt-4">
+                  <label className={LBL}>Monto Mínimo de Pedido para Activar Ruleta ($)</label>
+                  <input
+                    type="number"
+                    value={montoMinimoRuleta}
+                    onChange={e => setMontoMinimoRuleta(e.target.value)}
+                    className={IC}
+                    placeholder="Ej: 200 (Pon 0 para desactivar la restricción)"
+                    min="0"
+                    step="0.01"
+                  />
+                  <p className="text-[11px] text-[#71717a] mt-1">
+                    La ruleta (tanto intermedia como final) solo se activará si el cliente realiza un pedido de comida cuyo costo sea igual o mayor a esta cantidad. Si es menor, se mostrará un candado dorado explicativo.
+                  </p>
                 </div>
 
                 {/* Reset rule switch */}

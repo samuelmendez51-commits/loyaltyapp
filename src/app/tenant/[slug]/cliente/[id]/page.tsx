@@ -3,7 +3,7 @@ import { useEffect, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useParams } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
-import { UtensilsCrossed, Bell, CreditCard, X, Gift, RotateCcw, Send } from 'lucide-react'
+import { UtensilsCrossed, Bell, CreditCard, X, Gift, RotateCcw, Send, Lock } from 'lucide-react'
 
 // ── Interfaces ────────────────────────────────────────────────────────────────
 interface Premio { id: string; nombre: string; estampillas_requeridas: number; imagen_url?: string }
@@ -296,6 +296,7 @@ export default function TarjetaLealtadFinal() {
   const [vistaActiva, setVistaActiva] = useState<'tarjeta' | 'menu' | 'pedido'>('tarjeta')
   const [mostrarRuleta, setMostrarRuleta] = useState(false)
   const [menuDigital, setMenuDigital] = useState<any>(null)
+  const [ultimoPedidoTotal, setUltimoPedidoTotal] = useState<number>(0)
 
   const getBaseUrl = () => {
     if (typeof window !== 'undefined') return window.location.origin
@@ -375,6 +376,23 @@ export default function TarjetaLealtadFinal() {
           .limit(1)
           .maybeSingle()
         if (couponData) setActiveCoupon(couponData)
+
+        // Cargar el total del último pedido registrado del cliente
+        try {
+          const { data: lastOrder } = await supabase
+            .from('orders')
+            .select('total')
+            .eq('cliente_id', clienteData.id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+          
+          if (lastOrder) {
+            setUltimoPedidoTotal(Number(lastOrder.total) || 0)
+          }
+        } catch (e) {
+          console.warn('Error al cargar el último pedido del cliente:', e)
+        }
       }
       setCargando(false)
     }
@@ -463,7 +481,14 @@ export default function TarjetaLealtadFinal() {
   const tarjetaCompleta = sellosMarcados >= sellosTotales
 
   const activeRuletaRange = business?.ruleta_config?.[String(sellosMarcados)]
-  const tieneRuletaActiva = tarjetaCompleta || (activeRuletaRange && activeRuletaRange.activo && Array.isArray(activeRuletaRange.premios) && activeRuletaRange.premios.length >= 4)
+  const tieneEstructuraRuleta = tarjetaCompleta || (activeRuletaRange && activeRuletaRange.activo && Array.isArray(activeRuletaRange.premios) && activeRuletaRange.premios.length >= 4)
+
+  // Validación de ticket mínimo
+  const minRuletaTicket = Number(business?.monto_minimo_ruleta) || 0
+  const cumpleMontoMinimoRuleta = minRuletaTicket === 0 || ultimoPedidoTotal >= minRuletaTicket
+
+  // La ruleta solo se activa si tiene la estructura y cumple el monto mínimo de su última compra
+  const tieneRuletaActiva = tieneEstructuraRuleta && cumpleMontoMinimoRuleta
 
   if (cargando) return (
     <div className="min-h-screen flex items-center justify-center bg-[#fafafa]">
@@ -586,6 +611,27 @@ export default function TarjetaLealtadFinal() {
                   <Gift className="w-5 h-5" />
                   ¡Girar Ruleta de Premios!
                 </button>
+              ) : tieneEstructuraRuleta && !cumpleMontoMinimoRuleta ? (
+                <div className="w-full bg-[#fefcbf] border-2 border-[#ecc94b] rounded-2xl p-5 text-center space-y-3 shadow-sm animate-fadeIn">
+                  <div className="w-12 h-12 rounded-full bg-[#fef08a] flex items-center justify-center mx-auto text-[#a16207]">
+                    <Lock className="w-6 h-6 animate-pulse" />
+                  </div>
+                  <div>
+                    <p className="font-extrabold text-[#854d0e] text-sm flex items-center justify-center gap-1.5">
+                      <span>🔒 Ruleta VIP Bloqueada</span>
+                    </p>
+                    <p className="text-[11px] text-[#a16207] mt-1.5 leading-relaxed">
+                      ¡Felicidades! Alcanzaste el rango de sellos necesario. Sin embargo, esta ruleta requiere una compra mínima de <span className="font-extrabold text-red-600">${minRuletaTicket} MXN</span>.
+                    </p>
+                    <div className="mt-3 py-2 px-3 bg-white/70 border border-[#fef08a] rounded-xl text-[10px] inline-block">
+                      <span className="text-[#854d0e]">Tu última compra registrada: </span>
+                      <span className="font-bold text-red-600">${ultimoPedidoTotal} MXN</span>
+                    </div>
+                    <p className="text-[9px] text-[#b45309] mt-2 italic">
+                      Realiza un pedido desde el menú o en caja que iguale o supere este monto para activarla.
+                    </p>
+                  </div>
+                </div>
               ) : activeCoupon ? (
                 <div className="flex flex-col items-center gap-3 w-full">
                   <div className="p-3 bg-white border-2 border-[#dc2626] rounded-2xl shadow-sm">
