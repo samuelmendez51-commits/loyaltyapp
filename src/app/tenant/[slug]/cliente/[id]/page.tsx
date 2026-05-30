@@ -288,6 +288,7 @@ export default function TarjetaLealtadFinal() {
   const [cargando, setCargando] = useState(true)
   const [activeCoupon, setActiveCoupon] = useState<any>(null)
   const [generandoPremio, setGenerandoPremio] = useState(false)
+  const [programaActivo, setProgramaActivo] = useState<any>(null)
 
   const [generandoGoogle, setGenerandoGoogle] = useState(false)
   const [generandoApple, setGenerandoApple] = useState(false)
@@ -347,6 +348,21 @@ export default function TarjetaLealtadFinal() {
             .eq('activo', true)
             .maybeSingle()
           if (menuData) setMenuDigital(menuData)
+
+          // Cargar Programa de Fidelidad Activo (Defensivo por si no se han corrido las migraciones aún)
+          try {
+            const { data: progActivo } = await supabase
+              .from('programas_fidelidad')
+              .select('id, nombre_club, logo_url, portada_url, total_estampillas')
+              .eq('business_id', clienteData.business_id)
+              .eq('activo', true)
+              .maybeSingle()
+            if (progActivo) {
+              setProgramaActivo(progActivo)
+            }
+          } catch (e) {
+            console.warn('La tabla de programas_fidelidad o sus columnas logo_url/portada_url no están listas.', e)
+          }
         }
 
         const { data: couponData } = await supabase
@@ -488,7 +504,7 @@ export default function TarjetaLealtadFinal() {
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-2xl overflow-hidden border border-[#e4e4e7] shadow-sm bg-white shrink-0">
               <img
-                src={business?.logo_url || '/logo.png'}
+                src={programaActivo?.logo_url || business?.logo_url || '/logo.png'}
                 alt={business?.nombre || 'LoyaltyApp'}
                 className="w-full h-full object-cover"
                 onError={(e) => { (e.target as HTMLImageElement).src = '/logo.png' }}
@@ -502,8 +518,16 @@ export default function TarjetaLealtadFinal() {
 
           {/* Tarjeta Principal */}
           <div className="bg-white rounded-3xl shadow-[0_4px_24px_rgba(0,0,0,0.08)] border border-[#f0f0f0] overflow-hidden">
-            {/* Acento superior */}
-            <div className="h-1.5 bg-gradient-to-r from-[#dc2626] via-[#ef4444] to-[#dc2626]" />
+            {/* Portada / Banner superior */}
+            {programaActivo?.portada_url ? (
+              <div className="h-32 w-full overflow-hidden relative">
+                <img src={programaActivo.portada_url} alt="Portada Club" className="w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+              </div>
+            ) : (
+              /* Acento superior */
+              <div className="h-1.5 bg-gradient-to-r from-[#dc2626] via-[#ef4444] to-[#dc2626]" />
+            )}
 
             {/* Nombre del cliente */}
             <div className="px-6 pt-5 pb-3">

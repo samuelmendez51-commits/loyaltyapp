@@ -214,6 +214,15 @@ export default function DashboardPage() {
   const [nuevoP3, setNuevoP3] = useState('')
   const [nuevoP4, setNuevoP4] = useState('')
 
+  // ── EDICIÓN E IMÁGENES DE PROGRAMAS ──────────────────────────────────────────
+  const [programaAEditar, setProgramaAEditar] = useState<any>(null)
+  const [progLogoFile, setProgLogoFile] = useState<File | null>(null)
+  const [progPortadaFile, setProgPortadaFile] = useState<File | null>(null)
+  const [progLogoUrl, setProgLogoUrl] = useState('')
+  const [progPortadaUrl, setProgPortadaUrl] = useState('')
+  const [subiendoLogoProg, setSubiendoLogoProg] = useState(false)
+  const [subiendoPortadaProg, setSubiendoPortadaProg] = useState(false)
+
   // ── OPERACIÓN DE PREMIOS (CANJES) ───────────────────────────────────────────
   const [premiosCanjesList, setPremiosCanjesList] = useState<any[]>([])
   const [cargandoCanjes, setCargandoCanjes] = useState(false)
@@ -813,7 +822,40 @@ export default function DashboardPage() {
     }
   }
 
-  // ── Guardar Programa de Estampillas ───────────────────────────────────────────
+  // ── Helpers para Edición de Programas ──────────────────────────────────────────
+  const abrirEditarPrograma = (prog: any) => {
+    setProgramaAEditar(prog)
+    setNombreClub(prog.nombre_club || '')
+    setTipoSeleccionado(prog.tipo_programa || 'estampillas')
+    setTotalSellos(String(prog.total_estampillas || 10))
+    setMaxDia(String(prog.estampillas_max_dia || 1))
+    setComportamiento(prog.comportamiento_completado || 'sin_limite')
+    setProgLogoUrl(prog.logo_url || '')
+    setProgPortadaUrl(prog.portada_url || '')
+    setProgLogoFile(null)
+    setProgPortadaFile(null)
+    
+    setMostrarCrearPrograma(true)
+    setPasoLealtad('config') // Ir directo a la configuración de campos
+  }
+
+  const abrirCrearPrograma = () => {
+    setProgramaAEditar(null)
+    setNombreClub('')
+    setTipoSeleccionado('estampillas')
+    setTotalSellos('10')
+    setMaxDia('1')
+    setComportamiento('sin_limite')
+    setProgLogoUrl('')
+    setProgPortadaUrl('')
+    setProgLogoFile(null)
+    setProgPortadaFile(null)
+    
+    setMostrarCrearPrograma(true)
+    setPasoLealtad('selector')
+  }
+
+  // ── Guardar o Actualizar Programa de Estampillas ────────────────────────────────
   const guardarProgramaEstampillas = async () => {
     const businessId = getCookieVal('session_business_id') || business?.id
     if (!businessId || !nombreClub.trim()) return alert('Ingresa el nombre del club')
@@ -824,28 +866,114 @@ export default function DashboardPage() {
     const precargadasFinal = precargadas === 'otro' ? Number(precargadasOtro || 0) : Number(precargadas)
 
     try {
-      const { data: prog, error } = await supabase.from('programas_fidelidad').insert({
-        business_id: businessId,
+      let finalLogoUrl = progLogoUrl
+      let finalPortadaUrl = progPortadaUrl
+
+      // 1. Subir Logo si se ha seleccionado uno nuevo
+      if (progLogoFile) {
+        setSubiendoLogoProg(true)
+        const fileExt = progLogoFile.name.split('.').pop()
+        const fileName = `${businessId}/prog-logo-${Date.now()}.${fileExt}`
+        const { error: uploadErr } = await supabase.storage.from('menu-images').upload(fileName, progLogoFile, { cacheControl: '3600', upsert: true })
+        if (uploadErr) throw uploadErr
+        const { data: urlData } = supabase.storage.from('menu-images').getPublicUrl(fileName)
+        finalLogoUrl = urlData.publicUrl
+        setProgLogoUrl(finalLogoUrl)
+        setSubiendoLogoProg(false)
+      }
+
+      // 2. Subir Portada si se ha seleccionado una nueva
+      if (progPortadaFile) {
+        setSubiendoPortadaProg(true)
+        const fileExt = progPortadaFile.name.split('.').pop()
+        const fileName = `${businessId}/prog-portada-${Date.now()}.${fileExt}`
+        const { error: uploadErr } = await supabase.storage.from('menu-images').upload(fileName, progPortadaFile, { cacheControl: '3600', upsert: true })
+        if (uploadErr) throw uploadErr
+        const { data: urlData } = supabase.storage.from('menu-images').getPublicUrl(fileName)
+        finalPortadaUrl = urlData.publicUrl
+        setProgPortadaUrl(finalPortadaUrl)
+        setSubiendoPortadaProg(false)
+      }
+
+      // Payload estructurado
+      const payload: any = {
         tipo_programa: tipoSeleccionado || 'estampillas',
         nombre_club: nombreClub.trim(),
         estampillas_max_dia: maxDiaFinal,
         total_estampillas: totalFinal,
         precargadas: precargadasFinal,
         comportamiento_completado: comportamiento,
-      }).select().single()
+        logo_url: finalLogoUrl || null,
+        portada_url: finalPortadaUrl || null
+      }
 
-      if (error) throw error
-      setProgramaIdActivo(prog.id)
-      setPasoLealtad('recompensas')
+      if (programaAEditar) {
+        // MODO EDICIÓN
+        const { error } = await supabase
+          .from('programas_fidelidad')
+          .update(payload)
+          .eq('id', programaAEditar.id)
+        
+        if (error) throw error
+        alert('✅ Programa de fidelidad actualizado de forma exitosa')
+        setMostrarCrearPrograma(false)
+        setProgramaAEditar(null)
+        cargarDatos()
+      } else {
+        // MODO CREACIÓN
+        const { data: prog, error } = await supabase.from('programas_fidelidad').insert({
+          business_id: businessId,
+          ...payload
+        }).select().single()
+
+        if (error) throw error
+        setProgramaIdActivo(prog.id)
+        setPasoLealtad('recompensas')
+      }
     } catch (e: any) {
       console.error(e)
-      if (e.message?.includes('schema cache') || e.message?.includes('activo')) {
-        alert('⚠️ Error de Caché de Supabase:\n\nLas nuevas columnas o tablas aún no se han registrado correctamente en la caché de tu base de datos.\n\nPor favor, asegúrate de ejecutar la migración SQL "migration_v14_tabs_geopush.sql" en tu Editor SQL de Supabase y después ejecuta el siguiente comando:\n\nNOTIFY pgrst, \'reload schema\';\n\npara refrescar la caché de inmediato.')
+      // Fallback defensivo si las columnas logo_url o portada_url no existen aún en base de datos
+      if (e.message?.includes('logo_url') || e.message?.includes('portada_url') || e.message?.includes('column "logo_url" does not exist')) {
+        try {
+          const basicPayload = {
+            tipo_programa: tipoSeleccionado || 'estampillas',
+            nombre_club: nombreClub.trim(),
+            estampillas_max_dia: maxDiaFinal,
+            total_estampillas: totalFinal,
+            precargadas: precargadasFinal,
+            comportamiento_completado: comportamiento
+          }
+          if (programaAEditar) {
+            const { error: errRetry } = await supabase
+              .from('programas_fidelidad')
+              .update(basicPayload)
+              .eq('id', programaAEditar.id)
+            if (errRetry) throw errRetry
+            alert('✅ Programa básico actualizado de forma exitosa.\n\n⚠️ NOTA: El logo y la portada no se guardaron porque la columna "logo_url" o "portada_url" no existe en la base de datos de Supabase. Por favor ejecuta la migración SQL.')
+            setMostrarCrearPrograma(false)
+            setProgramaAEditar(null)
+            cargarDatos()
+          } else {
+            const { data: prog, error: errRetry } = await supabase.from('programas_fidelidad').insert({
+              business_id: businessId,
+              ...basicPayload
+            }).select().single()
+            if (errRetry) throw errRetry
+            setProgramaIdActivo(prog.id)
+            setPasoLealtad('recompensas')
+          }
+        } catch (retryErr: any) {
+          alert('Error al reintentar guardar programa básico: ' + retryErr.message)
+        }
+      } else if (e.message?.includes('schema cache') || e.message?.includes('activo')) {
+        alert('⚠️ Error de Caché de Supabase:\n\nLas nuevas columnas o tablas aún no se han registrado correctamente en la caché de tu base de datos.')
       } else {
         alert('Error al guardar programa: ' + e.message)
       }
     } finally {
       setGuardandoPrograma(false)
+      setSubiendoLogoProg(false)
+      setSubiendoPortadaProg(false)
     }
   }
 
@@ -1737,7 +1865,7 @@ export default function DashboardPage() {
                     <p className="text-xs text-[#71717a]">Administración de fidelidad con Schema Cache activo mapeado</p>
                   </div>
                   {!mostrarCrearPrograma && (
-                    <button onClick={() => { setMostrarCrearPrograma(true); setPasoLealtad('selector') }} className="btn-primary py-2.5 px-4 text-xs flex items-center gap-1.5">
+                    <button onClick={abrirCrearPrograma} className="btn-primary py-2.5 px-4 text-xs flex items-center gap-1.5">
                       <Plus className="w-4 h-4" /> Crear Programa
                     </button>
                   )}
@@ -1746,7 +1874,7 @@ export default function DashboardPage() {
                 {programas.length > 0 && !mostrarCrearPrograma && (
                   <div className="space-y-3">
                     {programas.map((prog: any) => (
-                      <div key={prog.id} className="bg-[#fafafa] border border-[#e4e4e7] p-4 rounded-xl flex items-center justify-between">
+                      <div key={prog.id} className="bg-[#fafafa] border border-[#e4e4e7] p-4 rounded-xl flex items-center justify-between hover:border-amber-200 transition-colors">
                         <div>
                           <div className="flex items-center gap-2 mb-1">
                             <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase ${
@@ -1766,6 +1894,11 @@ export default function DashboardPage() {
                              prog.tipo_programa === 'niveles' ? `${prog.total_estampillas} visitas meta · Máx ${prog.estampillas_max_dia} al día` :
                              `${prog.total_estampillas} sellos requeridos · Máx ${prog.estampillas_max_dia} al día`}
                           </p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={() => abrirEditarPrograma(prog)} className="w-8 h-8 rounded-lg border border-[#e4e4e7] hover:bg-[#fafafa] text-[#52525b] hover:text-[#dc2626] transition-colors flex items-center justify-center" title="Editar Programa">
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -1853,10 +1986,72 @@ export default function DashboardPage() {
                           </select>
                         </div>
 
+                        {/* Exploradores de Archivos: Logo y Portada */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-[#f4f4f5]">
+                          {/* Logo (Top Left) */}
+                          <div className="space-y-1.5">
+                            <label className={LBL}>Logo del Programa (Esquina Sup. Izquierda)</label>
+                            <div className="flex flex-col gap-2">
+                              {progLogoUrl && !progLogoFile && (
+                                <div className="w-12 h-12 rounded-xl border border-[#e4e4e7] overflow-hidden bg-white relative group">
+                                  <img src={progLogoUrl} alt="Logo" className="w-full h-full object-cover" />
+                                  <button type="button" onClick={() => setProgLogoUrl('')} className="absolute inset-0 bg-black/40 text-white text-[10px] font-bold opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">Quitar</button>
+                                </div>
+                              )}
+                              <input 
+                                type="file" 
+                                accept="image/*" 
+                                onChange={e => { if (e.target.files?.[0]) setProgLogoFile(e.target.files[0]) }} 
+                                className="hidden" 
+                                id="prog-logo-file" 
+                              />
+                              <label 
+                                htmlFor="prog-logo-file" 
+                                className="border border-dashed border-[#e4e4e7] hover:border-[#dc2626] rounded-xl p-3 text-center cursor-pointer transition-colors hover:bg-[#fafafa] flex flex-col items-center justify-center gap-1"
+                              >
+                                <span className="text-lg">🖼️</span>
+                                <span className="text-[10px] font-semibold text-[#52525b] truncate w-full max-w-[180px]">
+                                  {progLogoFile ? progLogoFile.name : 'Seleccionar Logo'}
+                                </span>
+                              </label>
+                            </div>
+                          </div>
+
+                          {/* Portada / Banner (Top Part) */}
+                          <div className="space-y-1.5">
+                            <label className={LBL}>Imagen de Portada / Banner Superior</label>
+                            <div className="flex flex-col gap-2">
+                              {progPortadaUrl && !progPortadaFile && (
+                                <div className="h-12 w-full rounded-xl border border-[#e4e4e7] overflow-hidden bg-white relative group">
+                                  <img src={progPortadaUrl} alt="Portada" className="w-full h-full object-cover" />
+                                  <button type="button" onClick={() => setProgPortadaUrl('')} className="absolute inset-0 bg-black/40 text-white text-[10px] font-bold opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">Quitar</button>
+                                </div>
+                              )}
+                              <input 
+                                type="file" 
+                                accept="image/*" 
+                                onChange={e => { if (e.target.files?.[0]) setProgPortadaFile(e.target.files[0]) }} 
+                                className="hidden" 
+                                id="prog-portada-file" 
+                              />
+                              <label 
+                                htmlFor="prog-portada-file" 
+                                className="border border-dashed border-[#e4e4e7] hover:border-[#dc2626] rounded-xl p-3 text-center cursor-pointer transition-colors hover:bg-[#fafafa] flex flex-col items-center justify-center gap-1"
+                              >
+                                <span className="text-lg">🍕</span>
+                                <span className="text-[10px] font-semibold text-[#52525b] truncate w-full max-w-[180px]">
+                                  {progPortadaFile ? progPortadaFile.name : 'Seleccionar Portada'}
+                                </span>
+                              </label>
+                            </div>
+                          </div>
+                        </div>
+
                         <div className="flex gap-2 pt-2">
-                          <button onClick={() => setPasoLealtad('selector')} className="border border-[#e4e4e7] px-4 py-2 rounded-xl text-xs font-bold text-[#52525b] hover:bg-[#fafafa]">Atrás</button>
-                          <button onClick={guardarProgramaEstampillas} disabled={guardandoPrograma} className="btn-primary py-2.5 px-6 text-xs flex-1">
-                            {guardandoPrograma ? 'Guardando...' : 'Guardar y Continuar'}
+                          <button type="button" onClick={() => setPasoLealtad('selector')} className="border border-[#e4e4e7] px-4 py-2 rounded-xl text-xs font-bold text-[#52525b] hover:bg-[#fafafa]">Atrás</button>
+                          <button type="button" onClick={guardarProgramaEstampillas} disabled={guardandoPrograma || subiendoLogoProg || subiendoPortadaProg} className="btn-primary py-2.5 px-6 text-xs flex-1 flex items-center justify-center gap-1.5">
+                            {(guardandoPrograma || subiendoLogoProg || subiendoPortadaProg) && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                            {guardandoPrograma || subiendoLogoProg || subiendoPortadaProg ? 'Procesando e Imágenes...' : (programaAEditar ? '💾 Guardar Cambios' : 'Guardar y Continuar')}
                           </button>
                         </div>
                       </div>
