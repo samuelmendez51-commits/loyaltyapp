@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import Papa from 'papaparse'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
@@ -223,6 +224,95 @@ export default function DashboardPage() {
   const [progPortadaUrl, setProgPortadaUrl] = useState('')
   const [subiendoLogoProg, setSubiendoLogoProg] = useState(false)
   const [subiendoPortadaProg, setSubiendoPortadaProg] = useState(false)
+
+  // ── IMPORTACIÓN MASIVA CSV ───────────────────────────────────────────────────
+  const [mostrarImportador, setMostrarImportador] = useState(false)
+  const [importando, setImportando] = useState(false)
+  const [importProgress, setImportProgress] = useState(0)
+  const [importTotal, setImportTotal] = useState(0)
+  const [importInsertados, setImportInsertados] = useState(0)
+  const [importDuplicados, setImportDuplicados] = useState(0)
+  const [importErrores, setImportErrores] = useState(0)
+  const [importFinalizado, setImportFinalizado] = useState(false)
+  const importFileRef = useRef<HTMLInputElement>(null)
+
+  const importarClientesCSV = useCallback(async (files: FileList) => {
+    const businessId = business?.id
+    if (!businessId || importando) return
+    setImportando(true)
+    setImportFinalizado(false)
+    setImportProgress(0)
+    setImportTotal(0)
+    setImportInsertados(0)
+    setImportDuplicados(0)
+    setImportErrores(0)
+
+    // Parsear todos los archivos
+    const todosLosClientes: { nombre: string; telefono: string }[] = []
+    const promesas = Array.from(files).map(file => new Promise<void>(resolve => {
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: (result) => {
+          const rows = result.data as Record<string, string>[]
+          rows.forEach(row => {
+            // Detectar columna de teléfono y nombre de forma flexible
+            const keys = Object.keys(row).map(k => k.toLowerCase().trim())
+            const telKey = Object.keys(row).find(k => /tel|phone|cel|numero|num|movil|móvil|whatsapp/i.test(k)) || Object.keys(row)[1] || Object.keys(row)[0]
+            const nomKey = Object.keys(row).find(k => /nombre|name|contact|client/i.test(k)) || Object.keys(row)[0]
+            const tel = (row[telKey] || '').toString().replace(/[^0-9]/g, '').slice(-10)
+            const nom = (row[nomKey] || '').toString().trim()
+            if (tel.length === 10) {
+              todosLosClientes.push({ nombre: nom || `Cliente ${tel}`, telefono: tel })
+            }
+          })
+          resolve()
+        },
+        error: () => resolve()
+      })
+    }))
+    await Promise.all(promesas)
+
+    // Deduplicar por teléfono dentro del archivo
+    const mapa = new Map<string, { nombre: string; telefono: string }>()
+    todosLosClientes.forEach(c => { if (!mapa.has(c.telefono)) mapa.set(c.telefono, c) })
+    const unicos = Array.from(mapa.values())
+    setImportTotal(unicos.length)
+
+    // Obtener teléfonos ya existentes en Supabase para este negocio
+    const { data: existentes } = await supabase
+      .from('clientes').select('telefono').eq('business_id', businessId)
+    const telefonosExistentes = new Set((existentes || []).map((e: any) => e.telefono))
+
+    const nuevos = unicos.filter(c => !telefonosExistentes.has(c.telefono))
+    const duplicados = unicos.length - nuevos.length
+    setImportDuplicados(duplicados)
+
+    // Insertar en lotes de 200
+    const BATCH = 200
+    let insertados = 0
+    let errores = 0
+    for (let i = 0; i < nuevos.length; i += BATCH) {
+      const lote = nuevos.slice(i, i + BATCH).map(c => ({
+        business_id: businessId,
+        nombre: c.nombre,
+        telefono: c.telefono,
+        puntos: 0,
+        verificado: true,
+      }))
+      const { error } = await supabase.from('clientes').insert(lote)
+      if (error) { errores += lote.length } else { insertados += lote.length }
+      setImportProgress(i + BATCH)
+      setImportInsertados(insertados)
+      setImportErrores(errores)
+      // Pequeña pausa para no saturar
+      await new Promise(r => setTimeout(r, 150))
+    }
+
+    setImportando(false)
+    setImportFinalizado(true)
+    cargarClientes()
+  }, [business, importando])
 
   // ── OPERACIÓN DE PREMIOS (CANJES) ───────────────────────────────────────────
   const [premiosCanjesList, setPremiosCanjesList] = useState<any[]>([])
@@ -1349,6 +1439,119 @@ export default function DashboardPage() {
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
+              </div>
+
+              {/* ── IMPORTADOR MASIVO CSV ── */}
+              <div className="bg-white border border-[#e4e4e7] rounded-2xl overflow-hidden shadow-sm mb-4">
+                <div
+                  className="p-5 flex items-center justify-between cursor-pointer hover:bg-[#fafafa] transition-colors"
+                  onClick={() => { setMostrarImportador(v => !v); setImportFinalizado(false) }}
+                >
+                  <div>
+                    <h3 className="text-sm font-bold text-[#09090b] flex items-center gap-2">
+                      <Download className="w-4 h-4 text-[#dc2626]" />
+                      Importación Masiva de Clientes CSV
+                    </h3>
+                    <p className="text-xs text-[#71717a] mt-0.5">Sube uno o varios archivos .csv para registrar miles de socios de golpe</p>
+                  </div>
+                  <span className="text-lg">{mostrarImportador ? '▲' : '▼'}</span>
+                </div>
+
+                {mostrarImportador && (
+                  <div className="border-t border-[#e4e4e7] p-6 space-y-5">
+
+                    {/* Zona de carga */}
+                    {!importando && !importFinalizado && (
+                      <div>
+                        <input
+                          ref={importFileRef}
+                          type="file"
+                          accept=".csv"
+                          multiple
+                          hidden
+                          onChange={e => { if (e.target.files?.length) importarClientesCSV(e.target.files) }}
+                        />
+                        <button
+                          onClick={() => importFileRef.current?.click()}
+                          className="w-full border-2 border-dashed border-[#e4e4e7] hover:border-[#dc2626] rounded-2xl p-10 flex flex-col items-center gap-3 transition-colors group"
+                        >
+                          <span className="text-4xl group-hover:scale-110 transition-transform">📂</span>
+                          <span className="text-sm font-bold text-[#09090b]">Selecciona tus archivos CSV</span>
+                          <span className="text-xs text-[#71717a]">Puedes seleccionar varios a la vez (Ctrl+clic)</span>
+                          <span className="mt-2 px-5 py-2.5 bg-[#dc2626] text-white text-xs font-bold rounded-xl uppercase tracking-wider">Elegir Archivos</span>
+                        </button>
+                        <div className="mt-4 bg-[#fafafa] rounded-xl p-4 space-y-1.5">
+                          <p className="text-xs font-bold text-[#52525b]">ℹ️ ¿Cómo funciona?</p>
+                          <p className="text-xs text-[#71717a]">• Detecta automáticamente la columna de <strong>teléfono</strong> (10 dígitos) y de <strong>nombre</strong></p>
+                          <p className="text-xs text-[#71717a]">• Omite teléfonos que ya estén registrados (sin duplicados)</p>
+                          <p className="text-xs text-[#71717a]">• Inserta en lotes de 200 con barra de progreso en tiempo real</p>
+                          <p className="text-xs text-[#71717a]">• Funciona con todos tus archivos <strong>"XXXX clientes la burreria.csv"</strong></p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Progreso */}
+                    {importando && (
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm font-bold text-[#09090b]">⏳ Importando clientes...</p>
+                          <p className="text-xs font-mono text-[#dc2626] font-bold">{Math.min(importProgress, importTotal)} / {importTotal}</p>
+                        </div>
+                        <div className="w-full bg-[#f4f4f5] rounded-full h-3 overflow-hidden">
+                          <div
+                            className="bg-gradient-to-r from-[#dc2626] to-[#b91c1c] h-3 rounded-full transition-all duration-300"
+                            style={{ width: importTotal > 0 ? `${Math.min(100, (importProgress / importTotal) * 100)}%` : '0%' }}
+                          />
+                        </div>
+                        <div className="grid grid-cols-3 gap-3">
+                          <div className="bg-green-50 border border-green-100 rounded-xl p-3 text-center">
+                            <p className="text-xl font-black text-green-600">{importInsertados}</p>
+                            <p className="text-[10px] text-green-700 font-bold uppercase">Insertados</p>
+                          </div>
+                          <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-center">
+                            <p className="text-xl font-black text-amber-600">{importDuplicados}</p>
+                            <p className="text-[10px] text-amber-700 font-bold uppercase">Duplicados</p>
+                          </div>
+                          <div className="bg-red-50 border border-red-100 rounded-xl p-3 text-center">
+                            <p className="text-xl font-black text-red-600">{importErrores}</p>
+                            <p className="text-[10px] text-red-700 font-bold uppercase">Errores</p>
+                          </div>
+                        </div>
+                        <p className="text-xs text-[#71717a] text-center animate-pulse">No cierres esta página mientras se importa...</p>
+                      </div>
+                    )}
+
+                    {/* Resultado final */}
+                    {importFinalizado && (
+                      <div className="space-y-4">
+                        <div className="text-center py-4">
+                          <div className="text-5xl mb-3">🎉</div>
+                          <h4 className="text-lg font-black text-[#09090b]">¡Importación Completada!</h4>
+                        </div>
+                        <div className="grid grid-cols-3 gap-3">
+                          <div className="bg-green-50 border border-green-100 rounded-xl p-3 text-center">
+                            <p className="text-2xl font-black text-green-600">{importInsertados}</p>
+                            <p className="text-[10px] text-green-700 font-bold uppercase">Nuevos socios</p>
+                          </div>
+                          <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-center">
+                            <p className="text-2xl font-black text-amber-600">{importDuplicados}</p>
+                            <p className="text-[10px] text-amber-700 font-bold uppercase">Ya existían</p>
+                          </div>
+                          <div className="bg-red-50 border border-red-100 rounded-xl p-3 text-center">
+                            <p className="text-2xl font-black text-red-600">{importErrores}</p>
+                            <p className="text-[10px] text-red-700 font-bold uppercase">Errores</p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => { setImportFinalizado(false); setImportProgress(0) }}
+                          className="w-full border border-[#e4e4e7] py-3 rounded-xl text-xs font-bold text-[#52525b] hover:bg-[#fafafa] transition-colors"
+                        >
+                          Importar más archivos
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* VIP Clients Table */}
