@@ -257,27 +257,12 @@ export default function DashboardPage() {
           const rows = result.data as Record<string, string>[]
           rows.forEach(row => {
             const keys = Object.keys(row)
-
-            // ── Teléfono: prioridad "Phone 1 - Value", luego cualquier columna con phone/tel/cel ──
             const telKey = keys.find(k => /phone\s*1\s*-\s*value/i.test(k))
               || keys.find(k => /tel|phone|cel|numero|num|movil|móvil|whatsapp/i.test(k))
-              || keys[3] || keys[1] || keys[0]
-
-            // ── Nombre: combina "Name" + "Family Name" si existen (formato Google Contacts) ──
-            const firstNameKey = keys.find(k => /^name$/i.test(k.trim()))
-            const lastNameKey  = keys.find(k => /family\s*name|apellido|last\s*name|surname/i.test(k))
-            const genericNameKey = keys.find(k => /nombre|contact|client/i.test(k)) || keys[0]
-
-            const firstName  = firstNameKey  ? (row[firstNameKey] || '').trim()  : ''
-            const lastName   = lastNameKey   ? (row[lastNameKey]  || '').trim()  : ''
-            const genericNom = genericNameKey ? (row[genericNameKey] || '').trim() : ''
-
-            // Nombre completo: combinar first + last, o usar el genérico
-            let nom = [firstName, lastName].filter(Boolean).join(' ').trim() || genericNom
-
-            // Limpiar teléfono: solo dígitos, últimos 10
+            const nomKey = keys.find(k => /family\s*name|apellido/i.test(k))
+            if (!telKey) return
             const tel = (row[telKey] || '').toString().replace(/[^0-9]/g, '').slice(-10)
-
+            const nom = nomKey ? (row[nomKey] || '').toString().trim() : ''
             if (tel.length === 10) {
               todosLosClientes.push({ nombre: nom || `Cliente ${tel}`, telefono: tel })
             }
