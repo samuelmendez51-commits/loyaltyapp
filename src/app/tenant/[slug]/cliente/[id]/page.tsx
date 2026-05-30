@@ -199,7 +199,7 @@ function RuletaVIP({
     }
  
     // 3. Abrir WhatsApp con mensaje simplificado sin IDs extensos
-    const tel = (business?.telefono_whatsapp || '').replace(/\D/g, '')
+    const tel = '52' + (business?.telefono_whatsapp || '').replace(/\D/g, '').slice(-10)
     const msg = `¡Hola! Quiero cobrar mi premio ganado en la Ruleta LoyaltyApp: ${premioGanado.nombre}`
     const url = `https://wa.me/${tel}?text=${encodeURIComponent(msg)}`
     window.open(url, '_blank')
@@ -815,7 +815,7 @@ export default function TarjetaLealtadFinal() {
               <div className="bg-white border border-[#e4e4e7] rounded-2xl p-5 shadow-sm">
                 <p className="text-sm text-[#71717a] mb-4">Haz tu pedido directamente por WhatsApp con el negocio.</p>
                 <a
-                  href={`https://wa.me/${(business.telefono_whatsapp || '').replace(/\D/g, '')}?text=${encodeURIComponent(`Hola! Soy ${cliente.nombre} (Socio VIP ID: ${cliente.id.substring(0, 8)}) y quiero hacer un pedido.`)}`}
+                  href={`https://wa.me/${'52' + (business.telefono_whatsapp || '').replace(/\D/g, '').slice(-10)}?text=${encodeURIComponent(`Hola! Soy ${cliente.nombre} (Socio VIP ID: ${cliente.id.substring(0, 8)}) y quiero hacer un pedido.`)}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="btn-primary w-full py-3.5 text-sm flex items-center justify-center gap-2"

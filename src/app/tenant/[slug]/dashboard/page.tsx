@@ -869,7 +869,7 @@ export default function DashboardPage() {
     const businessId = getCookieVal('session_business_id') || business?.id
     if (!businessId) return
     setGuardandoWhatsapp(true)
-    const cleanTel = whatsappNegocio.replace(/\D/g, '')
+    const cleanTel = '52' + whatsappNegocio.replace(/\D/g, '').slice(-10)
     const { error } = await supabase.from('businesses').update({ telefono_whatsapp: cleanTel }).eq('id', businessId)
     if (error) alert('Error: ' + error.message)
     else { alert('✅ WhatsApp guardado'); cargarDatos() }
@@ -879,7 +879,7 @@ export default function DashboardPage() {
 
   const probarWhatsApp = () => {
     if (!whatsappNegocio) return alert('Ingresa primero el número de WhatsApp')
-    const cleanTel = whatsappNegocio.replace(/\D/g, '')
+    const cleanTel = '52' + whatsappNegocio.replace(/\D/g, '').slice(-10)
     const msg = `*LoyaltyApp* 📲\n¡Tu conexión está activa! Sistema de notificaciones listo.`
     window.open(`https://wa.me/${cleanTel}?text=${encodeURIComponent(msg)}`, '_blank')
   }
@@ -2761,7 +2761,7 @@ export default function DashboardPage() {
               {/* Botón WhatsApp Tarjeta Llena */}
               <button
                 onClick={() => {
-                  const tel = clienteSeleccionadoModal.telefono.replace(/\D/g, '')
+                  const tel = '52' + clienteSeleccionadoModal.telefono.replace(/\D/g, '').slice(-10)
                   const url = `${window.location.origin}/tenant/${slug}/cliente/${clienteSeleccionadoModal.id}`
                   const msg = `¡Hola ${clienteSeleccionadoModal.nombre}! 🎉 Aquí está tu tarjeta de lealtad digital de ${business?.nombre || 'La Burrería'}. Guárdala para acumular tus sellos: ${url}`
                   window.open(`https://wa.me/${tel}?text=${encodeURIComponent(msg)}`, '_blank')
@@ -2774,7 +2774,7 @@ export default function DashboardPage() {
               {/* Botón WhatsApp Tarjeta Llena */}
               <button
                 onClick={() => {
-                  const tel = clienteSeleccionadoModal.telefono.replace(/\D/g, '')
+                  const tel = '52' + clienteSeleccionadoModal.telefono.replace(/\D/g, '').slice(-10)
                   const msg = `¡Hola ${clienteSeleccionadoModal.nombre}! Tu tarjeta de lealtad en ${business?.nombre || 'La Burrería'} ya está llena. Pasa a reclamar tu premio. 🎁`
                   window.open(`https://wa.me/${tel}?text=${encodeURIComponent(msg)}`, '_blank')
                 }}

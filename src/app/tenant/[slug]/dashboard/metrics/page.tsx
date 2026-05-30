@@ -114,12 +114,12 @@ export default function MetricsPage() {
   }
 
   const enviarPromo = (c: ClienteRFM) => {
-    const tel = c.telefono.replace(/\D/g, '')
+    const tel = '52' + c.telefono.replace(/\D/g, '').slice(-10)
     const msg = msgPromo
       .replace('{nombre}', c.nombre)
       .replace('{puntos}', String(c.puntos))
       .replace('{negocio}', businessName)
-    const url = `https://wa.me/${tel.startsWith('52') ? tel : '52' + tel}?text=${encodeURIComponent(msg)}`
+    const url = `https://wa.me/${tel}?text=${encodeURIComponent(msg)}`
     window.open(url, '_blank')
   }
 

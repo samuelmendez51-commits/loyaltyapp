@@ -657,7 +657,7 @@ _Pedido procesado a través de LoyaltyApp VIP_`
         </p>
         {business.telefono_whatsapp && (
           <a
-            href={`https://wa.me/${business.telefono_whatsapp}?text=${generarTextoWhatsApp()}`}
+            href={`https://wa.me/${'52' + business.telefono_whatsapp.replace(/\D/g, '').slice(-10)}?text=${generarTextoWhatsApp()}`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center justify-center gap-2 bg-green-700 hover:bg-green-600 text-white font-black py-4 px-8 rounded-2xl mb-4 transition-all"
@@ -960,7 +960,7 @@ _Pedido procesado a través de LoyaltyApp VIP_`
 
               {business.telefono_whatsapp && (
                 <a
-                  href={`https://wa.me/${business.telefono_whatsapp}`}
+                  href={`https://wa.me/${'52' + business.telefono_whatsapp.replace(/\D/g, '').slice(-10)}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-full flex items-center justify-center gap-2 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-white font-bold py-3.5 px-6 rounded-2xl text-sm transition-all"
@@ -1125,7 +1125,7 @@ _Pedido procesado a través de LoyaltyApp VIP_`
           <div className="grid grid-cols-2 gap-4">
             {business.telefono_whatsapp && (
               <a
-                href={`https://wa.me/${business.telefono_whatsapp}`}
+                href={`https://wa.me/${'52' + business.telefono_whatsapp.replace(/\D/g, '').slice(-10)}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="bg-green-800/20 border border-green-700 hover:bg-green-800/40 text-green-400 font-bold py-3.5 px-6 rounded-2xl text-xs uppercase tracking-widest text-center transition-all block"
