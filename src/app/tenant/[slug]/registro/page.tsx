@@ -3,9 +3,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter, useParams } from 'next/navigation'
-import { Loader2, UserPlus, CheckCircle2 } from 'lucide-react'
-
-// (SUCURSAL_REGISTRO_ID eliminado — el business_id se resuelve dinámicamente por slug)
+import { Loader2, UserPlus, CheckCircle2, LogIn } from 'lucide-react'
 
 export default function RegistroCliente() {
   const router = useRouter()
@@ -24,6 +22,7 @@ export default function RegistroCliente() {
   const [registrando, setRegistrando] = useState(false)
   const [mensaje, setMensaje] = useState({ texto: '', tipo: '' })
   const [business, setBusiness] = useState<any>(null)
+  const [modo, setModo] = useState<'registro' | 'login'>('registro')
 
   useEffect(() => {
     // Cargar branding del negocio por slug (inyectado por el middleware desde el subdominio)
@@ -38,6 +37,48 @@ export default function RegistroCliente() {
     }
     cargarNegocio()
   }, [slug])
+
+  const iniciarSesion = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const telefonoLimpio = telefono.replace(/\D/g, '')
+    if (telefonoLimpio.length !== 10) {
+      setMensaje({ texto: 'El teléfono debe tener exactamente 10 dígitos.', tipo: 'error' })
+      return
+    }
+
+    setRegistrando(true)
+    setMensaje({ texto: '', tipo: '' })
+
+    try {
+      const tenantId = business?.id
+      if (!tenantId) {
+        setMensaje({ texto: 'Cargando información del negocio. Intenta de nuevo.', tipo: 'error' })
+        return
+      }
+
+      const { data, error } = await supabase
+        .from('clientes')
+        .select('*')
+        .eq('telefono', telefonoLimpio)
+        .eq('business_id', tenantId)
+        .maybeSingle()
+
+      if (error) {
+        setMensaje({ texto: 'Error al buscar tu socio. Intenta de nuevo.', tipo: 'error' })
+      } else if (data) {
+        setMensaje({ texto: '¡Bienvenido de vuelta! Abriendo tu tarjeta...', tipo: 'exito' })
+        setTimeout(() => {
+          router.push(`/cliente/${data.id}`)
+        }, 1500)
+      } else {
+        setMensaje({ texto: 'No encontramos ningún socio con este número de teléfono.', tipo: 'error' })
+      }
+    } catch (err) {
+      setMensaje({ texto: 'Error de conexión. Intenta de nuevo.', tipo: 'error' })
+    } finally {
+      setRegistrando(false)
+    }
+  }
 
   const registrarCliente = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -82,9 +123,27 @@ export default function RegistroCliente() {
       if (error) {
         console.error('[Registro] Error al registrar:', error)
         if (error.code === '23505') {
-          // Duplicado: teléfono o email ya registrado
+          // Duplicado: buscar cliente y auto-iniciar sesión
+          try {
+            const { data: cliente } = await supabase
+              .from('clientes')
+              .select('*')
+              .eq('telefono', telefonoLimpio)
+              .eq('business_id', tenantId)
+              .maybeSingle()
+
+            if (cliente) {
+              setMensaje({ texto: '¡Socio encontrado! Iniciando sesión...', tipo: 'exito' })
+              setTimeout(() => {
+                router.push(`/cliente/${cliente.id}`)
+              }, 1500)
+              return
+            }
+          } catch (errSearch) {
+            console.error('[Registro] Error al buscar cliente existente:', errSearch)
+          }
           setMensaje({
-            texto: 'Este número de teléfono o correo ya está registrado en el club. ¿Ya eres socio?',
+            texto: 'Este número de teléfono o correo ya está registrado en el club.',
             tipo: 'error'
           })
         } else {
@@ -102,6 +161,24 @@ export default function RegistroCliente() {
     } catch (err: any) {
       console.error('[Registro] Error inesperado:', err)
       if (err?.code === '23505') {
+        try {
+          const { data: cliente } = await supabase
+            .from('clientes')
+            .select('*')
+            .eq('telefono', telefonoLimpio)
+            .eq('business_id', tenantId)
+            .maybeSingle()
+
+          if (cliente) {
+            setMensaje({ texto: '¡Socio encontrado! Iniciando sesión...', tipo: 'exito' })
+            setTimeout(() => {
+              router.push(`/cliente/${cliente.id}`)
+            }, 1500)
+            return
+          }
+        } catch (errSearch) {
+          console.error('[Registro] Error en catch al buscar cliente existente:', errSearch)
+        }
         setMensaje({
           texto: 'Este número de teléfono o correo ya está registrado en el club.',
           tipo: 'error'
@@ -142,35 +219,66 @@ export default function RegistroCliente() {
             </div>
           ) : (
             <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-[#dc2626] flex items-center justify-center shadow-md">
-              <UserPlus className="w-8 h-8 text-white" />
+              {modo === 'login' ? (
+                <LogIn className="w-8 h-8 text-white" />
+              ) : (
+                <UserPlus className="w-8 h-8 text-white" />
+              )}
             </div>
           )}
           <h1 className="text-2xl font-bold text-[#09090b] tracking-tight">
-            Únete al Club VIP
+            {modo === 'login' ? 'Ingresa a tu Tarjeta' : 'Únete al Club VIP'}
           </h1>
           <p className="text-sm text-[#71717a] mt-1.5">
-            {business?.nombre ? `Club de ${business.nombre}` : 'Programa de Lealtad'} — Registro de Miembro
+            {business?.nombre ? `Club de ${business.nombre}` : 'Programa de Lealtad'}
           </p>
         </div>
 
         {/* ── Formulario ── */}
         <div className="bg-white rounded-2xl shadow-[0_2px_20px_rgba(0,0,0,0.06)] border border-[#f0f0f0] p-8">
-          <form onSubmit={registrarCliente} className="space-y-5">
+          
+          {/* Selector de modo */}
+          <div className="flex gap-2 p-1 bg-[#fafafa] border border-[#e4e4e7] rounded-xl mb-6">
+            <button
+              onClick={() => { setModo('registro'); setMensaje({ texto: '', tipo: '' }) }}
+              className={`flex-1 py-2.5 text-xs font-black uppercase tracking-wider rounded-lg transition-all ${
+                modo === 'registro'
+                  ? 'bg-[#dc2626] text-white shadow-sm'
+                  : 'text-[#71717a] hover:text-[#09090b]'
+              }`}
+            >
+              Nuevo Registro
+            </button>
+            <button
+              onClick={() => { setModo('login'); setMensaje({ texto: '', tipo: '' }) }}
+              className={`flex-1 py-2.5 text-xs font-black uppercase tracking-wider rounded-lg transition-all ${
+                modo === 'login'
+                  ? 'bg-[#dc2626] text-white shadow-sm'
+                  : 'text-[#71717a] hover:text-[#09090b]'
+              }`}
+            >
+              Ya soy Socio
+            </button>
+          </div>
 
-            {/* Nombre */}
-            <div className="space-y-1.5">
-              <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">
-                Nombre Completo *
-              </label>
-              <input
-                type="text"
-                value={nombre}
-                onChange={(e) => setNombre(e.target.value)}
-                required
-                className="input-clean"
-                placeholder="Ej. Juan Pérez García"
-              />
-            </div>
+          <form onSubmit={modo === 'login' ? iniciarSesion : registrarCliente} className="space-y-5">
+
+            {modo === 'registro' && (
+              /* Nombre */
+              <div className="space-y-1.5 animate-fade-in">
+                <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">
+                  Nombre Completo *
+                </label>
+                <input
+                  type="text"
+                  value={nombre}
+                  onChange={(e) => setNombre(e.target.value)}
+                  required
+                  className="input-clean"
+                  placeholder="Ej. Juan Pérez García"
+                />
+              </div>
+            )}
 
             {/* Teléfono */}
             <div className="space-y-1.5">
@@ -188,58 +296,62 @@ export default function RegistroCliente() {
               />
             </div>
 
-            {/* Email */}
-            <div className="space-y-1.5">
-              <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">
-                Email <span className="text-[#a1a1aa] normal-case font-normal">(Opcional)</span>
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="input-clean"
-                placeholder="correo@ejemplo.com"
-              />
-            </div>
+            {modo === 'registro' && (
+              <>
+                {/* Email */}
+                <div className="space-y-1.5 animate-fade-in">
+                  <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">
+                    Email <span className="text-[#a1a1aa] normal-case font-normal">(Opcional)</span>
+                  </label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="input-clean"
+                    placeholder="correo@ejemplo.com"
+                  />
+                </div>
 
-            {/* Fecha de nacimiento */}
-            <div className="space-y-1.5">
-              <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">
-                Fecha de Nacimiento <span className="text-[#a1a1aa] normal-case font-normal">(Opcional)</span>
-              </label>
-              <div className="grid grid-cols-3 gap-2">
-                <div className="relative">
-                  <select
-                    value={dia}
-                    onChange={(e) => setDia(e.target.value)}
-                    className={selectClass}
-                  >
-                    <option value="">Día</option>
-                    {dias.map(d => <option key={d} value={d}>{d}</option>)}
-                  </select>
+                {/* Fecha de nacimiento */}
+                <div className="space-y-1.5 animate-fade-in">
+                  <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">
+                    Fecha de Nacimiento <span className="text-[#a1a1aa] normal-case font-normal">(Opcional)</span>
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="relative">
+                      <select
+                        value={dia}
+                        onChange={(e) => setDia(e.target.value)}
+                        className={selectClass}
+                      >
+                        <option value="">Día</option>
+                        {dias.map(d => <option key={d} value={d}>{d}</option>)}
+                      </select>
+                    </div>
+                    <div className="relative">
+                      <select
+                        value={mes}
+                        onChange={(e) => setMes(e.target.value)}
+                        className={selectClass}
+                      >
+                        <option value="">Mes</option>
+                        {meses.map(m => <option key={m.num} value={m.num}>{m.nombre}</option>)}
+                      </select>
+                    </div>
+                    <div className="relative">
+                      <select
+                        value={anio}
+                        onChange={(e) => setAnio(e.target.value)}
+                        className={selectClass}
+                      >
+                        <option value="">Año</option>
+                        {anios.map(y => <option key={y} value={y}>{y}</option>)}
+                      </select>
+                    </div>
+                  </div>
                 </div>
-                <div className="relative">
-                  <select
-                    value={mes}
-                    onChange={(e) => setMes(e.target.value)}
-                    className={selectClass}
-                  >
-                    <option value="">Mes</option>
-                    {meses.map(m => <option key={m.num} value={m.num}>{m.nombre}</option>)}
-                  </select>
-                </div>
-                <div className="relative">
-                  <select
-                    value={anio}
-                    onChange={(e) => setAnio(e.target.value)}
-                    className={selectClass}
-                  >
-                    <option value="">Año</option>
-                    {anios.map(y => <option key={y} value={y}>{y}</option>)}
-                  </select>
-                </div>
-              </div>
-            </div>
+              </>
+            )}
 
             {/* Mensaje de estado */}
             {mensaje.texto && (
@@ -261,7 +373,9 @@ export default function RegistroCliente() {
                 className="btn-primary w-full py-4 text-sm"
               >
                 {registrando ? (
-                  <><Loader2 size={16} className="animate-spin" /> Creando tarjeta...</>
+                  <><Loader2 size={16} className="animate-spin" /> {modo === 'login' ? 'Ingresando...' : 'Creando tarjeta...'}</>
+                ) : modo === 'login' ? (
+                  <><LogIn size={16} /> Entrar a mi Tarjeta VIP</>
                 ) : (
                   <><UserPlus size={16} /> Crear mi Tarjeta VIP</>
                 )}

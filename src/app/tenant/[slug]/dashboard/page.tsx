@@ -7,7 +7,7 @@ import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
 import {
-  LayoutDashboard, Users, UtensilsCrossed, Map, Settings,
+  LayoutDashboard, Users, UtensilsCrossed, Map as MapIcon, Settings,
   UserCheck, TrendingUp, QrCode, UserPlus, MoreVertical,
   Menu as MenuIcon, ChevronLeft, ChevronRight, LogOut,
   RefreshCw, HelpCircle, Download, AlertTriangle, Clock, Loader2,
@@ -83,11 +83,12 @@ function CountdownBanner({ business }: { business: Business }) {
 }
 
 // ── Sub-componente: Modal de Ajuste de Puntos ─────────────────────────────────
-function ModalAjuste({ modal, motivo, setMotivo, guardando, onConfirmar, onCerrar }: any) {
+function ModalAjuste({ modal, motivo, setMotivo, guardando, requiereMotivo, onConfirmar, onCerrar }: any) {
   if (!modal) return null
+  const disabledButton = requiereMotivo ? (!motivo.trim() || guardando) : guardando
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 border border-[#e4e4e7] animate-fadeIn">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 border border-[#e4e4e7] animate-fadeIn text-[#09090b]">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-bold text-[#09090b]">Ajuste Manual de Sellos</h3>
           <button onClick={onCerrar} className="w-7 h-7 rounded-full bg-[#fafafa] flex items-center justify-center hover:bg-[#f4f4f5]">
@@ -98,20 +99,22 @@ function ModalAjuste({ modal, motivo, setMotivo, guardando, onConfirmar, onCerra
           {modal.direccion === 'suma' ? '➕ Agregar' : '➖ Quitar'} 1 sello a <strong>{modal.nombre}</strong>
         </p>
         <div className="space-y-2 mb-5">
-          <label className="text-xs font-semibold text-[#3f3f46] uppercase tracking-wide block">Motivo de Auditoría *</label>
+          <label className="text-xs font-semibold text-[#3f3f46] uppercase tracking-wide block">
+            Motivo de Auditoría {requiereMotivo ? '*' : '(Opcional)'}
+          </label>
           <input
             type="text"
             value={motivo}
             onChange={e => setMotivo(e.target.value)}
-            className="input-clean text-sm"
-            placeholder="Ej: Error en conteo, sello de cortesía..."
+            className="input-clean text-sm w-full bg-white border border-[#e4e4e7] rounded-xl px-4 py-2.5 text-[#09090b] transition-all"
+            placeholder={requiereMotivo ? "Ej: Error en conteo, sello de cortesía..." : "Opcional..."}
           />
         </div>
         <div className="flex gap-3">
           <button onClick={onCerrar} className="flex-1 border border-[#e4e4e7] rounded-xl py-2.5 text-sm font-semibold text-[#52525b] hover:bg-[#fafafa] transition-colors">Cancelar</button>
           <button
             onClick={onConfirmar}
-            disabled={!motivo.trim() || guardando}
+            disabled={disabledButton}
             className="flex-1 btn-primary py-2.5 text-sm disabled:opacity-50"
           >
             {guardando ? 'Guardando...' : 'Confirmar'}
@@ -135,6 +138,7 @@ export default function DashboardPage() {
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [historial, setHistorial] = useState<Historial[]>([])
   const [business, setBusiness] = useState<Business | null>(null)
+  const activeBizId = business?.id
   const [cargando, setCargando] = useState(true)
   const [sellosHoy, setSellosHoy] = useState(0)
   const [premiosCanjeados, setPremiosCanjeados] = useState(0)
@@ -147,6 +151,16 @@ export default function DashboardPage() {
   const [telefonoEmpresa, setTelefonoEmpresa] = useState('')
   const [guardandoConfig, setGuardandoConfig] = useState(false)
   const [guardandoHorarios, setGuardandoHorarios] = useState(false)
+
+  // Nuevos Estados de Branding, Ubicación y Auditoría (Motivo Sello)
+  const [logoUrlNegocio, setLogoUrlNegocio] = useState('')
+  const [bannerUrlNegocio, setBannerUrlNegocio] = useState('')
+  const [direccionNegocio, setDireccionNegocio] = useState('')
+  const [latitudeNegocio, setLatitudeNegocio] = useState('')
+  const [longitudeNegocio, setLongitudeNegocio] = useState('')
+  const [requiereMotivoSello, setRequiereMotivoSello] = useState(false)
+  const [guardandoBranding, setGuardandoBranding] = useState(false)
+  const [subPestañaCatalog, setSubPestañaCatalog] = useState<'categorias' | 'productos'>('productos')
 
   // Horarios Estilo Rappi (Lunes a Domingo)
   const [horariosSemanales, setHorariosSemanales] = useState<any[]>([
@@ -352,7 +366,7 @@ export default function DashboardPage() {
 
     setImportando(false)
     setImportFinalizado(true)
-    cargarClientes()
+    cargarDatos()
   }, [business, importando])
 
   // ── OPERACIÓN DE PREMIOS (CANJES) ───────────────────────────────────────────
@@ -452,14 +466,33 @@ export default function DashboardPage() {
       setLinkTiktok((bizData as any).link_tiktok || '')
       setLinkYoutube((bizData as any).link_youtube || '')
 
+      setLogoUrlNegocio(bizData.logo_url || '')
+      setBannerUrlNegocio(bizData.banner_url || '')
+      setDireccionNegocio(bizData.direccion || '')
+      setLatitudeNegocio(String(bizData.latitude || ''))
+      setLongitudeNegocio(String(bizData.longitude || ''))
+      setRequiereMotivoSello(!!(bizData as any).requiere_motivo_sello)
+
       const bId = bizData.id
       // Cargar Menús Digitales
       const { data: menus } = await supabase.from('menus_digitales').select('*').eq('business_id', bId)
       if (menus) {
         const local = menus.find((m: any) => m.tipo === 'local')
         const domicilio = menus.find((m: any) => m.tipo === 'domicilio')
-        if (local) setMenuLocal(local)
-        if (domicilio) setMenuDomicilio(domicilio)
+        if (local) {
+          setMenuLocal({
+            ...local,
+            url: local.archivo_url || '',
+            manual_url: local.url_consumo_local || ''
+          })
+        }
+        if (domicilio) {
+          setMenuDomicilio({
+            ...domicilio,
+            url: domicilio.archivo_url || '',
+            manual_url: domicilio.url_domicilio || ''
+          })
+        }
       }
 
       // Cargar Programas de Lealtad
@@ -580,6 +613,33 @@ export default function DashboardPage() {
       alert('Error al guardar horarios: ' + e.message)
     } finally {
       setGuardandoHorarios(false)
+    }
+  }
+
+  const guardarBrandingYFidelizacion = async () => {
+    const businessId = business?.id
+    if (!businessId) return
+    setGuardandoBranding(true)
+    try {
+      const { error } = await supabase
+        .from('businesses')
+        .update({
+          logo_url: logoUrlNegocio.trim(),
+          banner_url: bannerUrlNegocio.trim(),
+          direccion: direccionNegocio.trim(),
+          latitude: parseFloat(latitudeNegocio) || null,
+          longitude: parseFloat(longitudeNegocio) || null,
+          requiere_motivo_sello: requiereMotivoSello
+        })
+        .eq('id', businessId)
+
+      if (error) throw error
+      alert('✅ Cambios de Apariencia, Ubicación y Seguridad guardados con éxito')
+      cargarDatos()
+    } catch (e: any) {
+      alert('Error al guardar configuración: ' + e.message)
+    } finally {
+      setGuardandoBranding(false)
     }
   }
 
@@ -974,6 +1034,50 @@ export default function DashboardPage() {
       alert('Error: ' + e.message)
     } finally {
       tipo === 'local' ? setSubiendoMenuLocal(false) : setSubiendoMenuDomicilio(false)
+    }
+  }
+
+  const subirArchivoMenu = async (file: File, tipo: 'local' | 'domicilio') => {
+    await guardarMenuDigital(tipo, file, undefined)
+  }
+
+  const borrarMenuArchivo = async (tipo: 'local' | 'domicilio') => {
+    const menuExistente = tipo === 'local' ? menuLocal : menuDomicilio
+    if (!menuExistente) return
+    if (!confirm('¿Estás seguro de eliminar el menú actual?')) return
+    try {
+      await supabase.from('menus_digitales').update({
+        archivo_url: null,
+        updated_at: new Date().toISOString()
+      } as any).eq('id', menuExistente.id)
+      alert('✅ Menú eliminado')
+      await cargarDatos()
+    } catch (e: any) {
+      alert('Error al eliminar menú: ' + e.message)
+    }
+  }
+
+  const guardarEnlaceManual = async (url: string, tipo: 'local' | 'domicilio') => {
+    const businessId = getCookieVal('session_business_id') || business?.id
+    if (!businessId) return
+    try {
+      const menuExistente = tipo === 'local' ? menuLocal : menuDomicilio
+      const updateData = tipo === 'local' 
+        ? { url_consumo_local: url, updated_at: new Date().toISOString() }
+        : { url_domicilio: url, updated_at: new Date().toISOString() }
+
+      if (menuExistente) {
+        await supabase.from('menus_digitales').update(updateData as any).eq('id', menuExistente.id)
+      } else {
+        const insertData = tipo === 'local'
+          ? { business_id: businessId, tipo, nombre: 'Menú Consumo Aquí', url_consumo_local: url, activo: true }
+          : { business_id: businessId, tipo, nombre: 'Menú Para Domicilio', url_domicilio: url, activo: true }
+        await supabase.from('menus_digitales').insert(insertData as any)
+      }
+      alert('✅ Enlace web guardado')
+      await cargarDatos()
+    } catch (e: any) {
+      alert('Error al guardar enlace: ' + e.message)
     }
   }
 
@@ -1546,13 +1650,14 @@ export default function DashboardPage() {
 
   const clientesAlLimite = clientes.filter(c => c.puntos >= Number(maxStamps) - 2)
 
-  // 9 Standalone Navigation Tabs (Exactly matching request)
+  // 10 Standalone Navigation Tabs (Including first-class Catalogo de Productos)
   const TABS_MAIN = [
     { id: 'metricas', label: 'Métricas', icon: LayoutDashboard },
     { id: 'configuracion', label: 'Configuración', icon: Settings },
+    { id: 'productos', label: '🍔 Catálogo de Productos', icon: UtensilsCrossed },
     { id: 'redes', label: 'Redes y WhatsApp', icon: Smartphone },
     { id: 'menus', label: 'Gestión de Menús y QR', icon: QrCode },
-    { id: 'geopush', label: 'Geopush', icon: Map },
+    { id: 'geopush', label: 'Geopush', icon: MapIcon },
     { id: 'lealtad', label: 'Tarjetas de Lealtad', icon: CreditCard },
     { id: 'promociones', label: 'Promociones (Ruleta)', icon: Gift },
     { id: 'premios', label: 'Premios (Canjes)', icon: Star },
@@ -1575,6 +1680,7 @@ export default function DashboardPage() {
         motivo={motivoAjuste}
         setMotivo={setMotivoAjuste}
         guardando={guardandoAjuste}
+        requiereMotivo={requiereMotivoSello}
         onConfirmar={ejecutarAjustePuntos}
         onCerrar={() => setModalAjusteSocio(null)}
       />
@@ -1997,6 +2103,57 @@ export default function DashboardPage() {
                 </button>
               </div>
 
+              {/* Apariencia, Ubicación y Seguridad */}
+              <div className="bg-white border border-[#e4e4e7] p-6 rounded-2xl shadow-sm space-y-6">
+                <div>
+                  <h3 className="font-bold text-[#09090b] mb-1">Apariencia, Ubicación & Seguridad</h3>
+                  <p className="text-xs text-[#71717a]">Configura el branding del negocio, coordenadas geográficas de la sucursal y políticas de auditoría para empleados.</p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className={LBL}>Logo del negocio (Emoji o URL)</label>
+                    <input type="text" value={logoUrlNegocio} onChange={e => setLogoUrlNegocio(e.target.value)} className={IC} placeholder="Ej: 🤠 o link de imagen" />
+                  </div>
+                  <div>
+                    <label className={LBL}>Banner de fondo (URL de imagen)</label>
+                    <input type="text" value={bannerUrlNegocio} onChange={e => setBannerUrlNegocio(e.target.value)} className={IC} placeholder="Ej: https://..." />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className={LBL}>Dirección Sucursal (Texto para clientes)</label>
+                    <input type="text" value={direccionNegocio} onChange={e => setDireccionNegocio(e.target.value)} className={IC} placeholder="Ej: Calle Principal 123, Centro" />
+                  </div>
+                  <div>
+                    <label className={LBL}>Latitud Sucursal</label>
+                    <input type="number" step="any" value={latitudeNegocio} onChange={e => setLatitudeNegocio(e.target.value)} className={IC} placeholder="Ej: 19.421583" />
+                  </div>
+                  <div>
+                    <label className={LBL}>Longitud Sucursal</label>
+                    <input type="number" step="any" value={longitudeNegocio} onChange={e => setLongitudeNegocio(e.target.value)} className={IC} placeholder="Ej: -102.067222" />
+                  </div>
+                  <div className="sm:col-span-2 pt-2">
+                    <label className="flex items-center gap-3 bg-[#fafafa] border border-[#e4e4e7] rounded-xl p-4 cursor-pointer hover:bg-[#f4f4f5] transition-all">
+                      <input
+                        type="checkbox"
+                        checked={requiereMotivoSello}
+                        onChange={e => setRequiereMotivoSello(e.target.checked)}
+                        className="w-5 h-5 accent-[#dc2626] rounded cursor-pointer"
+                      />
+                      <div>
+                        <p className="text-sm font-bold text-[#09090b]">Explicación obligatoria en sellos manuales (Auditoría)</p>
+                        <p className="text-[11px] text-[#71717a] mt-0.5">Si se activa, los empleados deberán obligatoriamente escribir una razón en el motivo de auditoría al agregar o quitar sellos.</p>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="pt-2">
+                  <button onClick={guardarBrandingYFidelizacion} disabled={guardandoBranding} className="btn-primary py-3 px-6 text-sm">
+                    {guardandoBranding ? 'Guardando configuración...' : 'Guardar Apariencia y Seguridad'}
+                  </button>
+                </div>
+              </div>
+
               {/* Horarios de Servicio Estilo Rappi */}
               <div className="bg-white border border-[#e4e4e7] p-6 rounded-2xl shadow-sm space-y-6">
                 <div>
@@ -2138,14 +2295,181 @@ export default function DashboardPage() {
           )}
 
           {/* ══════════════════════════════════════════
-              PESTAÑA 4: GESTIÓN DE MENÚS Y QR
+              PESTAÑA: MENÚS Y ENLACES PÚBLICOS
           ══════════════════════════════════════════ */}
           {pestaña === 'menus' && (
+            <div className="space-y-6 animate-fadeIn max-w-3xl">
+              {/* CONTENEDOR PRINCIPAL */}
+              <div className="bg-white border border-[#e4e4e7] p-6 rounded-2xl shadow-sm space-y-6">
+                <div>
+                  <h3 className="font-bold text-[#09090b] mb-1">Cargar Menús y Enlaces Públicos</h3>
+                  <p className="text-xs text-[#71717a]">Sube tus menús en formato PDF/Imagen o ingresa enlaces externos para tus clientes.</p>
+                </div>
+
+                {/* 1. CARGA DE ARCHIVOS / ESTATICO */}
+                {subPestañaMenu === 'archivos' && (
+                  <div className="space-y-6 animate-fadeIn">
+                    {/* Tabs menú */}
+                    <div className="flex gap-2 border-b border-[#f4f4f5] pb-4">
+                      {[
+                        { id: 'local', label: '🍽️ Consumo en Mesa / Local' },
+                        { id: 'domicilio', label: '🛵 Para Domicilio' }
+                      ].map(tab => (
+                        <button
+                          key={tab.id}
+                          onClick={() => setTipoQR(tab.id as any)}
+                          className={`px-4 py-2 text-xs font-bold rounded-xl transition-all border ${
+                            tipoQR === tab.id ? 'bg-[#fef2f2] border-[#dc2626] text-[#dc2626]' : 'bg-white border-[#e4e4e7] text-[#71717a] hover:bg-[#fafafa]'
+                          }`}
+                        >
+                          {tab.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Menú local */}
+                    {tipoQR === 'local' && (
+                      <div className="space-y-4">
+                        <div>
+                          <label className={LBL}>Cargar Menú Local (PDF/Imagen)</label>
+                          <div className="border-2 border-dashed border-[#e4e4e7] hover:border-[#dc2626] rounded-2xl p-6 text-center cursor-pointer transition-all bg-[#fafafa] relative flex flex-col items-center justify-center min-h-[140px]">
+                            {subiendoMenuLocal ? (
+                              <div className="flex flex-col items-center gap-2">
+                                <Loader2 className="w-8 h-8 text-[#dc2626] animate-spin" />
+                                <span className="text-xs text-[#52525b] font-bold">Subiendo archivo...</span>
+                              </div>
+                            ) : (
+                              <div className="space-y-2">
+                                <span className="text-4xl block">📁</span>
+                                <span className="text-xs text-[#09090b] font-bold block">Subir Menú de Mesa</span>
+                                <span className="text-[10px] text-[#71717a] block">PDF, JPG o PNG hasta 10MB</span>
+                              </div>
+                            )}
+                            <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept="application/pdf,image/*" onChange={e => { if (e.target.files?.[0]) subirArchivoMenu(e.target.files[0], 'local') }} />
+                          </div>
+                        </div>
+
+                        {menuLocal?.url && (
+                          <div className="bg-[#fef2f2] border border-[#fecaca] p-4 rounded-xl flex items-center justify-between gap-4 animate-fadeIn">
+                            <div className="truncate flex-1">
+                              <p className="text-[10px] font-bold text-[#dc2626] uppercase">Menú cargado actualmente</p>
+                              <a href={menuLocal.url} target="_blank" rel="noopener noreferrer" className="text-xs text-[#09090b] hover:text-[#dc2626] hover:underline font-bold truncate block">{menuLocal.url}</a>
+                            </div>
+                            <button onClick={() => borrarMenuArchivo('local')} className="text-xs text-[#dc2626] font-bold hover:underline">Eliminar</button>
+                          </div>
+                        )}
+
+                        <div className="space-y-1.5">
+                          <label className={LBL}>O ingresa el enlace web de tu menú local manualmente (ej: Canva o Google Drive)</label>
+                          <div className="flex gap-2">
+                            <input type="text" defaultValue={menuLocal?.manual_url || ''} placeholder="https://canva.com/design/... o https://drive.google.com/..." className={IC + ' bg-white flex-1'} onBlur={e => guardarEnlaceManual(e.target.value, 'local')} />
+                            <button onClick={e => { const input = (e.currentTarget.previousSibling as HTMLInputElement); guardarEnlaceManual(input.value, 'local') }} className="bg-[#dc2626] hover:bg-[#b91c1c] text-white text-xs font-bold px-4 py-3 rounded-xl transition-all">
+                              Guardar Enlace
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Menú domicilio */}
+                    {tipoQR === 'domicilio' && (
+                      <div className="space-y-4">
+                        <div>
+                          <label className={LBL}>Cargar Menú Para Domicilio (PDF/Imagen)</label>
+                          <div className="border-2 border-dashed border-[#e4e4e7] hover:border-[#dc2626] rounded-2xl p-6 text-center cursor-pointer transition-all bg-[#fafafa] relative flex flex-col items-center justify-center min-h-[140px]">
+                            {subiendoMenuDomicilio ? (
+                              <div className="flex flex-col items-center gap-2">
+                                <Loader2 className="w-8 h-8 text-[#dc2626] animate-spin" />
+                                <span className="text-xs text-[#52525b] font-bold">Subiendo archivo...</span>
+                              </div>
+                            ) : (
+                              <div className="space-y-2">
+                                <span className="text-4xl block">🏍️</span>
+                                <span className="text-xs text-[#09090b] font-bold block">Subir Menú Domicilio</span>
+                                <span className="text-[10px] text-[#71717a] block">PDF, JPG o PNG hasta 10MB</span>
+                              </div>
+                            )}
+                            <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept="application/pdf,image/*" onChange={e => { if (e.target.files?.[0]) subirArchivoMenu(e.target.files[0], 'domicilio') }} />
+                          </div>
+                        </div>
+
+                        {menuDomicilio?.url && (
+                          <div className="bg-[#fef2f2] border border-[#fecaca] p-4 rounded-xl flex items-center justify-between gap-4 animate-fadeIn">
+                            <div className="truncate flex-1">
+                              <p className="text-[10px] font-bold text-[#dc2626] uppercase">Menú cargado actualmente</p>
+                              <a href={menuDomicilio.url} target="_blank" rel="noopener noreferrer" className="text-xs text-[#09090b] hover:text-[#dc2626] hover:underline font-bold truncate block">{menuDomicilio.url}</a>
+                            </div>
+                            <button onClick={() => borrarMenuArchivo('domicilio')} className="text-xs text-[#dc2626] font-bold hover:underline">Eliminar</button>
+                          </div>
+                        )}
+
+                        <div className="space-y-1.5">
+                          <label className={LBL}>O ingresa el enlace web de tu menú a domicilio manualmente</label>
+                          <div className="flex gap-2">
+                            <input type="text" defaultValue={menuDomicilio?.manual_url || ''} placeholder="https://canva.com/design/... o https://drive.google.com/..." className={IC + ' bg-white flex-1'} onBlur={e => guardarEnlaceManual(e.target.value, 'domicilio')} />
+                            <button onClick={e => { const input = (e.currentTarget.previousSibling as HTMLInputElement); guardarEnlaceManual(input.value, 'domicilio') }} className="bg-[#dc2626] hover:bg-[#b91c1c] text-white text-xs font-bold px-4 py-3 rounded-xl transition-all">
+                              Guardar Enlace
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* QR Code Section */}
+                    <div className="border-t border-[#f4f4f5] pt-6 flex flex-col sm:flex-row items-center gap-6 bg-[#fafafa] p-6 rounded-2xl border border-[#e4e4e7]">
+                      <div className="w-32 h-32 bg-white rounded-xl border border-[#e4e4e7] flex items-center justify-center shrink-0 p-2">
+                        <QRCodeSVG
+                          value={(() => {
+                            const origin = typeof window !== 'undefined' ? window.location.origin : 'https://laburreria.loyaltyclub.mx'
+                            return `${origin}/tenant/${slug}/menu?tipo=${tipoQR}`
+                          })()}
+                          size={120}
+                          bgColor="#ffffff"
+                          fgColor="#09090b"
+                          level="H"
+                        />
+                      </div>
+                      <div className="space-y-2 flex-1 text-center sm:text-left">
+                        <h4 className="font-bold text-[#09090b]">Código QR Autogenerado</h4>
+                        <p className="text-xs text-[#52525b]">
+                          Este código QR dirige a tus clientes directamente al menú de <strong>{tipoQR === 'local' ? 'Consumo en Mesa / Local' : 'Servicio a Domicilio'}</strong>.
+                        </p>
+                        <div className="flex flex-wrap gap-2 pt-2 justify-center sm:justify-start">
+                          <button
+                            onClick={() => {
+                              const origin = typeof window !== 'undefined' ? window.location.origin : 'https://laburreria.loyaltyclub.mx'
+                              navigator.clipboard.writeText(`${origin}/tenant/${slug}/menu?tipo=${tipoQR}`)
+                              alert('📋 Enlace de menú copiado al portapapeles!')
+                            }}
+                            className="bg-white border border-[#e4e4e7] hover:bg-[#fafafa] text-[#09090b] text-[10px] font-bold px-3.5 py-2 rounded-lg transition-colors flex items-center gap-1.5"
+                          >
+                            <Copy className="w-3.5 h-3.5" /> Copiar Enlace
+                          </button>
+                          <a
+                            href={`/tenant/${slug}/menu?tipo=${tipoQR}`}
+                            target="_blank"
+                            className="bg-white border border-[#e4e4e7] hover:bg-[#fafafa] text-[#09090b] text-[10px] font-bold px-3.5 py-2 rounded-lg transition-colors flex items-center gap-1.5"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" /> Abrir menú público
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ══════════════════════════════════════════
+              PESTAÑA DEDICADA: CATÁLOGO DE PRODUCTOS
+          ══════════════════════════════════════════ */}
+          {pestaña === 'productos' && (
             <div className="space-y-6 animate-fadeIn max-w-3xl">
               {/* MODAL GESTOR DE MODIFICADORES */}
               {modificadorAEditar && productoAEditar && (
                 <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                  <div className="bg-white border border-[#e4e4e7] rounded-3xl p-6 w-full max-w-lg shadow-2xl relative max-h-[85vh] overflow-y-auto">
+                  <div className="bg-white border border-[#e4e4e7] rounded-3xl p-6 w-full max-w-lg shadow-2xl relative max-h-[85vh] overflow-y-auto text-[#09090b]">
                     <button 
                       onClick={() => { setModificadorAEditar(null); setProductoAEditar(null); }}
                       className="absolute top-4 right-4 w-8 h-8 rounded-full bg-[#fafafa] hover:bg-[#f4f4f5] flex items-center justify-center text-[#71717a] transition-colors"
@@ -2259,11 +2583,6 @@ export default function DashboardPage() {
 
               {/* CONTENEDOR PRINCIPAL */}
               <div className="bg-white border border-[#e4e4e7] p-6 rounded-2xl shadow-sm space-y-6">
-                <div>
-                  <h3 className="font-bold text-[#09090b] mb-1">Configuración del Menú</h3>
-                  <p className="text-xs text-[#71717a]">Sube tus PDFs/Imágenes o crea un Menú Interactivo dinámico y autogestionable.</p>
-                </div>
-
                 {/* Sub-pestañas de menú */}
                 <div className="flex gap-2 border-b border-[#f4f4f5] pb-4">
                   {[

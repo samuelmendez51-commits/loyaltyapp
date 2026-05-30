@@ -190,89 +190,114 @@ export async function POST(req: Request) {
     // Leer certificados con lógica híbrida priorizando variables Base64
     const { signerCert, signerKey, wwdrCert } = leerCertificados()
 
-    // Construir el PKPass usando passkit-generator (CJS)
+    // Construir el PKPass usando passkit-generator v3 API
     try {
-      const passOptions: any = {
-        model: {
-          formatVersion: 1,
-          passTypeIdentifier: PASS_TYPE_IDENTIFIER,
-          teamIdentifier: TEAM_IDENTIFIER,
-          organizationName: business ? `${business.nombre} Club` : 'La Burrería Club',
-          description: business ? `Pase VIP de Fidelidad — ${business.nombre}` : 'Pase VIP de Fidelidad La Burrería',
-          logoText: business ? business.nombre : 'La Burrería',
-          foregroundColor: 'rgb(9, 9, 11)',
-          backgroundColor: 'rgb(255, 255, 255)',
-          labelColor: 'rgb(220, 38, 38)',
-          storeCard: {
-            headerFields: [
-              { key: 'sellos', label: 'SELLOS', value: String(puntos || 0), textAlignment: 'PKTextAlignmentRight' }
-            ],
-            primaryFields: [
-              { key: 'cliente', label: 'SOCIO VIP', value: nombre }
-            ],
-            secondaryFields: [
-              { key: 'id', label: 'ID DE SOCIO', value: clienteId.substring(0, 8) },
-              { key: 'negocio', label: 'NEGOCIO', value: business?.nombre || 'La Burrería' }
-            ],
-            backFields: [
-              { key: 'info', label: 'CÓMO ACUMULAR', value: 'Presenta tu código QR en cada visita para acumular sellos y ganar premios.' },
-              { key: 'contacto', label: 'CONTACTO', value: business?.telefono_whatsapp ? `+${business.telefono_whatsapp}` : 'Consulta al cajero' }
-            ]
-          },
-          barcode: {
-            message: clienteId,
-            format: 'PKBarcodeFormatQR',
-            messageEncoding: 'iso-8859-1',
-            altText: `ID: ${clienteId.substring(0, 8)}`
+      const logoPngPath = path.resolve(process.cwd(), 'public/logo.png')
+      let logoBuffer: Buffer
+      try {
+        logoBuffer = fs.readFileSync(logoPngPath)
+      } catch {
+        logoBuffer = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64')
+      }
+
+      const passBuffers: Record<string, Buffer> = {
+        "icon.png": logoBuffer,
+        "icon@2x.png": logoBuffer,
+        "logo.png": logoBuffer,
+        "logo@2x.png": logoBuffer
+      }
+
+      // Agregar imágenes si disponibles
+      try {
+        const logoUrl = business?.logo_url
+        if (logoUrl && (logoUrl.startsWith('http') || logoUrl.startsWith('/'))) {
+          let remoteBuffer: Buffer | null = null
+          if (logoUrl.startsWith('http')) {
+            const logoRes = await fetch(logoUrl)
+            if (logoRes.ok) {
+              remoteBuffer = Buffer.from(await logoRes.arrayBuffer())
+            }
+          } else {
+            const localImgPath = path.join(process.cwd(), 'public', logoUrl)
+            if (fs.existsSync(localImgPath)) {
+              remoteBuffer = fs.readFileSync(localImgPath)
+            }
           }
+          if (remoteBuffer) {
+            passBuffers["icon.png"] = remoteBuffer
+            passBuffers["icon@2x.png"] = remoteBuffer
+            passBuffers["logo.png"] = remoteBuffer
+            passBuffers["logo@2x.png"] = remoteBuffer
+          }
+        }
+      } catch (imgErr: any) {
+        console.warn('[AppleWallet] No se pudieron cargar imágenes:', imgErr.message)
+      }
+
+      const modelObject: any = {
+        formatVersion: 1,
+        passTypeIdentifier: PASS_TYPE_IDENTIFIER,
+        teamIdentifier: TEAM_IDENTIFIER,
+        organizationName: business ? `${business.nombre} Club` : 'La Burrería Club',
+        description: business ? `Pase VIP de Fidelidad — ${business.nombre}` : 'Pase VIP de Fidelidad La Burrería',
+        logoText: business ? business.nombre : 'La Burrería',
+        foregroundColor: 'rgb(9, 9, 11)',
+        backgroundColor: 'rgb(255, 255, 255)',
+        labelColor: 'rgb(220, 38, 38)',
+        storeCard: {
+          headerFields: [
+            { key: 'sellos', label: 'SELLOS', value: String(puntos || 0), textAlignment: 'PKTextAlignmentRight' }
+          ],
+          primaryFields: [
+            { key: 'cliente', label: 'SOCIO VIP', value: nombre }
+          ],
+          secondaryFields: [
+            { key: 'id', label: 'ID DE SOCIO', value: clienteId.substring(0, 8) },
+            { key: 'negocio', label: 'NEGOCIO', value: business?.nombre || 'La Burrería' }
+          ],
+          backFields: [
+            { key: 'info', label: 'CÓMO ACUMULAR', value: 'Presenta tu código QR en cada visita para acumular sellos y ganar premios.' },
+            { key: 'contacto', label: 'CONTACTO', value: business?.telefono_whatsapp ? `+${business.telefono_whatsapp}` : 'Consulta al cajero' }
+          ]
         },
-        certificates: {
-          wwdr: wwdrCert || undefined,
-          signerCert: signerCert,
-          signerKey: {
-            keyFile: signerKey,
-            passphrase: ''
-          }
+        barcode: {
+          message: clienteId,
+          format: 'PKBarcodeFormatQR',
+          messageEncoding: 'iso-8859-1',
+          altText: `ID: ${clienteId.substring(0, 8)}`
         }
       }
 
       // Agregar geolocalización si disponible
       if (business?.latitude && business?.longitude) {
-        passOptions.model.locations = [{
+        modelObject.locations = [{
           latitude: Number(business.latitude),
           longitude: Number(business.longitude),
           relevantText: `¡Estás cerca! Visita ${business.nombre} y acumula sellos.`
         }]
       } else {
-        passOptions.model.locations = [{
+        modelObject.locations = [{
           latitude: 19.421583,
           longitude: -102.067222,
           relevantText: '¡Estás cerca! Pasa por La Burrería.'
         }]
       }
 
-      const pass = await PKPass.from(passOptions, {
-        serialNumber: clienteId,
-        webServiceURL: process.env.NEXT_PUBLIC_SITE_URL,
-        authenticationToken: process.env.APPLE_PASS_AUTH_TOKEN || 'secure_token_laburreria_2026',
-      })
+      passBuffers["pass.json"] = Buffer.from(JSON.stringify(modelObject))
 
-      // Agregar imágenes si disponibles
-      try {
-        const logoUrl = business?.logo_url
-        if (logoUrl && (logoUrl.startsWith('http') || logoUrl.startsWith('/'))) {
-          const logoRes = await fetch(logoUrl)
-          if (logoRes.ok) {
-            const logoBuffer = Buffer.from(await logoRes.arrayBuffer())
-            pass.addBuffer('icon.png', logoBuffer)
-            pass.addBuffer('icon@2x.png', logoBuffer)
-            pass.addBuffer('logo.png', logoBuffer)
-            pass.addBuffer('logo@2x.png', logoBuffer)
-          }
+      const pass = new PKPass(
+        passBuffers,
+        {
+          wwdr: wwdrCert || undefined,
+          signerCert: signerCert,
+          signerKey: signerKey
+        },
+        {
+          serialNumber: clienteId,
+          webServiceURL: process.env.NEXT_PUBLIC_SITE_URL || 'https://laburreria.loyaltyclub.mx',
+          authenticationToken: process.env.APPLE_PASS_AUTH_TOKEN || 'secure_token_laburreria_2026',
         }
-      } catch (imgErr: any) {
-        console.warn('[AppleWallet] No se pudieron cargar imágenes:', imgErr.message)
-      }
+      )
 
       const passBuffer = pass.getAsBuffer()
 

@@ -51,6 +51,7 @@ export default function MenuPublico({ params }: { params: Promise<{ slug: string
   const [linkYoutube, setLinkYoutube] = useState('')
   const [horarioSemanal, setHorarioSemanal] = useState<any>(null)
   const [googleMapsCargado, setGoogleMapsCargado] = useState(false)
+  const [categoriasColapsadas, setCategoriasColapsadas] = useState<Record<string, boolean>>({})
 
   // Estados de Ruleta de Hitos VIP
   const [mostrarRuleta, setMostrarRuleta] = useState(false)
@@ -155,59 +156,7 @@ export default function MenuPublico({ params }: { params: Promise<{ slug: string
   useEffect(() => {
     if (pestañaActiva !== 'ubicacion') return
     if (!business || !business.latitude || !business.longitude) return
-    if (typeof window === 'undefined') return
-
-    const initMap = () => {
-      const google = (window as any).google
-      if (!google) return
-
-      const center = { lat: Number(business.latitude) || 19.421583, lng: Number(business.longitude) || -102.067222 }
-      const mapDiv = document.getElementById('google-map-customer')
-      if (!mapDiv) return
-
-      const map = new google.maps.Map(mapDiv, {
-        center: center,
-        zoom: 16,
-        mapId: 'DEMO_MAP_ID',
-        disableDefaultUI: false,
-        zoomControl: true,
-        styles: [
-          { elementType: 'geometry', stylers: [{ color: '#f5f5f5' }] },
-          { elementType: 'labels.text.stroke', stylers: [{ color: '#ffffff' }] },
-          { elementType: 'labels.text.fill', stylers: [{ color: '#3f3f46' }] },
-          { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#dc2626' }] },
-          { featureType: 'poi', elementType: 'labels.text.fill', stylers: [{ color: '#71717a' }] },
-          { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#ffffff' }] },
-          { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#e4e4e7' }] },
-          { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#71717a' }] },
-          { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#e4e4e7' }] }
-        ]
-      })
-
-      new google.maps.Marker({
-        position: center,
-        map: map,
-        title: business.nombre
-      })
-    }
-
-    if ((window as any).google && (window as any).google.maps) {
-      initMap()
-      setGoogleMapsCargado(true)
-      return
-    }
-
-    const script = document.createElement('script')
-    const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places`
-    script.async = true
-    script.defer = true
-    script.onload = () => {
-      initMap()
-      setGoogleMapsCargado(true)
-    }
-    document.head.appendChild(script)
-
+    setGoogleMapsCargado(true)
   }, [pestañaActiva, business])
 
   const cargarDatos = async () => {
@@ -354,6 +303,7 @@ export default function MenuPublico({ params }: { params: Promise<{ slug: string
 
   const hacerScrollACategoria = (groupId: string) => {
     setGrupoActivo(groupId)
+    setCategoriasColapsadas(prev => ({ ...prev, [groupId]: false }))
     const el = document.getElementById(`category-section-${groupId}`)
     if (el) {
       const yOffset = -130 // compensa el header pegajoso doble
@@ -1165,46 +1115,57 @@ _Pedido procesado a través de LoyaltyApp VIP_`
                   const productosDelGrupo = productos.filter(p => p.group_id === g.id && p.disponible)
                   if (productosDelGrupo.length === 0) return null // no mostrar categorías vacías
                   
+                  const colapsada = categoriasColapsadas[g.id] || false
                   return (
                     <div key={g.id} id={`category-section-${g.id}`} className="space-y-3 scroll-mt-[135px]">
-                      <div className="sticky top-[125px] bg-[#fafafa]/90 backdrop-blur-sm z-10 py-2.5 border-b border-[#f4f4f5]">
-                        <h2 className="font-black text-lg text-[#09090b] tracking-tight">{g.nombre}</h2>
-                        {g.descripcion && <p className="text-xs text-[#71717a] mt-0.5 font-normal">{g.descripcion}</p>}
-                      </div>
+                      <button
+                        onClick={() => setCategoriasColapsadas(prev => ({ ...prev, [g.id]: !colapsada }))}
+                        className="w-full sticky top-[125px] bg-[#fafafa]/90 backdrop-blur-sm z-10 py-3 px-1 border-b border-[#f4f4f5] flex justify-between items-center text-left animate-fade-in"
+                      >
+                        <div>
+                          <h2 className="font-black text-lg text-[#09090b] tracking-tight">{g.nombre}</h2>
+                          {g.descripcion && <p className="text-xs text-[#71717a] mt-0.5 font-normal">{g.descripcion}</p>}
+                        </div>
+                        <span className={`text-[#dc2626] font-bold text-sm transform transition-transform duration-200 shrink-0 ${colapsada ? 'rotate-90' : '-rotate-90'} mr-2`}>
+                          ❮
+                        </span>
+                      </button>
                       
-                      <div className="space-y-3">
-                        {productosDelGrupo.map(product => {
-                          const enCarrito = cart.find(i => i.product.id === product.id)
-                          return (
-                            <div key={product.id} className="bg-white border border-[#e4e4e7] rounded-2xl p-4 flex gap-4 hover:border-[#d4d4d8] hover:shadow-md transition-all">
-                              <div className="flex-1">
-                                <h3 className="font-bold text-[#09090b] text-sm sm:text-base">{product.nombre}</h3>
-                                {product.descripcion && <p className="text-[#52525b] text-xs mt-1 line-clamp-2">{product.descripcion}</p>}
-                                <p className="text-[#dc2626] font-black text-sm mt-2">${product.precio.toLocaleString()} MXN</p>
-                              </div>
-                              {product.imagen_url && (
-                                <img src={product.imagen_url} alt={product.nombre} className="w-20 h-20 rounded-xl object-cover flex-shrink-0" />
-                              )}
-                              <div className="flex flex-col items-center justify-center gap-2">
-                                {enCarrito ? (
-                                  <div className="flex items-center gap-2 bg-[#fafafa] p-1 rounded-lg border border-[#e4e4e7]">
-                                    <button onClick={() => quitarDelCarrito(product.id)}
-                                      className="w-7 h-7 rounded-lg bg-[#f4f4f5] text-[#52525b] font-bold text-lg flex items-center justify-center hover:bg-[#e4e4e7] transition-colors">−</button>
-                                    <span className="text-[#09090b] font-black w-4 text-center text-sm">{enCarrito.cantidad}</span>
-                                    <button onClick={() => agregarAlCarrito(product)}
-                                      className="w-7 h-7 rounded-lg bg-[#dc2626] text-white font-bold text-lg flex items-center justify-center hover:bg-[#b91c1c] transition-colors">+</button>
-                                  </div>
-                                ) : (
-                                  <button
-                                    onClick={() => agregarAlCarrito(product)}
-                                    className="w-8 h-8 rounded-lg bg-[#dc2626] text-white font-bold text-lg flex items-center justify-center hover:bg-[#b91c1c] transition-all active:scale-95 shadow-md"
-                                  >+</button>
+                      {!colapsada && (
+                        <div className="space-y-3 animate-fade-in">
+                          {productosDelGrupo.map(product => {
+                            const enCarrito = cart.find(i => i.product.id === product.id)
+                            return (
+                              <div key={product.id} className="bg-white border border-[#e4e4e7] rounded-2xl p-4 flex gap-4 hover:border-[#d4d4d8] hover:shadow-md transition-all">
+                                <div className="flex-1">
+                                  <h3 className="font-bold text-[#09090b] text-sm sm:text-base">{product.nombre}</h3>
+                                  {product.descripcion && <p className="text-[#52525b] text-xs mt-1 line-clamp-2">{product.descripcion}</p>}
+                                  <p className="text-[#dc2626] font-black text-sm mt-2">${product.precio.toLocaleString()} MXN</p>
+                                </div>
+                                {product.imagen_url && (
+                                  <img src={product.imagen_url} alt={product.nombre} className="w-20 h-20 rounded-xl object-cover flex-shrink-0" />
                                 )}
+                                <div className="flex flex-col items-center justify-center gap-2">
+                                  {enCarrito ? (
+                                    <div className="flex items-center gap-2 bg-[#fafafa] p-1 rounded-lg border border-[#e4e4e7]">
+                                      <button onClick={() => quitarDelCarrito(product.id)}
+                                        className="w-7 h-7 rounded-lg bg-[#f4f4f5] text-[#52525b] font-bold text-lg flex items-center justify-center hover:bg-[#e4e4e7] transition-colors">−</button>
+                                      <span className="text-[#09090b] font-black w-4 text-center text-sm">{enCarrito.cantidad}</span>
+                                      <button onClick={() => agregarAlCarrito(product)}
+                                        className="w-7 h-7 rounded-lg bg-[#dc2626] text-white font-bold text-lg flex items-center justify-center hover:bg-[#b91c1c] transition-colors">+</button>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      onClick={() => agregarAlCarrito(product)}
+                                      className="w-8 h-8 rounded-lg bg-[#dc2626] text-white font-bold text-lg flex items-center justify-center hover:bg-[#b91c1c] transition-all active:scale-95 shadow-md"
+                                    >+</button>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          )
-                        })}
-                      </div>
+                            )
+                          })}
+                        </div>
+                      )}
                     </div>
                   )
                 })}
@@ -1225,12 +1186,20 @@ _Pedido procesado a través de LoyaltyApp VIP_`
             </div>
           </div>
 
-          <div className="relative w-full rounded-2xl overflow-hidden border border-[#e4e4e7] shadow-lg bg-[#fafafa]" style={{ minHeight: '300px' }}>
-            <div id="google-map-customer" className="w-full h-full absolute inset-0" style={{ minHeight: '300px' }} />
-            {!googleMapsCargado && (
+          <div className="relative w-full rounded-2xl overflow-hidden border border-[#e4e4e7] shadow-lg bg-[#fafafa]" style={{ minHeight: '320px' }}>
+            {business.latitude && business.longitude ? (
+              <iframe
+                title="Ubicación Sucursal"
+                width="100%"
+                height="320"
+                style={{ border: 0 }}
+                loading="lazy"
+                allowFullScreen
+                src={`https://maps.google.com/maps?q=${business.latitude},${business.longitude}&z=16&output=embed`}
+              />
+            ) : (
               <div className="absolute inset-0 bg-[#fafafa] flex flex-col items-center justify-center gap-3">
-                <div className="w-8 h-8 border-2 border-[#e4e4e7] border-t-[#dc2626] rounded-full animate-spin" />
-                <p className="text-[10px] text-[#a1a1aa] uppercase tracking-widest font-black">Cargando Google Maps...</p>
+                <p className="text-[10px] text-[#a1a1aa] uppercase tracking-widest font-black">Coordenadas no configuradas</p>
               </div>
             )}
           </div>
