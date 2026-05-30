@@ -89,6 +89,37 @@ export default function MenuPublico({ params }: { params: Promise<{ slug: string
     cargarDatos()
   }, [slug, tipoMenu])
 
+  // Intersection Observer para destacar la categoría activa al hacer scroll
+  useEffect(() => {
+    if (pestañaActiva !== 'menu' || grupos.length === 0) return
+    
+    const observerOptions = {
+      root: null,
+      rootMargin: '-140px 0px -60% 0px', // se activa cuando el elemento está en la parte superior
+      threshold: 0
+    }
+    
+    const observerCallback = (entries: IntersectionObserverEntry[]) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const id = entry.target.id.replace('category-section-', '')
+          setGrupoActivo(id)
+        }
+      })
+    }
+    
+    const observer = new IntersectionObserver(observerCallback, observerOptions)
+    
+    grupos.forEach(g => {
+      const el = document.getElementById(`category-section-${g.id}`)
+      if (el) observer.observe(el)
+    })
+    
+    return () => {
+      observer.disconnect()
+    }
+  }, [pestañaActiva, grupos, productos])
+
   // Lógica matemática para verificar si está cerrado en base al horario semanal
   const verificarHorarioNegocio = (horario: any) => {
     if (!horario) return false
@@ -319,6 +350,16 @@ export default function MenuPublico({ params }: { params: Promise<{ slug: string
   const esGrupoSabores = (modName: string) => {
     const nombre = modName.toLowerCase()
     return nombre.includes('sabor') || nombre.includes('salsa') || nombre.includes('flavor')
+  }
+
+  const hacerScrollACategoria = (groupId: string) => {
+    setGrupoActivo(groupId)
+    const el = document.getElementById(`category-section-${groupId}`)
+    if (el) {
+      const yOffset = -130 // compensa el header pegajoso doble
+      const y = el.getBoundingClientRect().top + window.pageYOffset + yOffset
+      window.scrollTo({ top: y, behavior: 'smooth' })
+    }
   }
 
   const presionarAgregar = (product: MenuProduct) => {
@@ -1101,7 +1142,7 @@ _Pedido procesado a través de LoyaltyApp VIP_`
                   {grupos.map(g => (
                     <button
                       key={g.id}
-                      onClick={() => setGrupoActivo(g.id)}
+                      onClick={() => hacerScrollACategoria(g.id)}
                       className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider whitespace-nowrap transition-all ${
                         grupoActivo === g.id ? 'bg-[#dc2626] text-white shadow-sm' : 'text-[#a1a1aa] hover:text-[#52525b]'
                       }`}
@@ -1112,41 +1153,57 @@ _Pedido procesado a través de LoyaltyApp VIP_`
                 </div>
               </div>
 
-              {/* Lista de productos */}
-              <div className="p-4 space-y-3 pb-32">
+              {/* Lista de productos agrupada (Rappi-style) */}
+              <div className="p-4 space-y-8 pb-32">
                 {grupos.length === 0 && (
                   <div className="text-center py-16 text-[#a1a1aa]">
                     <p className="text-4xl mb-4">🍽️</p>
                     <p className="font-bold">El menú aún no tiene productos configurados</p>
                   </div>
                 )}
-                {productosFiltrados.map(product => {
-                  const enCarrito = cart.find(i => i.product.id === product.id)
+                {grupos.map(g => {
+                  const productosDelGrupo = productos.filter(p => p.group_id === g.id && p.disponible)
+                  if (productosDelGrupo.length === 0) return null // no mostrar categorías vacías
+                  
                   return (
-                    <div key={product.id} className="bg-white border border-[#e4e4e7] rounded-2xl p-4 flex gap-4 hover:border-[#d4d4d8] hover:shadow-md transition-all">
-                      <div className="flex-1">
-                        <h3 className="font-bold text-[#09090b] text-sm sm:text-base">{product.nombre}</h3>
-                        {product.descripcion && <p className="text-[#52525b] text-xs mt-1 line-clamp-2">{product.descripcion}</p>}
-                        <p className="text-[#dc2626] font-black text-sm mt-2">${product.precio.toLocaleString()} MXN</p>
+                    <div key={g.id} id={`category-section-${g.id}`} className="space-y-3 scroll-mt-[135px]">
+                      <div className="sticky top-[125px] bg-[#fafafa]/90 backdrop-blur-sm z-10 py-2.5 border-b border-[#f4f4f5]">
+                        <h2 className="font-black text-lg text-[#09090b] tracking-tight">{g.nombre}</h2>
+                        {g.descripcion && <p className="text-xs text-[#71717a] mt-0.5 font-normal">{g.descripcion}</p>}
                       </div>
-                      {product.imagen_url && (
-                        <img src={product.imagen_url} alt={product.nombre} className="w-20 h-20 rounded-xl object-cover flex-shrink-0" />
-                      )}
-                      <div className="flex flex-col items-center justify-center gap-2">
-                        {enCarrito ? (
-                          <div className="flex items-center gap-2 bg-[#fafafa] p-1 rounded-lg border border-[#e4e4e7]">
-                            <button onClick={() => quitarDelCarrito(product.id)}
-                              className="w-7 h-7 rounded-lg bg-[#f4f4f5] text-[#52525b] font-bold text-lg flex items-center justify-center hover:bg-[#e4e4e7] transition-colors">−</button>
-                            <span className="text-[#09090b] font-black w-4 text-center text-sm">{enCarrito.cantidad}</span>
-                            <button onClick={() => agregarAlCarrito(product)}
-                              className="w-7 h-7 rounded-lg bg-[#dc2626] text-white font-bold text-lg flex items-center justify-center hover:bg-[#b91c1c] transition-colors">+</button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => agregarAlCarrito(product)}
-                            className="w-8 h-8 rounded-lg bg-[#dc2626] text-white font-bold text-lg flex items-center justify-center hover:bg-[#b91c1c] transition-all active:scale-95 shadow-md"
-                          >+</button>
-                        )}
+                      
+                      <div className="space-y-3">
+                        {productosDelGrupo.map(product => {
+                          const enCarrito = cart.find(i => i.product.id === product.id)
+                          return (
+                            <div key={product.id} className="bg-white border border-[#e4e4e7] rounded-2xl p-4 flex gap-4 hover:border-[#d4d4d8] hover:shadow-md transition-all">
+                              <div className="flex-1">
+                                <h3 className="font-bold text-[#09090b] text-sm sm:text-base">{product.nombre}</h3>
+                                {product.descripcion && <p className="text-[#52525b] text-xs mt-1 line-clamp-2">{product.descripcion}</p>}
+                                <p className="text-[#dc2626] font-black text-sm mt-2">${product.precio.toLocaleString()} MXN</p>
+                              </div>
+                              {product.imagen_url && (
+                                <img src={product.imagen_url} alt={product.nombre} className="w-20 h-20 rounded-xl object-cover flex-shrink-0" />
+                              )}
+                              <div className="flex flex-col items-center justify-center gap-2">
+                                {enCarrito ? (
+                                  <div className="flex items-center gap-2 bg-[#fafafa] p-1 rounded-lg border border-[#e4e4e7]">
+                                    <button onClick={() => quitarDelCarrito(product.id)}
+                                      className="w-7 h-7 rounded-lg bg-[#f4f4f5] text-[#52525b] font-bold text-lg flex items-center justify-center hover:bg-[#e4e4e7] transition-colors">−</button>
+                                    <span className="text-[#09090b] font-black w-4 text-center text-sm">{enCarrito.cantidad}</span>
+                                    <button onClick={() => agregarAlCarrito(product)}
+                                      className="w-7 h-7 rounded-lg bg-[#dc2626] text-white font-bold text-lg flex items-center justify-center hover:bg-[#b91c1c] transition-colors">+</button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => agregarAlCarrito(product)}
+                                    className="w-8 h-8 rounded-lg bg-[#dc2626] text-white font-bold text-lg flex items-center justify-center hover:bg-[#b91c1c] transition-all active:scale-95 shadow-md"
+                                  >+</button>
+                                )}
+                              </div>
+                            </div>
+                          )
+                        })}
                       </div>
                     </div>
                   )

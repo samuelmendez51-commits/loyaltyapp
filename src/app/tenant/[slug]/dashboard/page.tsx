@@ -189,6 +189,10 @@ export default function DashboardPage() {
   const [activoGrupo, setActivoGrupo] = useState(true)
   const [guardandoGrupo, setGuardandoGrupo] = useState(false)
 
+  // Estados interactivos para Categorías estilo Rappi
+  const [menuCategoriaAbierto, setMenuCategoriaAbierto] = useState<string | null>(null)
+  const [categoriaAEditarModal, setCategoriaAEditarModal] = useState<any | null>(null)
+
   // Producto Form / Edición
   const [productoAEditar, setProductoAEditar] = useState<any>(null)
   const [nombreProd, setNombreProd] = useState('')
@@ -406,11 +410,17 @@ export default function DashboardPage() {
       if (quickToolsRef.current && !quickToolsRef.current.contains(e.target as Node)) setQuickToolsOpen(false)
     }
     document.addEventListener('mousedown', handleOutsideClick)
+    
+    // Cerrar menús de categorías al hacer click fuera
+    const closeCategoryDropdowns = () => setMenuCategoriaAbierto(null)
+    window.addEventListener('click', closeCategoryDropdowns)
+
     // slug disponible tras hidratación → cargar datos del tenant correcto
     if (slug) cargarDatos()
     return () => {
       window.removeEventListener('beforeinstallprompt', handlePrompt)
       document.removeEventListener('mousedown', handleOutsideClick)
+      window.removeEventListener('click', closeCategoryDropdowns)
     }
   }, [slug]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -2427,88 +2437,292 @@ export default function DashboardPage() {
 
                 {/* 2. GESTIÓN DE CATEGORÍAS */}
                 {subPestañaMenu === 'categorias' && (
-                  <div className="space-y-6 animate-fadeIn">
-                    {/* Formulario */}
-                    <div className="bg-[#fafafa] border border-[#e4e4e7] p-5 rounded-2xl space-y-4">
-                      <h4 className="text-xs font-bold text-[#09090b] uppercase tracking-wider">
-                        {grupoAEditar ? '✏️ Editar Categoría' : '➕ Agregar Nueva Categoría'}
-                      </h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                          <label className={LBL}>Nombre Categoría *</label>
-                          <input type="text" value={nombreGrupo} onChange={e => setNombreGrupo(e.target.value)} className={IC + ' bg-white'} placeholder="Alitas, Bebidas, Postres" />
+                  <div className="space-y-6 animate-fadeIn text-[#09090b]">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-[#f4f4f5] pb-4">
+                      <div>
+                        <p className="text-xs text-[#71717a] font-medium leading-relaxed">
+                          Los cambios en tus productos pueden tardar un par de minutos en verse reflejados en los filtros.
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => setCategoriaAEditarModal({ nombre: '', tipo_menu: 'ambos' })}
+                        className="bg-[#09090b] hover:bg-zinc-800 text-white font-black text-xs py-3 px-6 rounded-2xl transition-all shadow-md shrink-0 flex items-center gap-2"
+                      >
+                        <span>➕</span> Crear Categoría
+                      </button>
+                    </div>
+
+                    {/* Lista estilo Rappi / Tarjetas */}
+                    <div className="space-y-3.5">
+                      {menuGroups.length === 0 ? (
+                        <div className="border border-[#e4e4e7] rounded-3xl p-12 text-center bg-white shadow-sm">
+                          <span className="text-4xl block mb-2">🗂️</span>
+                          <p className="text-[#a1a1aa] text-sm font-bold">No hay categorías dinámicas creadas aún.</p>
                         </div>
-                        <div>
-                          <label className={LBL}>Descripción corta</label>
-                          <input type="text" value={descGrupo} onChange={e => setDescGrupo(e.target.value)} className={IC + ' bg-white'} placeholder="Nuestras mejores recetas" />
-                        </div>
-                        <div>
-                          <label className={LBL}>Canal del menú</label>
-                          <select value={tipoMenuGrupo} onChange={e => setTipoMenuGrupo(e.target.value as any)} className={IC + ' bg-white'}>
-                            <option value="ambos">Ambos (Mesa y Domicilio)</option>
-                            <option value="mesa">Mesa (Sólo local)</option>
-                            <option value="delivery">Delivery (Sólo a domicilio)</option>
-                          </select>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className={LBL}>Orden visual</label>
-                            <input type="number" value={ordenGrupo} onChange={e => setOrdenGrupo(Number(e.target.value))} className={IC + ' bg-white'} />
+                      ) : (
+                        menuGroups.map(g => {
+                          const productosDeCat = menuProducts.filter(p => p.group_id === g.id)
+                          const incompletos = productosDeCat.length === 0 || productosDeCat.some(p => !p.descripcion || !p.imagen_url)
+
+                          return (
+                            <div key={g.id} className="bg-white border border-[#e4e4e7] rounded-3xl p-4.5 flex justify-between items-center shadow-sm hover:shadow-md hover:border-[#d4d4d8] transition-all gap-4">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <span className="text-[#a1a1aa] font-black text-sm shrink-0">❯</span>
+                                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 min-w-0">
+                                  <span className="font-black text-sm text-[#09090b] truncate">{g.nombre}</span>
+                                  {incompletos && (
+                                    <span className="text-[10px] bg-amber-50 border border-amber-100 text-amber-700 font-black px-2.5 py-0.5 rounded-full shrink-0 max-w-max">
+                                      Con productos incompletos
+                                    </span>
+                                  )}
+                                  {g.tipo_menu !== 'ambos' && (
+                                    <span className="text-[9px] bg-gray-50 border border-gray-100 text-gray-500 font-bold px-2 py-0.5 rounded-full shrink-0 uppercase max-w-max">
+                                      {g.tipo_menu === 'mesa' ? '🍽️ Local' : '🛵 Delivery'}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-3 shrink-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs text-[#71717a] font-bold">Activa</span>
+                                  <button
+                                    onClick={async (e) => {
+                                      e.stopPropagation()
+                                      const nuevoEstado = !g.activo
+                                      // Instant update for fluidity
+                                      setMenuGroups(prev => prev.map(item => item.id === g.id ? { ...item, activo: nuevoEstado } : item))
+                                      const { error } = await supabase
+                                        .from('menu_groups')
+                                        .update({ activo: nuevoEstado })
+                                        .eq('id', g.id)
+                                      if (error) {
+                                        alert('Error al actualizar: ' + error.message)
+                                        setMenuGroups(prev => prev.map(item => item.id === g.id ? { ...item, activo: !nuevoEstado } : item))
+                                      }
+                                    }}
+                                    className={`w-11 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors duration-300 ${
+                                      g.activo ? 'bg-blue-600' : 'bg-gray-200'
+                                    }`}
+                                  >
+                                    <div
+                                      className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-300 ${
+                                        g.activo ? 'translate-x-5' : 'translate-x-0'
+                                      }`}
+                                    />
+                                  </button>
+                                </div>
+
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    alert(`📅 Agenda y Horarios especiales para "${g.nombre}" próximamente en LoyaltyClub Enterprise.`)
+                                  }}
+                                  className="p-2.5 border border-[#e4e4e7] rounded-xl hover:bg-[#fafafa] text-[#71717a] transition-all"
+                                  title="Calendario y Programación"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                  </svg>
+                                </button>
+
+                                <div className="relative inline-block text-left">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      setMenuCategoriaAbierto(menuCategoriaAbierto === g.id ? null : g.id)
+                                    }}
+                                    className="p-2.5 border border-[#e4e4e7] rounded-xl hover:bg-[#fafafa] text-[#71717a] transition-all font-black text-xs tracking-widest"
+                                  >
+                                    •••
+                                  </button>
+                                  
+                                  {menuCategoriaAbierto === g.id && (
+                                    <div className="absolute right-0 mt-2 w-48 bg-white border border-[#e4e4e7] rounded-2xl shadow-xl z-30 animate-fadeIn overflow-hidden">
+                                      <div className="py-1">
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation()
+                                            setMenuCategoriaAbierto(null)
+                                            setCategoriaAEditarModal(g)
+                                          }}
+                                          className="w-full text-left px-4 py-2.5 text-xs font-bold text-[#09090b] hover:bg-[#fafafa] transition-colors"
+                                        >
+                                          Editar
+                                        </button>
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation()
+                                            setMenuCategoriaAbierto(null)
+                                            const nuevoOrden = prompt(`Modificar orden visual para "${g.nombre}":`, g.orden)
+                                            if (nuevoOrden !== null) {
+                                              const num = Number(nuevoOrden)
+                                              if (!isNaN(num)) {
+                                                supabase.from('menu_groups').update({ orden: num }).eq('id', g.id).then(() => {
+                                                  const businessId = activeBizId || getCookieVal('session_business_id') || business?.id
+                                                  if (businessId) cargarDatosMenu(businessId)
+                                                })
+                                              }
+                                            }
+                                          }}
+                                          className="w-full text-left px-4 py-2.5 text-xs font-bold text-[#09090b] hover:bg-[#fafafa] transition-colors"
+                                        >
+                                          Ordenar categoria
+                                        </button>
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation()
+                                            setMenuCategoriaAbierto(null)
+                                            setSubPestañaMenu('productos')
+                                            setGroupIdProd(g.id)
+                                          }}
+                                          className="w-full text-left px-4 py-2.5 text-xs font-bold text-[#09090b] hover:bg-[#fafafa] transition-colors"
+                                        >
+                                          Ordenar productos
+                                        </button>
+                                        <button
+                                          onClick={async (e) => {
+                                            e.stopPropagation()
+                                            setMenuCategoriaAbierto(null)
+                                            if (confirm(`¿Estás seguro de eliminar la categoría "${g.nombre}"? Se desvincularán sus productos.`)) {
+                                              const businessId = activeBizId || getCookieVal('session_business_id') || business?.id
+                                              if (!businessId) return
+                                              const { error } = await supabase.from('menu_groups').delete().eq('id', g.id)
+                                              if (error) {
+                                                alert('Error: ' + error.message)
+                                              } else {
+                                                cargarDatosMenu(businessId)
+                                              }
+                                            }
+                                          }}
+                                          className="w-full text-left px-4 py-2.5 text-xs font-bold text-red-600 hover:bg-red-50/50 transition-colors border-t border-[#f4f4f5]"
+                                        >
+                                          Eliminar
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })
+                      )}
+                    </div>
+
+                    {/* MODAL UNIFICADO PARA CREAR Y EDITAR CATEGORÍAS */}
+                    {categoriaAEditarModal && (
+                      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                        <div className="bg-white border border-[#e4e4e7] rounded-3xl p-6 w-full max-w-md shadow-2xl relative animate-fadeIn text-[#09090b]">
+                          {/* Botón Cerrar */}
+                          <button 
+                            onClick={() => setCategoriaAEditarModal(null)}
+                            className="absolute top-4 right-4 w-8 h-8 rounded-full bg-[#fafafa] hover:bg-[#f4f4f5] flex items-center justify-center transition-colors text-[#71717a]"
+                          >
+                            <span className="text-base">✕</span>
+                          </button>
+                          
+                          {/* Título */}
+                          <h3 className="text-lg font-black text-[#09090b] tracking-tight mb-4">
+                            {categoriaAEditarModal.id ? 'Editar categoría' : 'Crear categoría'}
+                          </h3>
+                          
+                          {/* Contenido / Copy */}
+                          <div className="space-y-4 mb-6">
+                            <p className="text-sm text-[#52525b] leading-relaxed">
+                              Una categoría es una agrupación de productos dentro de tu menú.
+                            </p>
+                            <p className="text-sm font-black text-[#09090b]">
+                              Seleccione o crea el nombre:
+                            </p>
+                            
+                            {/* Input Box Premium */}
+                            <div className="bg-white border border-[#e4e4e7] rounded-2xl p-3 shadow-sm relative group focus-within:border-[#dc2626] transition-all">
+                              <label className="text-[10px] text-[#71717a] font-bold uppercase tracking-widest block mb-0.5">
+                                Nombre de la categoría
+                              </label>
+                              <input
+                                type="text"
+                                value={categoriaAEditarModal.nombre}
+                                onChange={(e) => setCategoriaAEditarModal({ ...categoriaAEditarModal, nombre: e.target.value })}
+                                className="w-full bg-transparent text-[#09090b] font-black text-base focus:outline-none placeholder-[#a1a1aa]"
+                                placeholder="Escribe el nombre de la categoría..."
+                                autoFocus
+                              />
+                            </div>
+
+                            {/* Canal del menú (sólo creación) */}
+                            {!categoriaAEditarModal.id && (
+                              <div>
+                                <label className="text-[10px] text-[#71717a] font-bold uppercase tracking-widest block mb-1">
+                                  Canal del menú
+                                </label>
+                                <select
+                                  value={categoriaAEditarModal.tipo_menu || 'ambos'}
+                                  onChange={(e) => setCategoriaAEditarModal({ ...categoriaAEditarModal, tipo_menu: e.target.value })}
+                                  className="w-full bg-[#fafafa] border border-[#e4e4e7] rounded-xl px-3 py-2 text-xs font-bold text-[#52525b] focus:outline-none"
+                                >
+                                  <option value="ambos">Ambos (Mesa y Domicilio)</option>
+                                  <option value="mesa">Mesa (Sólo local)</option>
+                                  <option value="delivery">Delivery (Sólo a domicilio)</option>
+                                </select>
+                              </div>
+                            )}
                           </div>
-                          <div className="flex items-center pt-5">
-                            <label className="flex items-center gap-2 text-xs font-semibold text-[#3f3f46] cursor-pointer">
-                              <input type="checkbox" checked={activoGrupo} onChange={e => setActivoGrupo(e.target.checked)} className="rounded border-[#e4e4e7] text-[#dc2626] focus:ring-[#dc2626]" />
-                              ¿Activo?
-                            </label>
+                          
+                          {/* Botones de acción */}
+                          <div className="flex gap-3">
+                            <button 
+                              onClick={() => setCategoriaAEditarModal(null)}
+                              className="flex-1 py-3 border border-[#e4e4e7] rounded-xl text-[#52525b] font-bold hover:bg-[#fafafa] transition-colors text-sm"
+                            >
+                              Cancelar
+                            </button>
+                            <button 
+                              onClick={async () => {
+                                if (!categoriaAEditarModal.nombre.trim()) {
+                                  alert('El nombre es obligatorio')
+                                  return
+                                }
+                                const businessId = activeBizId || getCookieVal('session_business_id') || business?.id
+                                if (!businessId) return
+                                
+                                let error = null
+                                if (categoriaAEditarModal.id) {
+                                  const { error: err } = await supabase
+                                    .from('menu_groups')
+                                    .update({ nombre: categoriaAEditarModal.nombre.trim() })
+                                    .eq('id', categoriaAEditarModal.id)
+                                  error = err
+                                } else {
+                                  const { error: err } = await supabase
+                                    .from('menu_groups')
+                                    .insert({
+                                      nombre: categoriaAEditarModal.nombre.trim(),
+                                      business_id: businessId,
+                                      descripcion: '',
+                                      tipo_menu: categoriaAEditarModal.tipo_menu || 'ambos',
+                                      orden: menuGroups.length + 1,
+                                      activo: true
+                                    })
+                                  error = err
+                                }
+                                
+                                if (error) {
+                                  alert('Error al guardar: ' + error.message)
+                                } else {
+                                  setCategoriaAEditarModal(null)
+                                  cargarDatosMenu(businessId)
+                                }
+                              }}
+                              className="flex-1 py-3 bg-[#dc2626] hover:bg-[#b91c1c] text-white rounded-xl font-black uppercase tracking-wider text-xs shadow-md transition-all"
+                            >
+                              {categoriaAEditarModal.id ? 'Guardar cambios' : 'Crear categoría'}
+                            </button>
                           </div>
                         </div>
                       </div>
-
-                      <div className="flex gap-3">
-                        {grupoAEditar && (
-                          <button onClick={() => { setGrupoAEditar(null); setNombreGrupo(''); setDescGrupo(''); setOrdenGrupo(0); setActivoGrupo(true); }} className="flex-1 border border-[#e4e4e7] text-[#52525b] hover:bg-white py-3 rounded-xl font-bold transition-all text-xs">Cancelar</button>
-                        )}
-                        <button onClick={guardarCategoria} disabled={guardandoGrupo || !nombreGrupo} className="flex-1 btn-primary py-3 rounded-xl text-xs font-black uppercase tracking-widest">
-                          {guardandoGrupo ? 'Guardando...' : '💾 Guardar Categoría'}
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Tabla de existentes */}
-                    <div className="border border-[#e4e4e7] rounded-2xl overflow-hidden shadow-sm">
-                      <table className="w-full text-left border-collapse">
-                        <thead>
-                          <tr className="table-header">
-                            <th className="px-4 py-3 text-xs font-bold text-[#52525b]">Nombre</th>
-                            <th className="px-4 py-3 text-xs font-bold text-[#52525b]">Canal</th>
-                            <th className="px-4 py-3 text-xs font-bold text-[#52525b]">Orden</th>
-                            <th className="px-4 py-3 text-xs font-bold text-[#52525b] text-right">Acciones</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {menuGroups.length === 0 ? (
-                            <tr>
-                              <td colSpan={4} className="px-4 py-8 text-center text-xs text-[#a1a1aa] italic">No hay categorías dinámicas creadas.</td>
-                            </tr>
-                          ) : (
-                            menuGroups.map(g => (
-                              <tr key={g.id} className="table-row">
-                                <td className="px-4 py-3 text-xs font-bold text-[#09090b]">
-                                  {g.nombre}
-                                  {g.descripcion && <p className="text-[10px] text-[#71717a] font-normal">{g.descripcion}</p>}
-                                </td>
-                                <td className="px-4 py-3 text-[10px] uppercase font-black tracking-wide text-[#71717a]">{g.tipo_menu}</td>
-                                <td className="px-4 py-3 text-xs font-mono font-bold text-[#52525b]">{g.orden}</td>
-                                <td className="px-4 py-3 text-right space-x-2">
-                                  <button onClick={() => { setGrupoAEditar(g); setNombreGrupo(g.nombre); setDescGrupo(g.descripcion || ''); setTipoMenuGrupo(g.tipo_menu); setOrdenGrupo(g.orden); setActivoGrupo(g.activo); }} className="text-xs border border-[#e4e4e7] hover:bg-[#fafafa] font-bold py-1.5 px-3 rounded-lg text-[#52525b] transition-all">Editar</button>
-                                  <button onClick={() => borrarCategoria(g.id)} className="text-xs bg-red-50 border border-red-100 hover:bg-red-100 font-bold py-1.5 px-3 rounded-lg text-[#dc2626] transition-all">Eliminar</button>
-                                </td>
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
+                    )}
                   </div>
                 )}
 
