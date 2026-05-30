@@ -14,7 +14,7 @@ import {
   PieChart as PieIcon, BarChart3 as BarIcon, PhoneCall,
   Smartphone, Radio, Pencil, Send,
   Star, Gift, CreditCard, ChevronDown, X, Check as CheckIcon,
-  AlertCircle, Coffee, Cake, IceCream2
+  AlertCircle, Coffee, Cake, IceCream2, Copy, ExternalLink
 } from 'lucide-react'
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
@@ -2524,6 +2524,48 @@ export default function DashboardPage() {
                 </div>
                 <p className="text-sm font-bold text-[#09090b]">{clienteSeleccionadoModal.puntos} de {maxStamps} sellos acumulados</p>
               </div>
+
+              {/* Link de tarjeta personal del cliente */}
+              <div className="bg-[#fafafa] border border-[#e4e4e7] rounded-2xl p-3 text-left">
+                <p className="text-[10px] text-[#71717a] font-bold uppercase tracking-wider mb-2">🔗 Link Personal de Tarjeta</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-[10px] font-mono text-[#52525b] truncate flex-1 bg-white border border-[#e4e4e7] rounded-lg px-2 py-1.5">
+                    {`${typeof window !== 'undefined' ? window.location.origin : ''}/tenant/${slug}/cliente/${clienteSeleccionadoModal.id}`}
+                  </p>
+                  <button
+                    onClick={() => {
+                      const url = `${window.location.origin}/tenant/${slug}/cliente/${clienteSeleccionadoModal.id}`
+                      navigator.clipboard.writeText(url)
+                    }}
+                    title="Copiar link"
+                    className="w-8 h-8 flex-shrink-0 bg-white border border-[#e4e4e7] rounded-lg flex items-center justify-center hover:bg-[#fef2f2] hover:border-red-200 transition-colors"
+                  >
+                    <Copy className="w-3.5 h-3.5 text-[#71717a]" />
+                  </button>
+                  <a
+                    href={`/tenant/${slug}/cliente/${clienteSeleccionadoModal.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="Abrir tarjeta"
+                    className="w-8 h-8 flex-shrink-0 bg-[#dc2626] rounded-lg flex items-center justify-center hover:bg-[#b91c1c] transition-colors"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5 text-white" />
+                  </a>
+                </div>
+              </div>
+
+              {/* Botón WhatsApp Tarjeta Llena */}
+              <button
+                onClick={() => {
+                  const tel = clienteSeleccionadoModal.telefono.replace(/\D/g, '')
+                  const url = `${window.location.origin}/tenant/${slug}/cliente/${clienteSeleccionadoModal.id}`
+                  const msg = `¡Hola ${clienteSeleccionadoModal.nombre}! 🎉 Aquí está tu tarjeta de lealtad digital de ${business?.nombre || 'La Burrería'}. Guárdala para acumular tus sellos: ${url}`
+                  window.open(`https://wa.me/${tel}?text=${encodeURIComponent(msg)}`, '_blank')
+                }}
+                className="w-full bg-[#25D366] hover:bg-[#20b858] text-white py-3.5 px-4 rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-2"
+              >
+                <Send className="w-4 h-4" /> Enviar Tarjeta por WhatsApp 📲
+              </button>
 
               {/* Botón WhatsApp Tarjeta Llena */}
               <button
