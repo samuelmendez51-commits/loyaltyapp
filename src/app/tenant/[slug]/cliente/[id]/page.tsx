@@ -3,7 +3,7 @@ import { useEffect, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useParams, useRouter } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
-import { UtensilsCrossed, Bell, CreditCard, X, Gift, RotateCcw, Send, Lock } from 'lucide-react'
+import { UtensilsCrossed, Bell, CreditCard, X, Gift, RotateCcw, Send, Lock, MapPin, Clock, Share2 } from 'lucide-react'
 
 // ── Interfaces ────────────────────────────────────────────────────────────────
 interface Premio { id: string; nombre: string; estampillas_requeridas: number; imagen_url?: string }
@@ -294,10 +294,16 @@ export default function TarjetaLealtadFinal() {
   const [generandoGoogle, setGenerandoGoogle] = useState(false)
   const [generandoApple, setGenerandoApple] = useState(false)
 
-  const [vistaActiva, setVistaActiva] = useState<'tarjeta' | 'menu' | 'pedido'>('tarjeta')
+  const [vistaActiva, setVistaActiva] = useState<'tarjeta' | 'menu' | 'pedido' | 'ubicacion' | 'horarios' | 'redes'>('tarjeta')
   const [mostrarRuleta, setMostrarRuleta] = useState(false)
   const [menuDigital, setMenuDigital] = useState<any>(null)
   const [ultimoPedidoTotal, setUltimoPedidoTotal] = useState<number>(0)
+
+  const [linkFacebook, setLinkFacebook] = useState('')
+  const [linkInstagram, setLinkInstagram] = useState('')
+  const [linkTiktok, setLinkTiktok] = useState('')
+  const [linkYoutube, setLinkYoutube] = useState('')
+  const [horarioSemanal, setHorarioSemanal] = useState<any>(null)
 
   const getBaseUrl = () => {
     if (typeof window !== 'undefined') return window.location.origin
@@ -330,6 +336,44 @@ export default function TarjetaLealtadFinal() {
               return // Tarjeta no pertenece a este negocio
             }
             setBusiness(bizData)
+
+            // Cargar redes sociales y horarios comerciales
+            let linkFb = (bizData as any).link_facebook || ''
+            let linkIg = (bizData as any).link_instagram || ''
+            let linkTk = (bizData as any).link_tiktok || ''
+            let linkYt = (bizData as any).link_youtube || ''
+            let horarioSem = (bizData as any).horario_semanal || null
+
+            if (bizData.direccion && bizData.direccion.includes('{')) {
+              try {
+                const jsonStart = bizData.direccion.indexOf('{')
+                const jsonStr = bizData.direccion.substring(jsonStart)
+                const parsed = JSON.parse(jsonStr)
+                if (parsed.facebook) linkFb = parsed.facebook
+                if (parsed.instagram) linkIg = parsed.instagram
+                if (parsed.tiktok) linkTk = parsed.tiktok
+                if (parsed.youtube) linkYt = parsed.youtube
+                if (parsed.horario_semanal) horarioSem = parsed.horario_semanal
+              } catch (err) {
+                console.warn("Error parsing schedule fallback JSON in client portal:", err)
+              }
+            }
+
+            setLinkFacebook(linkFb)
+            setLinkInstagram(linkIg)
+            setLinkTiktok(linkTk)
+            setLinkYoutube(linkYt)
+
+            const horarioDefault = {
+              lunes: { cerrado: true, apertura: '14:00', cierre: '22:00' },
+              martes: { cerrado: false, apertura: '14:00', cierre: '21:30' },
+              miercoles: { cerrado: false, apertura: '14:00', cierre: '21:30' },
+              jueves: { cerrado: false, apertura: '14:00', cierre: '21:30' },
+              viernes: { cerrado: false, apertura: '14:00', cierre: '22:00' },
+              sabado: { cerrado: false, apertura: '14:00', cierre: '22:00' },
+              domingo: { cerrado: false, apertura: '14:00', cierre: '21:30' }
+            }
+            setHorarioSemanal(horarioSem || horarioDefault)
           }
 
           // Cargar premios del negocio
@@ -466,6 +510,37 @@ export default function TarjetaLealtadFinal() {
       </div>
     </div>
   )
+
+  // Helper para dirección en texto limpia
+  const obtenerDireccionLimpia = () => {
+    if (!business || !business.direccion) return 'Ubicación'
+    let dir = business.direccion
+    if (dir.includes('|')) {
+      dir = dir.split('|')[0].trim()
+    }
+    if (dir.includes('{')) {
+      try {
+        const jsonStart = dir.indexOf('{')
+        if (jsonStart === 0) return 'Ubicación'
+        dir = dir.substring(0, jsonStart).trim()
+      } catch {}
+    }
+    return dir || 'Ubicación'
+  }
+
+  const diasSemanaOrdenados = [
+    { key: 'lunes', label: 'Lunes' },
+    { key: 'martes', label: 'Martes' },
+    { key: 'miercoles', label: 'Miércoles' },
+    { key: 'jueves', label: 'Jueves' },
+    { key: 'viernes', label: 'Viernes' },
+    { key: 'sabado', label: 'Sábado' },
+    { key: 'domingo', label: 'Domingo' }
+  ]
+  const diasEsp = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado']
+  const hoyEsp = diasEsp[new Date().getDay()]
+
+  const algunRedeConfigurada = !!(linkFacebook || linkInstagram || linkTiktok || linkYoutube)
 
   return (
     <main className="min-h-screen bg-[#fafafa] pb-24 font-sans">
@@ -807,24 +882,266 @@ export default function TarjetaLealtadFinal() {
         </div>
       )}
 
+      {/* ── Vista: Ubicación ── */}
+      {vistaActiva === 'ubicacion' && (
+        <div className="max-w-sm mx-auto pt-8 px-4 space-y-5 animate-fadeIn">
+          {/* Header */}
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl overflow-hidden border border-[#e4e4e7] shadow-sm bg-white shrink-0">
+              <img
+                src={business?.logo_url || '/logo.png'}
+                alt={business?.nombre || 'LoyaltyApp'}
+                className="w-full h-full object-cover"
+                onError={(e) => { (e.target as HTMLImageElement).src = '/logo.png' }}
+              />
+            </div>
+            <div>
+              <p className="text-xs text-[#71717a] font-medium">📍 Nuestra Ubicación</p>
+              <h1 className="text-base font-bold text-[#09090b] tracking-tight">{business?.nombre || 'LoyaltyApp'}</h1>
+            </div>
+          </div>
+
+          {/* Tarjeta Unificada */}
+          <div className="bg-white rounded-3xl shadow-[0_4px_24px_rgba(0,0,0,0.08)] border border-[#f0f0f0] overflow-hidden p-6 space-y-5">
+            <div>
+              <p className="text-[10px] font-semibold text-[#dc2626] uppercase tracking-wider">Dirección Oficial</p>
+              <div className="bg-[#fafafa] border border-[#e4e4e7] rounded-2xl p-4 text-xs text-[#52525b] leading-relaxed font-semibold mt-1">
+                {obtenerDireccionLimpia()}
+              </div>
+            </div>
+
+            {/* Mapa iframe */}
+            <div className="relative w-full rounded-2xl overflow-hidden border border-[#e4e4e7] shadow-sm bg-[#fafafa]" style={{ minHeight: '280px' }}>
+              {business?.latitude && business?.longitude ? (
+                <iframe
+                  title="Ubicación Sucursal"
+                  width="100%"
+                  height="280"
+                  style={{ border: 0 }}
+                  loading="lazy"
+                  allowFullScreen
+                  src={`https://www.openstreetmap.org/export/embed.html?bbox=${Number(business.longitude) - 0.005}%2C${Number(business.latitude) - 0.004}%2C${Number(business.longitude) + 0.005}%2C${Number(business.latitude) + 0.004}&layer=mapnik&marker=${Number(business.latitude)}%2C${Number(business.longitude)}`}
+                />
+              ) : (
+                <div className="absolute inset-0 bg-[#fafafa] flex flex-col items-center justify-center gap-3">
+                  <p className="text-[10px] text-[#a1a1aa] uppercase tracking-widest font-black">Coordenadas no configuradas</p>
+                </div>
+              )}
+            </div>
+
+            {business?.latitude && business?.longitude && (
+              <a
+                href={`https://www.google.com/maps/dir/?api=1&destination=${business.latitude},${business.longitude}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full bg-[#dc2626] hover:bg-[#b91c1c] text-white font-black py-3.5 px-6 rounded-2xl text-[10px] uppercase tracking-widest text-center shadow-md transition-all block"
+              >
+                📍 Cómo Llegar con Google Maps
+              </a>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Vista: Horarios ── */}
+      {vistaActiva === 'horarios' && (
+        <div className="max-w-sm mx-auto pt-8 px-4 space-y-5 animate-fadeIn">
+          {/* Header */}
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl overflow-hidden border border-[#e4e4e7] shadow-sm bg-white shrink-0">
+              <img
+                src={business?.logo_url || '/logo.png'}
+                alt={business?.nombre || 'LoyaltyApp'}
+                className="w-full h-full object-cover"
+                onError={(e) => { (e.target as HTMLImageElement).src = '/logo.png' }}
+              />
+            </div>
+            <div>
+              <p className="text-xs text-[#71717a] font-medium">⏰ Horarios & Contacto</p>
+              <h1 className="text-base font-bold text-[#09090b] tracking-tight">{business?.nombre || 'LoyaltyApp'}</h1>
+            </div>
+          </div>
+
+          {/* Tarjeta de horarios */}
+          <div className="bg-white rounded-3xl shadow-[0_4px_24px_rgba(0,0,0,0.08)] border border-[#f0f0f0] overflow-hidden p-6 space-y-4">
+            <div className="space-y-2">
+              {diasSemanaOrdenados.map(dia => {
+                const config = horarioSemanal?.[dia.key]
+                const esHoy = dia.key === hoyEsp
+                return (
+                  <div
+                    key={dia.key}
+                    className={`flex justify-between items-center p-3 rounded-2xl border transition-all ${
+                      esHoy
+                        ? 'bg-red-50/50 border-[#dc2626]/40 shadow-sm'
+                        : 'bg-[#fafafa] border-[#e4e4e7]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      {esHoy && <span className="w-2 h-2 rounded-full bg-[#dc2626] animate-pulse" />}
+                      <span className={`text-xs font-bold ${esHoy ? 'text-[#dc2626] font-black' : 'text-[#52525b]'}`}>
+                        {dia.label}
+                      </span>
+                      {esHoy && <span className="text-[8px] bg-red-50 border border-red-100 text-[#dc2626] px-1.5 py-0.5 rounded-full font-black uppercase tracking-wider">Hoy</span>}
+                    </div>
+
+                    {config?.cerrado ? (
+                      <span className="text-[10px] bg-red-50 border border-red-100 text-[#dc2626] px-2 py-0.5 rounded-full font-bold uppercase">
+                        Descanso
+                      </span>
+                    ) : (
+                      <span className={`text-[11px] font-mono font-bold ${esHoy ? 'text-[#09090b]' : 'text-[#71717a]'}`}>
+                        {config?.apertura || '14:00'} - {config?.cierre || '22:00'}
+                      </span>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Llamada rápida */}
+            {business?.telefono_whatsapp && (
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <a
+                  href={`https://wa.me/${'52' + business.telefono_whatsapp.replace(/\D/g, '').slice(-10)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-green-50 border border-green-200 hover:bg-green-100 text-green-700 font-bold py-3 px-4 rounded-2xl text-[10px] uppercase tracking-widest text-center transition-all block"
+                >
+                  💬 WhatsApp
+                </a>
+                <a
+                  href={`tel:${business.telefono_whatsapp}`}
+                  className="bg-white border border-[#e4e4e7] hover:bg-[#fafafa] text-[#09090b] font-bold py-3 px-4 rounded-2xl text-[10px] uppercase tracking-widest text-center transition-all block"
+                >
+                  📞 Llamar
+                </a>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Vista: Redes Sociales ── */}
+      {vistaActiva === 'redes' && (
+        <div className="max-w-sm mx-auto pt-8 px-4 space-y-5 animate-fadeIn">
+          {/* Header */}
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl overflow-hidden border border-[#e4e4e7] shadow-sm bg-white shrink-0">
+              <img
+                src={business?.logo_url || '/logo.png'}
+                alt={business?.nombre || 'LoyaltyApp'}
+                className="w-full h-full object-cover"
+                onError={(e) => { (e.target as HTMLImageElement).src = '/logo.png' }}
+              />
+            </div>
+            <div>
+              <p className="text-xs text-[#71717a] font-medium">🌐 Redes Sociales</p>
+              <h1 className="text-base font-bold text-[#09090b] tracking-tight">{business?.nombre || 'LoyaltyApp'}</h1>
+            </div>
+          </div>
+
+          {/* Redes */}
+          <div className="bg-white rounded-3xl shadow-[0_4px_24px_rgba(0,0,0,0.08)] border border-[#f0f0f0] overflow-hidden p-6 space-y-4">
+            {algunRedeConfigurada ? (
+              <div className="grid grid-cols-1 gap-3">
+                {linkFacebook && (
+                  <a
+                    href={linkFacebook.startsWith('http') ? linkFacebook : `https://facebook.com/${linkFacebook}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-gradient-to-r from-blue-600 to-blue-800 text-white font-bold py-3 px-5 rounded-2xl flex items-center justify-between shadow-sm transition-all active:scale-95"
+                  >
+                    <span className="font-black text-xs uppercase tracking-widest flex items-center gap-2">
+                      <span className="text-sm">📘</span> Facebook
+                    </span>
+                    <span className="text-[10px] text-white/70">Seguir →</span>
+                  </a>
+                )}
+                {linkInstagram && (
+                  <a
+                    href={linkInstagram.startsWith('http') ? linkInstagram : `https://instagram.com/${linkInstagram}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-gradient-to-r from-pink-500 via-red-500 to-yellow-500 text-white font-bold py-3 px-5 rounded-2xl flex items-center justify-between shadow-sm transition-all active:scale-95"
+                  >
+                    <span className="font-black text-xs uppercase tracking-widest flex items-center gap-2">
+                      <span className="text-sm">📸</span> Instagram
+                    </span>
+                    <span className="text-[10px] text-white/70">Seguir →</span>
+                  </a>
+                )}
+                {linkTiktok && (
+                  <a
+                    href={linkTiktok.startsWith('http') ? linkTiktok : `https://tiktok.com/@${linkTiktok}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-[#09090b] text-white font-bold py-3 px-5 rounded-2xl flex items-center justify-between shadow-sm border border-[#27272a] transition-all active:scale-95"
+                  >
+                    <span className="font-black text-xs uppercase tracking-widest flex items-center gap-2">
+                      <span className="text-sm">🎵</span> TikTok
+                    </span>
+                    <span className="text-[10px] text-white/70">Seguir →</span>
+                  </a>
+                )}
+                {linkYoutube && (
+                  <a
+                    href={linkYoutube.startsWith('http') ? linkYoutube : `https://youtube.com/${linkYoutube}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-[#dc2626] text-white font-bold py-3 px-5 rounded-2xl flex items-center justify-between shadow-sm transition-all active:scale-95"
+                  >
+                    <span className="font-black text-xs uppercase tracking-widest flex items-center gap-2">
+                      <span className="text-sm">📺</span> YouTube
+                    </span>
+                    <span className="text-[10px] text-white/70">Seguir →</span>
+                  </a>
+                )}
+              </div>
+            ) : (
+              <div className="bg-[#fafafa] rounded-2xl p-8 text-center border border-[#e4e4e7]">
+                <p className="text-3xl mb-1.5">🌐</p>
+                <p className="font-bold text-xs text-[#09090b]">Próximamente más redes</p>
+                <p className="text-[10px] text-[#71717a] mt-0.5">El negocio no ha enlazado perfiles sociales aún.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ── Bottom Navigation Bar ── */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-[#e4e4e7] shadow-[0_-4px_20px_rgba(0,0,0,0.06)] z-40">
-        <div className="max-w-sm mx-auto flex">
+        <div className="max-w-sm mx-auto flex justify-around px-1">
           {[
+            {
+              id: 'tarjeta',
+              label: 'Tarjeta',
+              icon: CreditCard,
+            },
             {
               id: 'menu',
               label: 'Menú',
               icon: UtensilsCrossed,
             },
             {
+              id: 'ubicacion',
+              label: 'Mapa',
+              icon: MapPin,
+            },
+            {
+              id: 'horarios',
+              label: 'Horas',
+              icon: Clock,
+            },
+            {
+              id: 'redes',
+              label: 'Redes',
+              icon: Share2,
+            },
+            {
               id: 'pedido',
               label: 'Pedir',
               icon: Bell,
-            },
-            {
-              id: 'tarjeta',
-              label: 'Mi Tarjeta',
-              icon: CreditCard,
             },
           ].map((tab) => {
             const Icon = tab.icon
@@ -832,30 +1149,17 @@ export default function TarjetaLealtadFinal() {
             return (
               <button
                 key={tab.id}
-                onClick={() => {
-                  if (tab.id === 'menu') {
-                    const isDirectPath = window.location.pathname.includes('/tenant/');
-                    const backUrl = isDirectPath 
-                      ? `/tenant/${slug}/cliente/${id}` 
-                      : `/cliente/${id}`;
-                    const menuUrl = isDirectPath 
-                      ? `/tenant/${slug}/menu?back=${encodeURIComponent(backUrl)}` 
-                      : `/menu?back=${encodeURIComponent(backUrl)}`;
-                    router.push(menuUrl);
-                  } else {
-                    setVistaActiva(tab.id as any)
-                  }
-                }}
-                className={`flex-1 flex flex-col items-center justify-center py-3 gap-1 transition-all ${
+                onClick={() => setVistaActiva(tab.id as any)}
+                className={`flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 transition-all relative ${
                   activo ? 'text-[#dc2626]' : 'text-[#a1a1aa] hover:text-[#71717a]'
                 }`}
               >
-                <Icon className={`w-5 h-5 transition-transform ${activo ? 'scale-110' : ''}`} />
-                <span className={`text-[10px] font-semibold tracking-wide ${activo ? 'text-[#dc2626]' : ''}`}>
+                <Icon className={`w-[18px] h-[18px] transition-transform ${activo ? 'scale-110' : ''}`} />
+                <span className={`text-[8px] font-bold tracking-wide ${activo ? 'text-[#dc2626] font-black' : ''}`}>
                   {tab.label}
                 </span>
                 {activo && (
-                  <div className="absolute bottom-0 w-8 h-0.5 bg-[#dc2626] rounded-full" />
+                  <div className="absolute bottom-0 w-6 h-0.5 bg-[#dc2626] rounded-full" />
                 )}
               </button>
             )

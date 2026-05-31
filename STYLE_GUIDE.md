@@ -348,7 +348,7 @@ Así es como deben verse los items del menú, adaptados al estilo light de la pl
     </p>
   </div>
   {product.imagen_url && (
-    <img src={product.imagen_url} className="w-20 h-20 rounded-xl object-cover flex-shrink-0" />
+    <img src={product.imagen_url} className="w-20 h-20 rounded-xl object-cover shrink-0" />
   )}
   <div className="flex flex-col items-center justify-center gap-2">
     <button className="w-8 h-8 rounded-lg bg-[#dc2626] text-white font-bold text-lg
@@ -441,7 +441,7 @@ Así es como deben verse los items del menú, adaptados al estilo light de la pl
 
 ```tsx
 // ✅ CORRECTO — Header light con overlay suave
-<div className="relative h-48 bg-gradient-to-b from-[#fafafa] to-white border-b border-[#e4e4e7]">
+<div className="relative h-48 bg-linear-to-b from-[#fafafa] to-white border-b border-[#e4e4e7]">
   {business.banner_url && (
     <img src={business.banner_url} className="absolute inset-0 w-full h-full object-cover opacity-10" />
   )}
@@ -461,7 +461,7 @@ Así es como deben verse los items del menú, adaptados al estilo light de la pl
 </div>
 
 // ❌ INCORRECTO — Header oscuro
-<div className="relative h-48 bg-gradient-to-b from-red-950/40 to-[#050505]">
+<div className="relative h-48 bg-linear-to-b from-red-950/40 to-[#050505]">
   <div className="w-16 h-16 bg-zinc-800 border border-amber-500/20 ...">
 ```
 

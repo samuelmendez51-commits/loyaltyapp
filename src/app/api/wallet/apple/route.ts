@@ -413,8 +413,6 @@ export async function POST(req: Request) {
         },
         {
           serialNumber: clienteId,
-          webServiceURL: process.env.NEXT_PUBLIC_SITE_URL || 'https://laburreria.loyaltyclub.mx',
-          authenticationToken: process.env.APPLE_PASS_AUTH_TOKEN || 'secure_token_laburreria_2026',
         }
       )
 
@@ -647,8 +645,6 @@ export async function GET(req: Request) {
         },
         {
           serialNumber: clienteId,
-          webServiceURL: process.env.NEXT_PUBLIC_SITE_URL || 'https://laburreria.loyaltyclub.mx',
-          authenticationToken: process.env.APPLE_PASS_AUTH_TOKEN || 'secure_token_laburreria_2026',
         }
       )
 
