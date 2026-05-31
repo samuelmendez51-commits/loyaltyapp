@@ -425,7 +425,7 @@ export async function POST(req: Request) {
         status: 200,
         headers: {
           'Content-Type': 'application/vnd.apple.pkpass',
-          'Content-Disposition': `attachment; filename="${(business?.nombre || 'VIP').replace(/\s+/g, '')}-${clienteId.substring(0, 8)}.pkpass"`,
+          'Content-Disposition': 'inline; filename="pass.pkpass"',
         },
       })
 
@@ -659,7 +659,7 @@ export async function GET(req: Request) {
         status: 200,
         headers: {
           'Content-Type': 'application/vnd.apple.pkpass',
-          'Content-Disposition': `attachment; filename="${(business?.nombre || 'VIP').replace(/\s+/g, '')}-${clienteId.substring(0, 8)}.pkpass"`,
+          'Content-Disposition': 'inline; filename="pass.pkpass"',
         },
       })
 
