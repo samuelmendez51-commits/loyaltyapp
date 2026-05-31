@@ -344,7 +344,7 @@ export async function POST(req: Request) {
     // Si no hay credenciales → modo simulación controlada
     if (!clientEmail || !privateKey || privateKey.length < 100) {
       console.warn('[GoogleWallet] ⚠️ Sin credenciales de Google. Modo simulación.')
-      const simUrl = `/google-wallet-simulacion?id=${encodeURIComponent(cliente.id)}&nombre=${encodeURIComponent(cliente.nombre)}&puntos=${cliente.puntos}&business_name=${encodeURIComponent(business.nombre)}`
+      const simUrl = `/google-wallet-simulacion?id=${encodeURIComponent(cliente.id)}&nombre=${encodeURIComponent(cliente.nombre)}&puntos=${cliente.puntos}&business_name=${encodeURIComponent(business.nombre)}&logo_url=${encodeURIComponent(business.logo_url || '')}&banner_url=${encodeURIComponent(business.banner_url || '')}`
       return NextResponse.json({ url: simUrl, simulacion: true })
     }
 
@@ -362,7 +362,7 @@ export async function POST(req: Request) {
     const accessToken = await getGoogleAccessToken(clientEmail, privateKey)
     if (!accessToken) {
       console.warn('[GoogleWallet] ⚠️ Error de autenticación. Cayendo en modo simulación.')
-      const simUrl = `/google-wallet-simulacion?id=${encodeURIComponent(cliente.id)}&nombre=${encodeURIComponent(cliente.nombre)}&puntos=${cliente.puntos}&business_name=${encodeURIComponent(business.nombre)}`
+      const simUrl = `/google-wallet-simulacion?id=${encodeURIComponent(cliente.id)}&nombre=${encodeURIComponent(cliente.nombre)}&puntos=${cliente.puntos}&business_name=${encodeURIComponent(business.nombre)}&logo_url=${encodeURIComponent(business.logo_url || '')}&banner_url=${encodeURIComponent(business.banner_url || '')}`
       return NextResponse.json({ url: simUrl, simulacion: true })
     }
 
