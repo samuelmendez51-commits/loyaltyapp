@@ -22,6 +22,15 @@ export default function LoginPage() {
   const [showRegPin, setShowRegPin] = useState(false)
   const [regNegocio, setRegNegocio] = useState('')
   const [regSlug, setRegSlug] = useState('')
+  
+  // Nuevos Estados para Onboarding Multi-Paso B2B
+  const [regPasoOnboarding, setRegPasoOnboarding] = useState<1 | 2 | 3>(1)
+  const [regTelefono, setRegTelefono] = useState('')
+  const [regWhatsapp, setRegWhatsapp] = useState('')
+  const [regLogoUrl, setRegLogoUrl] = useState('')
+  const [subiendoLogo, setSubiendoLogo] = useState(false)
+  const [deployProgress, setDeployProgress] = useState(0)
+  const [deployMessage, setDeployMessage] = useState('Inicializando tu entorno...')
 
   const [subdomainBranding, setSubdomainBranding] = useState<{ nombre: string; logo: string } | null>(null)
 
@@ -245,6 +254,28 @@ export default function LoginPage() {
     }
   }
 
+  const subirLogoRegistro = async (file: File) => {
+    setSubiendoLogo(true)
+    setError('')
+    try {
+      const fileExt = file.name.split('.').pop()
+      const fileName = `temp-onboarding/logo-${Date.now()}.${fileExt}`
+      const { error: uploadErr } = await supabase.storage
+        .from('menu-images')
+        .upload(fileName, file, { cacheControl: '3600', upsert: true, contentType: file.type || 'application/octet-stream' })
+      if (uploadErr) throw uploadErr
+      
+      const { data: urlData } = supabase.storage.from('menu-images').getPublicUrl(fileName)
+      if (urlData?.publicUrl) {
+        setRegLogoUrl(urlData.publicUrl)
+      }
+    } catch (err: any) {
+      setError('Error al subir logotipo: ' + err.message)
+    } finally {
+      setSubiendoLogo(false)
+    }
+  }
+
   const registrarNegocioSaaS = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!regNombre.trim() || !regEmail.trim() || !regPin.trim() || !regNegocio.trim() || !regSlug.trim()) {
@@ -256,6 +287,9 @@ export default function LoginPage() {
 
     setCargando(true)
     setError('')
+    setRegPasoOnboarding(3)
+    setDeployProgress(10)
+    setDeployMessage('Inicializando servidor SaaS...')
 
     try {
       const slugFormateado = regSlug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '')
@@ -270,8 +304,14 @@ export default function LoginPage() {
         throw new Error('El subdominio de negocio ya está ocupado por otra marca')
       }
 
+      setDeployProgress(30)
+      setDeployMessage('Creando entorno y base de datos de lealtad...')
+
+      const savedDemoDays = typeof window !== 'undefined' ? localStorage.getItem('superadmin_dias_demo') : null
+      const diasPrueba = savedDemoDays ? Number(savedDemoDays) : 30
+
       const fin = new Date()
-      fin.setDate(fin.getDate() + 365)
+      fin.setDate(fin.getDate() + diasPrueba)
 
       const { data: biz, error: errBiz } = await supabase
         .from('businesses')
@@ -280,12 +320,15 @@ export default function LoginPage() {
           slug: slugFormateado,
           owner_name: regNombre.trim(),
           owner_email: regEmail.trim().toLowerCase(),
-          plan: 'anual',
-          estado: 'activo',
-          creditos_totales: 12,
-          creditos_usados: 12,
+          plan: 'demo',
+          estado: 'demo',
+          creditos_totales: 1,
+          creditos_usados: 1,
           fecha_vencimiento: fin.toISOString(),
-          es_demo: false,
+          es_demo: true,
+          logo_url: regLogoUrl || '🍔',
+          telefono_whatsapp: regWhatsapp.trim().replace(/\D/g, '') || regTelefono.trim().replace(/\D/g, ''),
+          direccion: 'Calle Principal 123',
           latitude: 19.421583,
           longitude: -102.067222,
           mensaje_push: '¡Estás cerca de tu premio! Pasa por tus sellos VIP.'
@@ -294,6 +337,9 @@ export default function LoginPage() {
         .single()
 
       if (errBiz || !biz) throw errBiz || new Error('No se pudo registrar el comercio')
+
+      setDeployProgress(60)
+      setDeployMessage('Vinculando cuenta de administrador...')
 
       const { data: user, error: errUser } = await supabase
         .from('business_users')
@@ -310,23 +356,35 @@ export default function LoginPage() {
 
       if (errUser || !user) throw errUser || new Error('No se pudo registrar la cuenta admin')
 
+      setDeployProgress(80)
+      setDeployMessage('Inicializando cascarón de premios y ruleta...')
+
+      await supabase.from('loyalty_rewards').insert([
+        { business_id: biz.id, sello_requerido: 3, nombre: 'Premio Rápido', descripcion: 'Sello 3 alcanzado', tipo: 'intermedio', activo: true },
+        { business_id: biz.id, sello_requerido: 10, nombre: 'Recompensa Final', descripcion: '¡Sello 10 completo! Premio Mayor', tipo: 'final', activo: true }
+      ])
+
       await supabase.from('credit_transactions').insert({
         business_id: biz.id,
         tipo: 'demo',
-        creditos: 12,
-        meses: 12,
+        creditos: 1,
+        meses: 1,
         monto_mxn: 0,
-        notas: 'Regalo de Onboarding: 12 créditos (1 año de servicio gratis)',
+        notas: `Regalo de Onboarding: Período Demo gratuito de ${diasPrueba} días`,
         creado_por: 'self_onboarding'
       })
 
+      setDeployProgress(100)
+      setDeployMessage(`¡Listo! Desplegando en https://${slugFormateado}.loyaltyclub.mx...`)
+
+      await new Promise(r => setTimeout(r, 1200))
+
       const domain = typeof window !== 'undefined' && window.location.hostname.includes('loyaltyclub.mx') ? 'loyaltyclub.mx' : 'localhost:3000'
       setCookies('admin_comercio', user.nombre, biz.id, '', user.id, biz.slug || '')
-      alert(`🎉 ¡Negocio registrado con éxito!\nPortal: https://${slugFormateado}.${domain}/dashboard`)
-      setTimeout(() => { window.location.href = `https://${slugFormateado}.${domain}/dashboard` }, 300)
-
+      window.location.href = `https://${slugFormateado}.${domain}/dashboard`
     } catch (err: any) {
       setError(err.message || 'Error durante el registro')
+      setRegPasoOnboarding(2)
       setCargando(false)
     }
   }
@@ -502,112 +560,246 @@ export default function LoginPage() {
 
           {/* MODO: REGISTRO SaaS */}
           {modo === 'registro' && (
-            <form onSubmit={registrarNegocioSaaS} className="space-y-4 animate-fadeIn">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">Tu Nombre</label>
-                  <input
-                    type="text"
-                    value={regNombre}
-                    onChange={e => setRegNombre(e.target.value)}
-                    className="input-clean text-sm"
-                    placeholder="Pedro Infante"
-                    required
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">Email</label>
-                  <input
-                    type="email"
-                    value={regEmail}
-                    onChange={e => setRegEmail(e.target.value)}
-                    className="input-clean text-sm"
-                    placeholder="pedro@negocio.com"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">Negocio</label>
-                  <input
-                    type="text"
-                    value={regNegocio}
-                    onChange={e => setRegNegocio(e.target.value)}
-                    className="input-clean text-sm"
-                    placeholder="La Burrería"
-                    required
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">Contraseña</label>
-                  <div className="relative">
+            <div className="animate-fadeIn">
+              {regPasoOnboarding === 1 && (
+                <div className="space-y-4">
+                  <div className="text-center mb-2">
+                    <p className="text-xs text-[#dc2626] uppercase font-bold tracking-wider font-mono">Paso 1 de 2: Cuenta</p>
+                    <h3 className="text-sm font-bold text-[#09090b]">Crea tu cuenta de Administrador</h3>
+                  </div>
+                  
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">Tu Nombre Completo *</label>
                     <input
-                      type={showRegPin ? 'text' : 'password'}
-                      maxLength={16}
-                      value={regPin}
-                      onChange={e => setRegPin(e.target.value)}
-                      className="input-clean text-sm pr-9"
-                      placeholder="Mín. 6 caracteres"
+                      type="text"
+                      value={regNombre}
+                      onChange={e => setRegNombre(e.target.value)}
+                      className="input-clean"
+                      placeholder="Pedro Infante"
                       required
                     />
-                    <button
-                      type="button"
-                      onClick={() => setShowRegPin(!showRegPin)}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#a1a1aa] hover:text-[#52525b]"
-                      tabIndex={-1}
-                    >
-                      {showRegPin ? <EyeOff size={14} /> : <Eye size={14} />}
-                    </button>
                   </div>
-                </div>
-              </div>
+                  
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">Tu Email *</label>
+                    <input
+                      type="email"
+                      value={regEmail}
+                      onChange={e => setRegEmail(e.target.value)}
+                      className="input-clean"
+                      placeholder="pedro@negocio.com"
+                      required
+                    />
+                  </div>
 
-              <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">Slug / Subdominio</label>
-                <input
-                  type="text"
-                  value={regSlug}
-                  onChange={e => formatearSlug(e.target.value)}
-                  className="input-clean text-sm font-mono"
-                  placeholder="laburreria"
-                  required
-                />
-                {regSlug && (
-                  <p className="text-xs text-[#71717a] font-mono mt-1">
-                    🌐 <strong>{regSlug}.loyaltyclub.mx/dashboard</strong>
-                  </p>
-                )}
-              </div>
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">Contraseña (Mín. 6 caracteres) *</label>
+                    <div className="relative">
+                      <input
+                        type={showRegPin ? 'text' : 'password'}
+                        maxLength={16}
+                        value={regPin}
+                        onChange={e => setRegPin(e.target.value)}
+                        className="input-clean pr-9"
+                        placeholder="Crea una contraseña segura"
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowRegPin(!showRegPin)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#a1a1aa] hover:text-[#52525b]"
+                        tabIndex={-1}
+                      >
+                        {showRegPin ? <EyeOff size={14} /> : <Eye size={14} />}
+                      </button>
+                    </div>
+                  </div>
 
-              <div className="bg-[#fafafa] border border-[#e4e4e7] rounded-xl p-3 text-xs space-y-1">
-                <div className="flex justify-between text-[#52525b] font-medium">
-                  <span>Regalo de Bienvenida:</span>
-                  <span className="text-[#dc2626] font-bold">1 Año Gratis</span>
-                </div>
-                <div className="flex justify-between text-[#52525b] font-medium">
-                  <span>Créditos SaaS:</span>
-                  <span className="text-[#dc2626] font-bold">12 Créditos</span>
-                </div>
-              </div>
+                  {error && (
+                    <div className="bg-red-50 border border-red-100 rounded-xl p-3 text-xs text-red-650 text-center font-bold">
+                      {error}
+                    </div>
+                  )}
 
-              {error && (
-                <div className="bg-red-50 border border-red-100 rounded-xl p-3 text-sm text-red-600 text-center font-medium">
-                  {error}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!regNombre.trim() || !regEmail.trim() || !regPin.trim()) {
+                        return setError('Por favor llena todos los campos obligatorios')
+                      }
+                      if (regPin.trim().length < 6 || regPin.trim().length > 16) {
+                        return setError('La contraseña debe tener entre 6 y 16 caracteres')
+                      }
+                      setError('')
+                      setRegPasoOnboarding(2)
+                    }}
+                    className="btn-primary w-full py-3.5 text-sm font-bold uppercase tracking-wider flex items-center justify-center gap-1.5"
+                  >
+                    Siguiente Paso ➡️
+                  </button>
                 </div>
               )}
 
-              <button
-                type="submit"
-                disabled={cargando}
-                className="btn-primary w-full py-3.5 text-sm"
-              >
-                {cargando ? (
-                  <><Loader2 size={16} className="animate-spin" /> Desplegando...</>
-                ) : '🚀 Registrar mi Negocio'}
-              </button>
-            </form>
+              {regPasoOnboarding === 2 && (
+                <form onSubmit={registrarNegocioSaaS} className="space-y-4">
+                  <div className="text-center mb-2">
+                    <p className="text-xs text-[#dc2626] uppercase font-bold tracking-wider font-mono">Paso 2 de 2: Negocio</p>
+                    <h3 className="text-sm font-bold text-[#09090b]">Configura los detalles de tu marca</h3>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">Nombre del Negocio *</label>
+                      <input
+                        type="text"
+                        value={regNegocio}
+                        onChange={e => setRegNegocio(e.target.value)}
+                        className="input-clean text-sm"
+                        placeholder="La Burrería"
+                        required
+                      />
+                    </div>
+                    
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">Subdominio / URL *</label>
+                      <input
+                        type="text"
+                        value={regSlug}
+                        onChange={e => formatearSlug(e.target.value)}
+                        className="input-clean text-sm font-mono"
+                        placeholder="laburreria"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  {regSlug && (
+                    <p className="text-[10px] text-[#71717a] font-mono -mt-1 block">
+                      🌐 Tu portal: <strong className="text-[#09090b]">{regSlug}.loyaltyclub.mx</strong>
+                    </p>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">Teléfono Fijo</label>
+                      <input
+                        type="tel"
+                        value={regTelefono}
+                        onChange={e => setRegTelefono(e.target.value)}
+                        className="input-clean text-sm"
+                        placeholder="4521234567"
+                      />
+                    </div>
+                    
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">WhatsApp</label>
+                      <input
+                        type="tel"
+                        value={regWhatsapp}
+                        onChange={e => setRegWhatsapp(e.target.value)}
+                        className="input-clean text-sm"
+                        placeholder="4527654321"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Logo Upload */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">Logotipo (Opcional)</label>
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-xl border border-[#e4e4e7] bg-[#fafafa] flex items-center justify-center text-xl shrink-0 overflow-hidden">
+                        {subiendoLogo ? (
+                          <Loader2 className="w-5 h-5 text-[#dc2626] animate-spin" />
+                        ) : regLogoUrl ? (
+                          regLogoUrl.startsWith('http') ? (
+                            <img src={regLogoUrl} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <span>{regLogoUrl}</span>
+                          )
+                        ) : (
+                          <span>📸</span>
+                        )}
+                      </div>
+                      <div className="flex-1 relative">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="absolute inset-0 opacity-0 cursor-pointer w-full"
+                          onChange={e => { if (e.target.files?.[0]) subirLogoRegistro(e.target.files[0]) }}
+                        />
+                        <button
+                          type="button"
+                          className="w-full border border-[#e4e4e7] hover:border-[#d4d4d8] text-[#52525b] hover:text-[#09090b] font-bold text-xs py-2 px-3 rounded-lg transition-colors flex items-center justify-center gap-1.5"
+                        >
+                          {regLogoUrl ? '✓ Cambiar Imagen' : 'Subir Logotipo'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-[#fafafa] border border-[#e4e4e7] rounded-xl p-3 text-xs space-y-1">
+                    <div className="flex justify-between text-[#52525b] font-semibold">
+                      <span>Período de Prueba:</span>
+                      <span className="text-green-650 font-bold">Demo Gratis</span>
+                    </div>
+                    <div className="flex justify-between text-[#52525b] font-medium">
+                      <span>Costo Mensual Posterior:</span>
+                      <span className="text-[#a1a1aa] line-through">$499 MXN</span>
+                    </div>
+                  </div>
+
+                  {error && (
+                    <div className="bg-red-50 border border-red-100 rounded-xl p-3 text-xs text-red-650 text-center font-bold">
+                      {error}
+                    </div>
+                  )}
+
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setRegPasoOnboarding(1)}
+                      className="border border-[#e4e4e7] hover:bg-[#fafafa] text-[#71717a] font-bold text-sm px-4 py-3 rounded-xl transition-colors"
+                    >
+                      ⬅️ Atrás
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={cargando || subiendoLogo}
+                      className="btn-primary flex-1 py-3.5 text-sm font-bold uppercase tracking-wider flex items-center justify-center gap-1.5"
+                    >
+                      🚀 Desplegar mi Negocio
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* Step 3: Fullscreen Deploying Overlay */}
+              {regPasoOnboarding === 3 && (
+                <div className="fixed inset-0 bg-white/95 backdrop-blur-md z-50 flex flex-col items-center justify-center p-6 text-center animate-fadeIn">
+                  <div className="max-w-md space-y-6 flex flex-col items-center">
+                    {/* Spinning loading indicator */}
+                    <div className="relative flex items-center justify-center">
+                      <div className="w-24 h-24 rounded-full border-4 border-zinc-100 border-t-[#dc2626] animate-spin" />
+                      <span className="absolute text-4xl">🚀</span>
+                    </div>
+                    <div className="space-y-2">
+                      <h2 className="text-xl font-extrabold text-[#09090b] tracking-tight">Desplegando tu Club VIP</h2>
+                      <p className="text-sm font-semibold text-[#dc2626] animate-pulse">{deployMessage}</p>
+                    </div>
+                    {/* Progress Bar */}
+                    <div className="w-64 h-2 bg-zinc-100 rounded-full overflow-hidden border border-zinc-200">
+                      <div 
+                        className="h-full bg-gradient-to-r from-[#dc2626] to-red-500 transition-all duration-500 rounded-full"
+                        style={{ width: `${deployProgress}%` }}
+                      />
+                    </div>
+                    <p className="text-[10px] text-[#a1a1aa] uppercase font-mono tracking-widest font-bold">
+                      Paso 3 de 3 · Configuración del Servidor
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
 

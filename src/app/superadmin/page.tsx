@@ -242,6 +242,7 @@ export default function SuperAdminPage() {
 
   // Configuración de Precio de Crédito (Persistido en LocalStorage)
   const [precioCredito, setPrecioCredito] = useState<number>(499)
+  const [diasDemo, setDiasDemo] = useState<number>(30)
   
   // Pestañas (layout idéntico a mostrador de negocio)
   const [pestaña, setPestaña] = useState<'metricas' | 'negocios' | 'ajustes'>('metricas')
@@ -258,6 +259,8 @@ export default function SuperAdminPage() {
     if (typeof window !== 'undefined') {
       const savedPrice = localStorage.getItem('superadmin_precio_credito')
       if (savedPrice) setPrecioCredito(Number(savedPrice))
+      const savedDemo = localStorage.getItem('superadmin_dias_demo')
+      if (savedDemo) setDiasDemo(Number(savedDemo))
     }
     cargar()
   }, [])
@@ -296,7 +299,8 @@ export default function SuperAdminPage() {
 
   const guardarPrecioCredito = () => {
     localStorage.setItem('superadmin_precio_credito', String(precioCredito))
-    alert(`⚙️ Ajustes Globales Guardados:\nPrecio por crédito establecido en $${precioCredito} MXN`)
+    localStorage.setItem('superadmin_dias_demo', String(diasDemo))
+    alert(`⚙️ Ajustes Globales Guardados:\n• Precio por crédito: $${precioCredito} MXN\n• Días Demo gratis: ${diasDemo} días`)
   }
 
   const registrarNegocio = async (e: React.FormEvent) => {
@@ -310,7 +314,11 @@ export default function SuperAdminPage() {
       const slugFormateado = nuevoBiz.slug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '')
       const duracionMeses = nuevoBiz.plan === 'anual' ? 12 : nuevoBiz.plan === 'semestral' ? 6 : 1
       const fin = new Date()
-      fin.setDate(fin.getDate() + (duracionMeses * 30))
+      if (nuevoBiz.plan === 'demo') {
+        fin.setDate(fin.getDate() + (diasDemo || 30))
+      } else {
+        fin.setDate(fin.getDate() + (duracionMeses * 30))
+      }
 
       // 1. Crear business
       const { data: biz, error: errBiz } = await supabase
@@ -392,7 +400,7 @@ export default function SuperAdminPage() {
 
   const generarDemo = async (b: Business) => {
     const fin = new Date()
-    fin.setDate(fin.getDate() + 30)
+    fin.setDate(fin.getDate() + (diasDemo || 30))
     await supabase.from('businesses').update({
       estado: 'demo',
       es_demo: true,
@@ -432,8 +440,14 @@ export default function SuperAdminPage() {
     try { await supabase.auth.signOut() } catch (e) { console.warn(e) }
     localStorage.clear()
     sessionStorage.clear()
-    const cookies = ['session_rol','session_user','session_business_id','session_branch_id','session_user_id']
-    cookies.forEach(c => document.cookie = `${c}=; path=/; Max-Age=0`)
+    const cookies = ['session_rol','session_user','session_business_id','session_business_slug','session_branch_id','session_user_id']
+    const isProduction = typeof window !== 'undefined' && window.location.hostname.includes('loyaltyclub.mx')
+    cookies.forEach(c => {
+      document.cookie = `${c}=; path=/; Max-Age=0`
+      if (isProduction) {
+        document.cookie = `${c}=; path=/; Domain=.loyaltyclub.mx; Max-Age=0`
+      }
+    })
     window.location.href = '/login'
   }
 
@@ -466,7 +480,7 @@ export default function SuperAdminPage() {
 
   const TABS = [
     { id: 'metricas', label: '📊 Métricas & KPIs', icon: LayoutDashboard },
-    { id: 'negocios', label: '🏢 Tenants SaaS', icon: Building2 },
+    { id: 'negocios', label: '🏢 Negocios', icon: Building2 },
     { id: 'ajustes', label: '⚙️ Ajustes Centrales', icon: Settings },
   ] as const
 
@@ -538,7 +552,7 @@ export default function SuperAdminPage() {
         <header className="h-20 border-b border-[#e4e4e7] bg-white sticky top-0 z-20 px-6 sm:px-8 flex items-center justify-between shadow-[0_1px_0_#e4e4e7]">
           <div className="min-w-0">
             <h1 className="text-lg font-bold text-[#09090b] flex items-center gap-2">
-              {pestaña === 'metricas' ? 'Métricas & KPIs' : pestaña === 'negocios' ? 'Gestión de Tenants' : 'Ajustes Centrales'}
+              {pestaña === 'metricas' ? 'Métricas & KPIs' : pestaña === 'negocios' ? 'Gestión de Negocios' : 'Ajustes Centrales'}
               <span className="text-xs font-semibold uppercase tracking-widest text-[#dc2626] bg-[#fef2f2] border border-red-100 px-2 py-0.5 rounded-full">
                 SaaS Center
               </span>
@@ -731,7 +745,7 @@ export default function SuperAdminPage() {
                     <div className="w-8 h-8 border-2 border-zinc-200 border-t-[#dc2626] rounded-full animate-spin" />
                   </div>
                 ) : (
-                  <div className="overflow-x-auto">
+                  <div className="overflow-visible pb-24 min-h-[350px]">
                     <table className="w-full text-xs">
                       <thead className="bg-[#fafafa] border-b border-[#e4e4e7]">
                         <tr>
@@ -847,7 +861,7 @@ export default function SuperAdminPage() {
                   <p className="text-[#71717a] text-xs">Configura los parámetros financieros del núcleo LoyaltyClub.</p>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 border-t border-[#f4f4f5] pt-6">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 border-t border-[#f4f4f5] pt-6">
                   <div className="space-y-2">
                     <label className="text-[10px] text-[#52525b] uppercase font-bold block">Costo unitario por crédito/mes (MXN)</label>
                     <div className="relative">
@@ -862,10 +876,21 @@ export default function SuperAdminPage() {
                     <p className="text-[10px] text-[#71717a]">Este valor se utilizará para calcular los ingresos del panel y los importes en modales de renovación.</p>
                   </div>
 
+                  <div className="space-y-2">
+                    <label className="text-[10px] text-[#52525b] uppercase font-bold block">Período Demo Gratuito (Días)</label>
+                    <input
+                      type="number"
+                      value={diasDemo}
+                      onChange={e => setDiasDemo(Number(e.target.value))}
+                      className="input-clean text-sm font-mono text-[#09090b] font-bold focus:border-[#dc2626]"
+                    />
+                    <p className="text-[10px] text-[#71717a]">Cantidad de días de prueba gratuitos que se asignan a las nuevas cuentas que se registren por sí mismas.</p>
+                  </div>
+
                   <div className="space-y-2 bg-[#fafafa] border border-[#e4e4e7] rounded-xl p-4 flex flex-col justify-center">
                     <p className="text-xs font-bold text-[#dc2626]">¿Cómo funciona?</p>
                     <p className="text-[11px] text-[#52525b] leading-relaxed mt-1">
-                      Cada crédito equivale a **1 mes de suscripción activa** para cualquier negocio registrado. Al ajustar el costo, los cálculos de renovación y creación facturarán automáticamente a este nuevo valor configurado en el sistema.
+                      Cada crédito equivale a **1 mes de suscripción activa** para cualquier negocio. Las nuevas cuentas inician en modo **Demo** y expiran automáticamente tras los días aquí configurados.
                     </p>
                   </div>
                 </div>

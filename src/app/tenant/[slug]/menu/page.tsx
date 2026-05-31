@@ -882,11 +882,22 @@ _Pedido procesado a través de LoyaltyApp VIP_`
         {/* Resumen del carrito */}
         <div className="bg-[#fafafa] border border-[#e4e4e7] rounded-2xl p-4 space-y-3 shadow-sm">
           {cart.map((item, index) => (
-            <div key={`${item.product.id}-${index}`} className="flex justify-between items-start">
-              <div>
-                <p className="font-bold text-sm text-[#09090b]">{item.cantidad}x {item.product.nombre}</p>
+            <div key={`${item.product.id}-${index}`} className="flex justify-between items-start gap-4 animate-fadeIn border-b border-[#f4f4f5] pb-2.5 last:border-b-0 last:pb-0">
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => {
+                      setCart(prev => prev.filter((_, idx) => idx !== index))
+                    }}
+                    className="text-red-500 hover:text-red-700 transition-colors w-4 h-4 rounded-full bg-red-50 hover:bg-red-100 flex items-center justify-center font-bold text-[10px] shrink-0"
+                    title="Eliminar de carrito"
+                  >
+                    ×
+                  </button>
+                  <p className="font-bold text-sm text-[#09090b]">{item.cantidad}x {item.product.nombre}</p>
+                </div>
                 {Object.values(item.selecciones).length > 0 && (
-                  <p className="text-[11px] text-[#52525b] mt-0.5 leading-relaxed">
+                  <p className="text-[11px] text-[#52525b] mt-0.5 leading-relaxed pl-6">
                     {Object.values(item.selecciones).map((o: any) => {
                       if (Array.isArray(o)) {
                         return o.map(subOpt => `• ${subOpt.nombre}`).join(', ')
@@ -1135,10 +1146,20 @@ _Pedido procesado a través de LoyaltyApp VIP_`
                         <div className="space-y-3 animate-fade-in">
                           {productosDelGrupo.map(product => {
                             const enCarrito = cart.find(i => i.product.id === product.id)
+                            const tieneModificadores = product.product_modifiers && product.product_modifiers.length > 0
+                            const totalAgregado = cart.filter(item => item.product.id === product.id).reduce((sum, item) => sum + item.cantidad, 0)
+                            
                             return (
                               <div key={product.id} className="bg-white border border-[#e4e4e7] rounded-2xl p-4 flex gap-4 hover:border-[#d4d4d8] hover:shadow-md transition-all">
                                 <div className="flex-1">
-                                  <h3 className="font-bold text-[#09090b] text-sm sm:text-base">{product.nombre}</h3>
+                                  <h3 className="font-bold text-[#09090b] text-sm sm:text-base flex flex-wrap items-center gap-1.5">
+                                    {product.nombre}
+                                    {tieneModificadores && totalAgregado > 0 && (
+                                      <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-[#fef2f2] text-[#dc2626] border border-red-100 shrink-0 animate-fadeIn">
+                                        {totalAgregado} agregado{totalAgregado !== 1 ? 's' : ''}
+                                      </span>
+                                    )}
+                                  </h3>
                                   {product.descripcion && <p className="text-[#52525b] text-xs mt-1 line-clamp-2">{product.descripcion}</p>}
                                   <p className="text-[#dc2626] font-black text-sm mt-2">${product.precio.toLocaleString()} MXN</p>
                                 </div>
@@ -1146,7 +1167,14 @@ _Pedido procesado a través de LoyaltyApp VIP_`
                                   <img src={product.imagen_url} alt={product.nombre} className="w-20 h-20 rounded-xl object-cover flex-shrink-0" />
                                 )}
                                 <div className="flex flex-col items-center justify-center gap-2">
-                                  {enCarrito ? (
+                                  {tieneModificadores ? (
+                                    <button
+                                      onClick={() => agregarAlCarrito(product)}
+                                      className="px-3.5 py-1.5 rounded-lg bg-[#dc2626] text-white font-extrabold text-xs flex items-center justify-center gap-1 hover:bg-[#b91c1c] transition-all active:scale-95 shadow-sm"
+                                    >
+                                      + Agregar
+                                    </button>
+                                  ) : enCarrito ? (
                                     <div className="flex items-center gap-2 bg-[#fafafa] p-1 rounded-lg border border-[#e4e4e7]">
                                       <button onClick={() => quitarDelCarrito(product.id)}
                                         className="w-7 h-7 rounded-lg bg-[#f4f4f5] text-[#52525b] font-bold text-lg flex items-center justify-center hover:bg-[#e4e4e7] transition-colors">−</button>
