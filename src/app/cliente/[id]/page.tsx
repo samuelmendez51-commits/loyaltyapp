@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
 import { UtensilsCrossed, Bell, CreditCard, X, Gift, RotateCcw, Send } from 'lucide-react'
 
@@ -275,6 +275,7 @@ function RuletaVIP({
 // ── Componente Principal ───────────────────────────────────────────────────────
 export default function TarjetaLealtadFinal() {
   const { id } = useParams()
+  const router = useRouter()
   const [cliente, setCliente] = useState<any>(null)
   const [business, setBusiness] = useState<any>(null)
   const [premios, setPremios] = useState<Premio[]>([])
@@ -775,7 +776,20 @@ export default function TarjetaLealtadFinal() {
             return (
               <button
                 key={tab.id}
-                onClick={() => setVistaActiva(tab.id as any)}
+                onClick={() => {
+                  if (tab.id === 'menu') {
+                    const isDirectPath = window.location.pathname.includes('/tenant/');
+                    const backUrl = isDirectPath 
+                      ? `/tenant/${business?.slug || 'undefined'}/cliente/${id}` 
+                      : `/cliente/${id}`;
+                    const menuUrl = isDirectPath 
+                      ? `/tenant/${business?.slug || 'undefined'}/menu?back=${encodeURIComponent(backUrl)}` 
+                      : `/menu?back=${encodeURIComponent(backUrl)}`;
+                    router.push(menuUrl);
+                  } else {
+                    setVistaActiva(tab.id as any)
+                  }
+                }}
                 className={`flex-1 flex flex-col items-center justify-center py-3 gap-1 transition-all ${
                   activo ? 'text-[#dc2626]' : 'text-[#a1a1aa] hover:text-[#71717a]'
                 }`}
