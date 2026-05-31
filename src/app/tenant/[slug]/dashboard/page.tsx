@@ -189,6 +189,45 @@ export default function DashboardPage() {
   const [subiendoMenuDomicilio, setSubiendoMenuDomicilio] = useState(false)
   const [tipoQR, setTipoQR] = useState<'local' | 'domicilio'>('local')
 
+  const descargarQR = () => {
+    const svgElement = document.querySelector('.menus-qr-code svg') as SVGGraphicsElement | null
+    if (!svgElement) return alert('No se pudo encontrar el código QR')
+
+    try {
+      const svgString = new XMLSerializer().serializeToString(svgElement)
+      const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' })
+      const URL = window.URL || window.webkitURL || window
+      const blobURL = URL.createObjectURL(svgBlob)
+
+      const image = new Image()
+      image.onload = () => {
+        const canvas = document.createElement('canvas')
+        canvas.width = 600
+        canvas.height = 600
+        const context = canvas.getContext('2d')
+        if (context) {
+          context.fillStyle = '#ffffff'
+          context.fillRect(0, 0, 600, 600)
+          context.drawImage(image, 50, 50, 500, 500)
+
+          const png = canvas.toDataURL('image/png')
+          const downloadLink = document.createElement('a')
+          downloadLink.href = png
+          downloadLink.download = `QR-Menu-${tipoQR}-${business?.slug || 'comercio'}.png`
+          document.body.appendChild(downloadLink)
+          downloadLink.click()
+          document.body.removeChild(downloadLink)
+        }
+        URL.revokeObjectURL(blobURL)
+      }
+      image.src = blobURL
+    } catch (e) {
+      console.error('Error al generar QR descargable:', e)
+      alert('Error al generar la imagen descargable del código QR')
+    }
+  }
+
+
   // ── ESTADOS DEL MENÚ DINÁMICO ──
   const [subPestañaMenu, setSubPestañaMenu] = useState<'archivos' | 'categorias' | 'productos'>('archivos')
   const [menuGroups, setMenuGroups] = useState<any[]>([])
@@ -2619,7 +2658,7 @@ export default function DashboardPage() {
 
                     {/* QR Code Section */}
                     <div className="border-t border-[#f4f4f5] pt-6 flex flex-col sm:flex-row items-center gap-6 bg-[#fafafa] p-6 rounded-2xl border border-[#e4e4e7]">
-                      <div className="w-32 h-32 bg-white rounded-xl border border-[#e4e4e7] flex items-center justify-center shrink-0 p-2">
+                      <div className="menus-qr-code w-32 h-32 bg-white rounded-xl border border-[#e4e4e7] flex items-center justify-center shrink-0 p-2">
                         <QRCodeSVG
                           value={(() => {
                             const origin = typeof window !== 'undefined' ? window.location.origin : 'https://laburreria.loyaltyclub.mx'
@@ -2654,6 +2693,12 @@ export default function DashboardPage() {
                           >
                             <ExternalLink className="w-3.5 h-3.5" /> Abrir menú público
                           </a>
+                          <button
+                            onClick={descargarQR}
+                            className="bg-[#dc2626] hover:bg-[#b91c1c] text-white text-[10px] font-bold px-3.5 py-2 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm"
+                          >
+                            <Download className="w-3.5 h-3.5" /> Descargar Código QR
+                          </button>
                         </div>
                       </div>
                     </div>
