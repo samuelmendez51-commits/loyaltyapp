@@ -1,5 +1,5 @@
-const CACHE_NAME = 'loyaltyclub-v2';
-const CACHE_STATIC = 'loyaltyclub-static-v2';
+const CACHE_NAME = 'loyaltyclub-v3';
+const CACHE_STATIC = 'loyaltyclub-static-v3';
 const OFFLINE_URL = '/';
 
 const ASSETS_STATIC = [
