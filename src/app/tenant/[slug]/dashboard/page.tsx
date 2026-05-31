@@ -517,6 +517,7 @@ export default function DashboardPage() {
   const [precargadas, setPrecargadas] = useState<string>('0')
   const [precargadasOtro, setPrecargadasOtro] = useState('')
   const [comportamiento, setComportamiento] = useState<'sin_limite' | 'limitado' | 'reiniciar'>('sin_limite')
+  const [progPortadaY, setProgPortadaY] = useState(50)
   const [guardandoPrograma, setGuardandoPrograma] = useState(false)
 
   // Recompensas Intermedias
@@ -575,6 +576,91 @@ export default function DashboardPage() {
   const completedStepsCount = stepsList.filter(s => s.completed).length
   const porcentajeCompleto = (completedStepsCount / 4) * 100
   const checklistCompletado = completedStepsCount === 4
+
+  // ── Leaflet Interactive Map for Geopush ─────────────────────────────────────
+  const mapRef = useRef<any>(null)
+  const markerRef = useRef<any>(null)
+
+  useEffect(() => {
+    if (pestaña !== 'geopush') {
+      if (mapRef.current) {
+        mapRef.current.remove()
+        mapRef.current = null
+        markerRef.current = null
+      }
+      return
+    }
+
+    // Load Leaflet dynamically
+    const link = document.createElement('link')
+    link.rel = 'stylesheet'
+    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
+    document.head.appendChild(link)
+
+    const script = document.createElement('script')
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
+    script.onload = () => {
+      const L = (window as any).L
+      if (!L) return
+
+      const container = document.getElementById('geopush-map-interactive')
+      if (!container) return
+
+      if (mapRef.current) {
+        mapRef.current.remove()
+      }
+
+      const map = L.map('geopush-map-interactive').setView([geoPushLat || 19.421583, geoPushLng || -102.067222], 15)
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; Colaboradores de OpenStreetMap'
+      }).addTo(map)
+
+      const marker = L.marker([geoPushLat || 19.421583, geoPushLng || -102.067222], { draggable: true }).addTo(map)
+
+      markerRef.current = marker
+      mapRef.current = map
+
+      // Listen to marker drag events
+      marker.on('dragend', () => {
+        const position = marker.getLatLng()
+        setGeoPushLat(position.lat)
+        setGeoPushLng(position.lng)
+        setLatitudeNegocio(String(position.lat))
+        setLongitudeNegocio(String(position.lng))
+      })
+
+      // Listen to map click events
+      map.on('click', (e: any) => {
+        marker.setLatLng(e.latlng)
+        setGeoPushLat(e.latlng.lat)
+        setGeoPushLng(e.latlng.lng)
+        setLatitudeNegocio(String(e.latlng.lat))
+        setLongitudeNegocio(String(e.latlng.lng))
+      })
+    }
+    document.body.appendChild(script)
+
+    return () => {
+      if (link.parentNode) link.parentNode.removeChild(link)
+      if (script.parentNode) script.parentNode.removeChild(script)
+      if (mapRef.current) {
+        mapRef.current.remove()
+        mapRef.current = null
+        markerRef.current = null
+      }
+    }
+  }, [pestaña])
+
+  // Sync map position when coordinate states change externally (e.g. from GPS or manual input)
+  useEffect(() => {
+    if (pestaña === 'geopush' && mapRef.current && markerRef.current) {
+      const marker = markerRef.current
+      const map = mapRef.current
+      const latLng = [geoPushLat, geoPushLng]
+      marker.setLatLng(latLng)
+      map.setView(latLng)
+    }
+  }, [geoPushLat, geoPushLng])
 
   // ── useEffect ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -1607,7 +1693,13 @@ export default function DashboardPage() {
     setMaxDia(String(prog.estampillas_max_dia || 1))
     setComportamiento(prog.comportamiento_completado || 'sin_limite')
     setProgLogoUrl(prog.logo_url || '')
-    setProgPortadaUrl(prog.portada_url || '')
+    const rawUrl = prog.portada_url || ''
+    setProgPortadaUrl(rawUrl)
+    if (rawUrl.includes('#y=')) {
+      setProgPortadaY(Number(rawUrl.split('#y=')[1]) || 50)
+    } else {
+      setProgPortadaY(50)
+    }
     setProgLogoFile(null)
     setProgPortadaFile(null)
     
@@ -1624,6 +1716,7 @@ export default function DashboardPage() {
     setComportamiento('sin_limite')
     setProgLogoUrl('')
     setProgPortadaUrl('')
+    setProgPortadaY(50)
     setProgLogoFile(null)
     setProgPortadaFile(null)
     
@@ -1669,6 +1762,14 @@ export default function DashboardPage() {
         finalPortadaUrl = urlData.publicUrl
         setProgPortadaUrl(finalPortadaUrl)
         setSubiendoPortadaProg(false)
+      }
+
+      // Append cover offset hash dynamically to cover image URL
+      if (finalPortadaUrl) {
+        if (finalPortadaUrl.includes('#y=')) {
+          finalPortadaUrl = finalPortadaUrl.split('#y=')[0]
+        }
+        finalPortadaUrl = `${finalPortadaUrl}#y=${progPortadaY}`
       }
 
       // Payload estructurado
@@ -2405,6 +2506,44 @@ export default function DashboardPage() {
                     <label className={LBL}>Longitud Sucursal</label>
                     <input type="number" step="any" value={longitudeNegocio} onChange={e => setLongitudeNegocio(e.target.value)} className={IC} placeholder="Ej: -102.067222" />
                   </div>
+
+                  {/* Live Branding Card Preview */}
+                  {(logoUrlNegocio || bannerUrlNegocio) && (
+                    <div className="sm:col-span-2 mt-2 bg-zinc-50 border border-zinc-200 rounded-3xl p-5 space-y-3.5">
+                      <p className="text-[10px] font-extrabold text-[#71717a] uppercase tracking-widest">👁️ Vista Previa en Tiempo Real (Branding de Sucursal)</p>
+                      
+                      <div className="relative rounded-2xl overflow-hidden border border-[#e4e4e7] bg-white shadow-sm" style={{ height: '140px' }}>
+                        {/* Portada / Banner Preview */}
+                        {bannerUrlNegocio ? (
+                          <img src={bannerUrlNegocio} alt="Banner" className="w-full h-full object-cover animate-fadeIn" />
+                        ) : (
+                          <div className="w-full h-full bg-gradient-to-r from-zinc-100 to-zinc-200 flex items-center justify-center text-xs text-zinc-400 font-bold">Banner de fondo no cargado</div>
+                        )}
+                        
+                        {/* Shadow overlay */}
+                        <div className="absolute inset-0 bg-black/20" />
+
+                        {/* Logo & Name Mockup */}
+                        <div className="absolute bottom-4 left-4 flex items-center gap-3">
+                          <div className="w-12 h-12 bg-white rounded-xl border border-white/20 shadow-lg flex items-center justify-center overflow-hidden shrink-0">
+                            {logoUrlNegocio ? (
+                              logoUrlNegocio.startsWith('http') ? (
+                                <img src={logoUrlNegocio} alt="Logo" className="w-full h-full object-cover animate-fadeIn" />
+                              ) : (
+                                <span className="text-2xl">{logoUrlNegocio}</span>
+                              )
+                            ) : (
+                              <span className="text-zinc-400 text-lg font-bold">🤠</span>
+                            )}
+                          </div>
+                          <div>
+                            <h4 className="font-extrabold text-sm text-white drop-shadow-md">{nombreNegocio || 'Tu Negocio'}</h4>
+                            <p className="text-[10px] text-zinc-200 drop-shadow-sm font-semibold truncate max-w-[200px]">{direccionNegocio || 'Dirección de la sucursal'}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                 </div>
 
@@ -3497,10 +3636,10 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                {/* OpenStreetMap Iframe interactivo sin errores */}
+                {/* OpenStreetMap Drag-and-Click Interactive Map */}
                 <div className="space-y-3">
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-                    <label className={LBL}>Mapa Interactivo de OpenStreetMap (Preview)</label>
+                    <label className={LBL}>Mapa Interactivo Geopush (Pin Draggable)</label>
                     <button
                       type="button"
                       onClick={obtenerUbicacionGPS}
@@ -3509,17 +3648,14 @@ export default function DashboardPage() {
                       📍 Obtener mi ubicación actual por GPS
                     </button>
                   </div>
-                  <div className="relative w-full rounded-2xl overflow-hidden border border-[#e4e4e7] shadow-sm bg-[#fafafa]" style={{ height: '280px' }}>
-                    <iframe
-                      title="Ubicación Geopush"
-                      width="100%"
-                      height="280"
-                      style={{ border: 0 }}
-                      loading="lazy"
-                      allowFullScreen
-                      src={`https://www.openstreetmap.org/export/embed.html?bbox=${Number(geoPushLng) - 0.005}%2C${Number(geoPushLat) - 0.004}%2C${Number(geoPushLng) + 0.005}%2C${Number(geoPushLat) + 0.004}&layer=mapnik&marker=${Number(geoPushLat)}%2C${Number(geoPushLng)}`}
-                    />
-                  </div>
+                  <div
+                    id="geopush-map-interactive"
+                    className="relative w-full rounded-2xl border border-[#e4e4e7] shadow-sm bg-[#fafafa]"
+                    style={{ height: '280px', zIndex: 1 }}
+                  />
+                  <p className="text-[10px] text-[#71717a] font-semibold italic mt-1 leading-normal">
+                    💡 ¡Puedes arrastrar el pin verde en el mapa o hacer clic en cualquier lugar para ajustar las coordenadas exactas de tu negocio!
+                  </p>
                 </div>
 
                 {/* Slider para metros del radio perimetral */}
@@ -3737,7 +3873,7 @@ export default function DashboardPage() {
                               <div className="flex flex-col gap-2">
                                 {progPortadaUrl && !progPortadaFile && (
                                   <div className="h-12 w-full rounded-xl border border-[#e4e4e7] overflow-hidden bg-white relative group">
-                                    <img src={progPortadaUrl} alt="Portada" className="w-full h-full object-cover" />
+                                    <img src={progPortadaUrl} alt="Portada" className="w-full h-full object-cover" style={{ objectPosition: `center ${progPortadaY}%` }} />
                                     <button type="button" onClick={() => setProgPortadaUrl('')} className="absolute inset-0 bg-black/40 text-white text-[10px] font-bold opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">Quitar</button>
                                   </div>
                                 )}
@@ -3759,6 +3895,27 @@ export default function DashboardPage() {
                                 </label>
                               </div>
                             </div>
+
+                            {/* Ajuste de Alineación Vertical de Portada */}
+                            {(progPortadaFile || progPortadaUrl) && (
+                              <div className="space-y-1.5 pt-2 border-t border-[#f4f4f5] animate-fadeIn">
+                                <div className="flex justify-between items-center">
+                                  <label className={LBL}>Encuadre Vertical de Portada</label>
+                                  <span className="text-[10px] font-extrabold text-[#dc2626] font-mono">{progPortadaY}%</span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min="0"
+                                  max="100"
+                                  value={progPortadaY}
+                                  onChange={e => setProgPortadaY(Number(e.target.value))}
+                                  className="w-full h-1.5 bg-[#f4f4f5] rounded-lg appearance-none cursor-pointer accent-[#dc2626]"
+                                />
+                                <p className="text-[9px] text-[#71717a] italic leading-normal">
+                                  💡 Arrastra el control deslizante para ajustar el encuadre (por ejemplo, subir o bajar la foto) para enfocar lo más delicioso del banner. ¡Se guardará y se verá igual para el cliente!
+                                </p>
+                              </div>
+                            )}
                           </div>
 
                           <div className="flex gap-2 pt-2">
@@ -3802,7 +3959,7 @@ export default function DashboardPage() {
                                 {progPortadaFile || progPortadaUrl ? (
                                   <div className="h-16 w-full overflow-hidden relative">
                                     <img 
-                                      src={progPortadaFile ? URL.createObjectURL(progPortadaFile) : progPortadaUrl} 
+                                      src={progPortadaFile ? URL.createObjectURL(progPortadaFile) : progPortadaUrl} style={{ objectPosition: `center ${progPortadaY}%` }} 
                                       alt="" 
                                       className="w-full h-full object-cover" 
                                     />

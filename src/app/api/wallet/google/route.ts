@@ -361,7 +361,9 @@ export async function POST(req: Request) {
     // ── 5. Obtener Access Token OAuth2 ───────────────────────────────────
     const accessToken = await getGoogleAccessToken(clientEmail, privateKey)
     if (!accessToken) {
-      return NextResponse.json({ error: 'Error de autenticación con Google Wallet API' }, { status: 500 })
+      console.warn('[GoogleWallet] ⚠️ Error de autenticación. Cayendo en modo simulación.')
+      const simUrl = `/google-wallet-simulacion?id=${encodeURIComponent(cliente.id)}&nombre=${encodeURIComponent(cliente.nombre)}&puntos=${cliente.puntos}&business_name=${encodeURIComponent(business.nombre)}`
+      return NextResponse.json({ url: simUrl, simulacion: true })
     }
 
     // ── 6. Asegurar que la LoyaltyClass existe y está actualizada ─────────

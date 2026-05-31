@@ -548,7 +548,18 @@ export default function TarjetaLealtadFinal() {
             {/* Portada / Banner superior */}
             {programaActivo?.portada_url ? (
               <div className="h-32 w-full overflow-hidden relative">
-                <img src={programaActivo.portada_url} alt="Portada Club" className="w-full h-full object-cover" />
+                <img
+                  src={programaActivo.portada_url}
+                  alt="Portada Club"
+                  className="w-full h-full object-cover animate-fade-in"
+                  style={{
+                    objectPosition: `center ${
+                      programaActivo.portada_url.includes('#y=')
+                        ? programaActivo.portada_url.split('#y=')[1]
+                        : '50'
+                    }%`
+                  }}
+                />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
               </div>
             ) : (
