@@ -7,7 +7,8 @@ import path from 'path'
 // @ts-ignore
 const { PKPass } = require('passkit-generator')
 // @ts-ignore
-const Jimp = require('jimp')
+const JimpModule = require('jimp')
+const Jimp = JimpModule.Jimp || JimpModule
 
 // ── Supabase ──────────────────────────────────────────────────────────────────
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://hjaeireljkcvjnigfhzb.supabase.co'
