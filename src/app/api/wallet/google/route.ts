@@ -39,11 +39,31 @@ interface ClienteData {
 // Vercel puede añadir comillas y escapar \n como literales
 // ─────────────────────────────────────────────────────────────────────────────
 function sanitizePrivateKey(raw: string): string {
+  if (!raw) return ''
   let key = raw.trim()
+  
+  // Quitar comillas
   if ((key.startsWith('"') && key.endsWith('"')) || (key.startsWith("'") && key.endsWith("'"))) {
     key = key.slice(1, -1)
   }
-  return key.replace(/\\n/g, '\n').trim()
+  
+  // Reemplazar saltos de línea escapados
+  key = key.replace(/\\n/g, '\n')
+  
+  // Si no contiene saltos de línea reales pero contiene espacios en medio de la llave,
+  // es altamente probable que Vercel haya aplanado las líneas con espacios al pegar.
+  if (!key.includes('\n')) {
+    const header = '-----BEGIN PRIVATE KEY-----'
+    const footer = '-----END PRIVATE KEY-----'
+    if (key.includes(header) && key.includes(footer)) {
+      let body = key.replace(header, '').replace(footer, '').trim()
+      // Reemplazar cualquier espacio intermedio en el cuerpo por saltos de línea
+      body = body.replace(/\s+/g, '\n')
+      key = `${header}\n${body}\n${footer}`
+    }
+  }
+  
+  return key.trim()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
