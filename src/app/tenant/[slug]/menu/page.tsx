@@ -289,10 +289,18 @@ export default function MenuPublico({ params }: { params: Promise<{ slug: string
   // Helpers para Alitas de La Burreria
   const obtenerMaxSabores = (product: MenuProduct) => {
     const nombre = product.nombre.toLowerCase()
-    const esAlitas = nombre.includes('alitas') || nombre.includes('wings')
+    const esAlitas = nombre.includes('alitas') || nombre.includes('wings') || nombre.includes('charola')
     if (!esAlitas) return 1
-    const match = nombre.match(/\d+/)
-    const piezas = match ? parseInt(match[0], 10) : 8
+    
+    // Encontrar todos los números en el nombre y seleccionar el más grande (típicamente las piezas)
+    const matches = nombre.match(/\d+/g)
+    let piezas = 8
+    if (matches) {
+      const numeros = matches.map(m => parseInt(m, 10))
+      piezas = Math.max(...numeros)
+    }
+    
+    // 1 sabor por cada 8 alitas
     return Math.max(1, Math.floor(piezas / 8))
   }
 
@@ -467,12 +475,14 @@ export default function MenuPublico({ params }: { params: Promise<{ slug: string
     if (!business) return ''
     
     let itemsText = cart.map(i => {
-      const modText = Object.values(i.selecciones).map((o: any) => {
+      const modTextList = Object.entries(i.selecciones).map(([key, o]: [string, any]) => {
+        if (key === 'salsa-aparte') return o ? ' (*Salsa Aparte*)' : ''
         if (Array.isArray(o)) {
           return o.map(subOpt => ` (+ ${subOpt.nombre})`).join('')
         }
         return o ? ` (+ ${o.nombre})` : ''
-      }).join('')
+      })
+      const modText = modTextList.join('')
       return `• ${i.cantidad}x ${i.product.nombre}${modText} - $${i.subtotal.toLocaleString()} MXN`
     }).join('\n')
     
@@ -896,9 +906,10 @@ _Pedido procesado a través de LoyaltyApp VIP_`
                   </button>
                   <p className="font-bold text-sm text-[#09090b]">{item.cantidad}x {item.product.nombre}</p>
                 </div>
-                {Object.values(item.selecciones).length > 0 && (
+                {Object.keys(item.selecciones).length > 0 && (
                   <p className="text-[11px] text-[#52525b] mt-0.5 leading-relaxed pl-6">
-                    {Object.values(item.selecciones).map((o: any) => {
+                    {Object.entries(item.selecciones).map(([key, o]: [string, any]) => {
+                      if (key === 'salsa-aparte') return o ? '🥣 Salsa Aparte' : ''
                       if (Array.isArray(o)) {
                         return o.map(subOpt => `• ${subOpt.nombre}`).join(', ')
                       }
@@ -1429,6 +1440,17 @@ _Pedido procesado a través de LoyaltyApp VIP_`
               {productoSeleccionadoMod.product_modifiers?.map(mod => {
                 const maxSabores = obtenerMaxSabores(productoSeleccionadoMod)
                 const esSabor = esGrupoSabores(mod.nombre)
+                
+                // Inyectar la opción virtual "Naturales (Sin Salsa)" si es un modificador de sabores
+                const modifierOptionsFinal = [...(mod.modifier_options || [])]
+                if (esSabor && !modifierOptionsFinal.some(o => o.nombre.toLowerCase().includes('natural'))) {
+                  modifierOptionsFinal.push({
+                    id: 'natural-opt-virtual',
+                    nombre: 'Naturales (Sin Salsa)',
+                    precio_extra: 0
+                  })
+                }
+
                 return (
                   <div key={mod.id} className="space-y-3">
                     <div className="flex justify-between items-center border-b border-[#f4f4f5] pb-2">
@@ -1444,7 +1466,7 @@ _Pedido procesado a través de LoyaltyApp VIP_`
                     </div>
                     
                     <div className="space-y-2">
-                      {mod.modifier_options?.map(opt => {
+                      {modifierOptionsFinal.map(opt => {
                         let seleccionado = false
                         if (esSabor && maxSabores > 1) {
                           const actuales = seleccionesMod[mod.id] || []
@@ -1485,6 +1507,33 @@ _Pedido procesado a través de LoyaltyApp VIP_`
                           </label>
                         )
                       })}
+
+                      {/* Checkbox "Salsa Aparte" para grupos de salsa/sabores */}
+                      {esSabor && (
+                        <label 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSeleccionesMod(prev => ({ ...prev, 'salsa-aparte': !prev['salsa-aparte'] }))
+                          }}
+                          className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer mt-3 transition-all ${
+                            seleccionesMod['salsa-aparte']
+                              ? 'bg-red-50/50 border-[#dc2626] text-[#dc2626]' 
+                              : 'bg-[#fafafa] border-[#e4e4e7] text-[#52525b] hover:border-[#d4d4d8]'
+                          }`}
+                        >
+                          <div className={`w-5 h-5 border flex items-center justify-center rounded-lg ${
+                            seleccionesMod['salsa-aparte'] ? 'border-[#dc2626] bg-[#dc2626]/10' : 'border-[#e4e4e7]'
+                          }`}>
+                            {seleccionesMod['salsa-aparte'] && (
+                              <div className="bg-[#dc2626] w-2.5 h-2.5 rounded-sm" />
+                            )}
+                          </div>
+                          <span className="text-sm font-bold flex items-center gap-1.5">
+                            <span>Salsa Aparte 🥣</span>
+                            <span className="text-[10px] text-[#71717a] font-normal font-sans">(Se enviará la salsa en un vasito por separado)</span>
+                          </span>
+                        </label>
+                      )}
                     </div>
                   </div>
                 )

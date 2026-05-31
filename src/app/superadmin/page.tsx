@@ -443,9 +443,14 @@ export default function SuperAdminPage() {
     const cookies = ['session_rol','session_user','session_business_id','session_business_slug','session_branch_id','session_user_id']
     const isProduction = typeof window !== 'undefined' && window.location.hostname.includes('loyaltyclub.mx')
     cookies.forEach(c => {
+      // Borrar con SameSite=Strict (Desarrollo/Localhost)
+      document.cookie = `${c}=; path=/; SameSite=Strict; Max-Age=0`
+      // Borrar estándar
       document.cookie = `${c}=; path=/; Max-Age=0`
+      
       if (isProduction) {
-        document.cookie = `${c}=; path=/; Domain=.loyaltyclub.mx; Max-Age=0`
+        // Borrar con SameSite=Lax y Dominio wildcard (Producción)
+        document.cookie = `${c}=; path=/; Domain=.loyaltyclub.mx; SameSite=Lax; Max-Age=0`
       }
     })
     window.location.href = '/login'
