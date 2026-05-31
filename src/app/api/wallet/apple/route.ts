@@ -143,12 +143,34 @@ function sanitizePem(raw: string, type: 'CERTIFICATE' | 'PRIVATE KEY'): string {
 async function resizeImage(buffer: Buffer, width: number, height: number, mode: 'cover' | 'contain'): Promise<Buffer> {
   try {
     const image = await Jimp.read(buffer)
+    let processed: any
+
     if (mode === 'cover') {
-      image.cover(width, height)
+      try {
+        processed = image.cover({ w: width, h: height })
+      } catch {
+        processed = image.cover(width, height)
+      }
     } else {
-      image.contain(width, height)
+      try {
+        processed = image.contain({ w: width, h: height })
+      } catch {
+        processed = image.contain(width, height)
+      }
     }
-    return await image.quality(75).getBufferAsync(Jimp.MIME_PNG)
+
+    const mimePng = Jimp.MIME_PNG || "image/png"
+    if (typeof processed.getBuffer === 'function') {
+      const res = processed.getBuffer(mimePng)
+      if (res && typeof res.then === 'function') {
+        return await res
+      }
+      return res
+    } else if (typeof processed.getBufferAsync === 'function') {
+      return await processed.getBufferAsync(mimePng)
+    }
+
+    return buffer
   } catch (err: any) {
     console.warn(`[AppleWallet] Error resizing image to ${width}x${height}:`, err.message)
     return buffer // Fallback to raw buffer if resize fails
