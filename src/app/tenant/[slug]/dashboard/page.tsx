@@ -305,22 +305,80 @@ export default function DashboardPage() {
     const todosLosClientes: { nombre: string; telefono: string }[] = []
     const promesas = Array.from(files).map(file => new Promise<void>(resolve => {
       Papa.parse(file, {
-        header: true,
+        header: false, // Parseamos como matriz para control de índices absoluto
         skipEmptyLines: true,
         complete: (result) => {
-          const rows = result.data as Record<string, string>[]
-          rows.forEach(row => {
-            const keys = Object.keys(row)
-            const telKey = keys.find(k => /phone\s*1\s*-\s*value/i.test(k))
-              || keys.find(k => /tel|phone|cel|numero|num|movil|móvil|whatsapp/i.test(k))
-            const nomKey = keys.find(k => /family\s*name|apellido/i.test(k))
-            if (!telKey) return
-            const tel = (row[telKey] || '').toString().replace(/[^0-9]/g, '').slice(-10)
-            const nom = nomKey ? (row[nomKey] || '').toString().trim() : ''
+          const rows = result.data as string[][]
+          if (!rows || rows.length === 0) return resolve()
+
+          // 1. Detectar índices de columnas semánticamente o por heurística
+          const firstRow = rows[0]
+          let telIdx = -1
+          let nameIdx = -1
+
+          // A) Intentar buscar cabeceras comunes
+          firstRow.forEach((val, idx) => {
+            const cleanVal = (val || '').toString().toLowerCase().trim()
+            if (telIdx === -1 && /phone|tel|cel|numero|num|movil|móvil|whatsapp|number|contacto/i.test(cleanVal)) {
+              telIdx = idx
+            }
+            if (nameIdx === -1 && /name|nombre|cliente|socio|given|first|completo|apellido/i.test(cleanVal)) {
+              nameIdx = idx
+            }
+          })
+
+          // B) Si no encontramos por cabecera, buscamos por contenido
+          let startIdx = 1
+          if (telIdx === -1) {
+            startIdx = 0 // Asumimos que no tiene cabeceras y procesamos desde la fila 0
+            
+            // Analizar las primeras 5 filas para detectar columnas de números de teléfono
+            const sampleRows = rows.slice(0, 5)
+            for (let col = 0; col < (firstRow.length || 0); col++) {
+              let isPhoneCol = false
+              let isNameCol = false
+              
+              for (const row of sampleRows) {
+                if (!row[col]) continue
+                const val = row[col].toString().replace(/[^0-9]/g, '')
+                if (val.length >= 10 && val.length <= 15) {
+                  isPhoneCol = true
+                }
+                const alphaVal = row[col].toString().replace(/[^a-zA-ZáéíóúñÁÉÍÓÚÑ\s]/g, '').trim()
+                if (alphaVal.length > 2 && !/^\d+$/.test(alphaVal)) {
+                  isNameCol = true
+                }
+              }
+              
+              if (isPhoneCol && telIdx === -1) {
+                telIdx = col
+              } else if (isNameCol && nameIdx === -1) {
+                nameIdx = col
+              }
+            }
+          }
+
+          // C) Fallback final si no se detectó nada
+          if (telIdx === -1) {
+            telIdx = firstRow.length > 1 ? 1 : 0
+          }
+          if (nameIdx === -1) {
+            nameIdx = telIdx === 0 ? (firstRow.length > 1 ? 1 : 0) : 0
+          }
+
+          // 2. Procesar filas
+          rows.slice(startIdx).forEach(row => {
+            if (telIdx >= row.length || !row[telIdx]) return
+            const tel = row[telIdx].toString().replace(/[^0-9]/g, '').slice(-10)
+            const nom = nameIdx !== -1 && nameIdx < row.length && row[nameIdx] 
+              ? row[nameIdx].toString().trim() 
+              : ''
+            
             if (tel.length === 10) {
               todosLosClientes.push({ nombre: nom || `Cliente ${tel}`, telefono: tel })
             }
           })
+          
           resolve()
         },
         error: () => resolve()
@@ -334,6 +392,12 @@ export default function DashboardPage() {
     const unicos = Array.from(mapa.values())
     setImportTotal(unicos.length)
 
+    if (unicos.length === 0) {
+      setImportando(false)
+      setImportFinalizado(true)
+      return
+    }
+
     // Obtener teléfonos ya existentes en Supabase para este negocio
     const { data: existentes } = await supabase
       .from('clientes').select('telefono').eq('business_id', businessId)
@@ -342,6 +406,13 @@ export default function DashboardPage() {
     const nuevos = unicos.filter(c => !telefonosExistentes.has(c.telefono))
     const duplicados = unicos.length - nuevos.length
     setImportDuplicados(duplicados)
+
+    if (nuevos.length === 0) {
+      setImportando(false)
+      setImportFinalizado(true)
+      cargarDatos()
+      return
+    }
 
     // Insertar en lotes de 200
     const BATCH = 200
