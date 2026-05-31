@@ -416,6 +416,53 @@ export default function DashboardPage() {
 
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null)
 
+  // ── VARIABLES REACTIVAS DEL CHECKLIST DE LANZAMIENTO ──
+  const hasBranding = !!(business?.logo_url && business?.banner_url)
+  const hasCategory = !!(menuGroups && menuGroups.length > 0)
+  const hasProduct = !!(menuProducts && menuProducts.length > 0)
+  const hasProgram = !!(programas && programas.length > 0)
+
+  const stepsList = [
+    {
+      id: 'branding',
+      label: 'Subir logotipo y banner de portada',
+      desc: 'Dale identidad a tu negocio subiendo tu logo oficial y una imagen de portada atractiva.',
+      completed: hasBranding,
+      action: () => setPestaña('configuracion')
+    },
+    {
+      id: 'categoria',
+      label: 'Crear tu primera categoría',
+      desc: 'Agrupa tus productos en carpetas organizadas (ej: Bebidas, Platillos, Entradas).',
+      completed: hasCategory,
+      action: () => {
+        setPestaña('productos')
+        setSubPestañaMenu('categorias')
+      }
+    },
+    {
+      id: 'producto',
+      label: 'Registrar tu primer producto',
+      desc: 'Agrega fotos, precios y modificadores (ej: Coca-Cola, Hamburguesa con queso).',
+      completed: hasProduct,
+      action: () => {
+        setPestaña('productos')
+        setSubPestañaMenu('productos')
+      }
+    },
+    {
+      id: 'programa',
+      label: 'Activar tu programa de lealtad',
+      desc: 'Crea tu tarjeta VIP digital y define cuántos sellos se requieren para ganar premios.',
+      completed: hasProgram,
+      action: () => setPestaña('lealtad')
+    }
+  ]
+
+  const completedStepsCount = stepsList.filter(s => s.completed).length
+  const porcentajeCompleto = (completedStepsCount / 4) * 100
+  const checklistCompletado = completedStepsCount === 4
+
   // ── useEffect ───────────────────────────────────────────────────────────────
   useEffect(() => {
     const handlePrompt = (e: any) => { e.preventDefault(); setDeferredPrompt(e) }
@@ -1798,6 +1845,90 @@ export default function DashboardPage() {
           ══════════════════════════════════════════ */}
           {pestaña === 'metricas' && (
             <div className="space-y-6 animate-fadeIn">
+              {/* Checklist de Lanzamiento */}
+              {!checklistCompletado ? (
+                <div className="bg-white border border-[#e4e4e7] rounded-3xl p-6 shadow-sm space-y-5 animate-fadeIn">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xl">🚀</span>
+                        <h3 className="text-base font-bold text-[#09090b] tracking-tight">Checklist de Lanzamiento</h3>
+                      </div>
+                      <p className="text-xs text-[#71717a]">Completa las 4 tareas clave para habilitar tu club de lealtad y recibir clientes.</p>
+                    </div>
+                    <div className="flex items-center gap-3 w-full sm:w-auto shrink-0">
+                      <div className="flex-1 sm:flex-none w-24 sm:w-32 bg-[#f4f4f5] h-2.5 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-gradient-to-r from-amber-500 to-red-500 rounded-full transition-all duration-500" 
+                          style={{ width: `${porcentajeCompleto}%` }}
+                        />
+                      </div>
+                      <span className="text-xs font-bold text-[#09090b] font-mono shrink-0">
+                        {completedStepsCount} de 4 ({porcentajeCompleto}%)
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {stepsList.map(step => {
+                      return (
+                        <div 
+                          key={step.id} 
+                          className={`border rounded-2xl p-4 flex flex-col justify-between gap-4 transition-all ${
+                            step.completed 
+                              ? 'bg-emerald-50/20 border-emerald-100' 
+                              : 'bg-[#fafafa] border-[#e4e4e7] hover:border-zinc-300'
+                          }`}
+                        >
+                          <div className="flex gap-3">
+                            <div className={`w-6 h-6 rounded-full shrink-0 flex items-center justify-center text-xs font-bold ${
+                              step.completed 
+                                ? 'bg-emerald-500 text-white shadow-sm' 
+                                : 'border-2 border-dashed border-[#a1a1aa] text-[#71717a]'
+                            }`}>
+                              {step.completed ? '✓' : ''}
+                            </div>
+                            <div>
+                              <p className={`text-xs font-bold ${step.completed ? 'text-emerald-800 line-through' : 'text-[#09090b]'}`}>{step.label}</p>
+                              <p className="text-[10px] text-[#71717a] mt-1 leading-relaxed">{step.desc}</p>
+                            </div>
+                          </div>
+
+                          {!step.completed && (
+                            <button 
+                              onClick={step.action}
+                              className="w-full bg-[#09090b] hover:bg-zinc-800 text-white text-[10px] font-bold py-2 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1"
+                            >
+                              Configurar Ahora →
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-gradient-to-br from-emerald-500/10 via-teal-500/5 to-white border border-emerald-200 rounded-3xl p-6 shadow-md space-y-4 animate-fadeIn flex flex-col sm:flex-row items-center justify-between gap-5">
+                  <div className="flex gap-4 items-start text-center sm:text-left flex-col sm:flex-row">
+                    <div className="w-12 h-12 bg-emerald-500 rounded-2xl flex items-center justify-center shadow-lg mx-auto sm:mx-0 shrink-0">
+                      <span className="text-2xl animate-bounce">🎉</span>
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-emerald-950 tracking-tight">¡Tu negocio está listo para triunfar!</h3>
+                      <p className="text-xs text-emerald-800 mt-1 leading-relaxed">
+                        ¡Felicidades! Has completado con éxito todos los pasos recomendados. Tu club de lealtad VIP y catálogo interactivo están 100% listos para recibir a tus clientes en sucursal.
+                      </p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => window.open(window.location.origin + '/menu', '_blank')}
+                    className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold px-5 py-3 rounded-xl transition-all shadow-md shrink-0 flex items-center justify-center gap-1.5"
+                  >
+                    🔗 Previsualizar Portal de Clientes
+                  </button>
+                </div>
+              )}
+
               {/* KPIs */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {[
