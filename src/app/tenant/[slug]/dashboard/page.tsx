@@ -160,6 +160,9 @@ export default function DashboardPage() {
   const [longitudeNegocio, setLongitudeNegocio] = useState('')
   const [requiereMotivoSello, setRequiereMotivoSello] = useState(false)
   const [guardandoBranding, setGuardandoBranding] = useState(false)
+  const [subiendoLogo, setSubiendoLogo] = useState(false)
+  const [subiendoBanner, setSubiendoBanner] = useState(false)
+  const [categoriasExpandidas, setCategoriasExpandidas] = useState<Record<string, boolean>>({})
   const [subPestañaCatalog, setSubPestañaCatalog] = useState<'categorias' | 'productos'>('productos')
 
   // Horarios Estilo Rappi (Lunes a Domingo)
@@ -625,7 +628,17 @@ export default function DashboardPage() {
 
       setLogoUrlNegocio(bizData.logo_url || '')
       setBannerUrlNegocio(bizData.banner_url || '')
-      setDireccionNegocio(bizData.direccion || '')
+      
+      let cleanDir = bizData.direccion || ''
+      if (cleanDir.includes('|')) {
+        cleanDir = cleanDir.split('|')[0].trim()
+      }
+      if (cleanDir.includes('{')) {
+        const jsonStart = cleanDir.indexOf('{')
+        cleanDir = cleanDir.substring(0, jsonStart).trim()
+      }
+      setDireccionNegocio(cleanDir)
+
       setLatitudeNegocio(String(bizData.latitude || ''))
       setLongitudeNegocio(String(bizData.longitude || ''))
       setRequiereMotivoSello(!!(bizData as any).requiere_motivo_sello)
@@ -1387,6 +1400,93 @@ export default function DashboardPage() {
     }
   }
 
+  const toggleProductoDisponible = async (pId: string, currentVal: boolean) => {
+    const newVal = !currentVal
+    // Instant local update
+    setMenuProducts(prev => prev.map(item => item.id === pId ? { ...item, disponible: newVal } : item))
+    const { error } = await supabase
+      .from('menu_products')
+      .update({ disponible: newVal })
+      .eq('id', pId)
+    if (error) {
+      alert('Error al cambiar disponibilidad: ' + error.message)
+      setMenuProducts(prev => prev.map(item => item.id === pId ? { ...item, disponible: currentVal } : item))
+    }
+  }
+
+  const toggleCategoriaExpandida = (catId: string) => {
+    setCategoriasExpandidas(prev => ({
+      ...prev,
+      [catId]: !prev[catId]
+    }))
+  }
+
+  const subirBrandingImagen = async (file: File, tipo: 'logo' | 'banner') => {
+    const businessId = activeBizId || getCookieVal('session_business_id') || business?.id
+    if (!businessId) return
+    if (tipo === 'logo') setSubiendoLogo(true)
+    else setSubiendoBanner(true)
+
+    try {
+      const fileExt = file.name.split('.').pop()
+      const fileName = businessId + '/branding-' + tipo + '-' + Date.now() + '.' + fileExt
+      const { error: uploadErr } = await supabase.storage
+        .from('menu-images')
+        .upload(fileName, file, { cacheControl: '3600', upsert: true, contentType: file.type || 'application/octet-stream' })
+      if (uploadErr) {
+        alert('Error al subir imagen: ' + uploadErr.message)
+        return
+      }
+      const { data: urlData } = supabase.storage.from('menu-images').getPublicUrl(fileName)
+      if (urlData && urlData.publicUrl) {
+        if (tipo === 'logo') {
+          setLogoUrlNegocio(urlData.publicUrl)
+        } else {
+          setBannerUrlNegocio(urlData.publicUrl)
+        }
+        alert('✅ Imagen de sucursal subida exitosamente!')
+      }
+    } catch (e: any) {
+      alert('Error en subida: ' + e.message)
+    } finally {
+      if (tipo === 'logo') setSubiendoLogo(false)
+      else setSubiendoBanner(false)
+    }
+  }
+
+  const obtenerUbicacionGPS = () => {
+    if (!navigator.geolocation) {
+      alert('La geolocalización no está soportada por tu navegador.')
+      return
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setGeoPushLat(position.coords.latitude)
+        setGeoPushLng(position.coords.longitude)
+        setLatitudeNegocio(String(position.coords.latitude))
+        setLongitudeNegocio(String(position.coords.longitude))
+        alert('📍 Coordenadas de GPS cargadas con éxito en ambos apartados!')
+      },
+      (error) => {
+        alert('Error al obtener ubicación GPS: ' + error.message)
+      }
+    )
+  }
+
+  const toggleAuditoriaMotivo = async (val: boolean) => {
+    setRequiereMotivoSello(val)
+    const businessId = business?.id
+    if (!businessId) return
+    const { error } = await supabase
+      .from('businesses')
+      .update({ requiere_motivo_sello: val })
+      .eq('id', businessId)
+    if (error) {
+      alert('Error al actualizar auditoría: ' + error.message)
+      setRequiereMotivoSello(!val)
+    }
+  }
+
   const subirImagenProd = async (file: File) => {
     const businessId = activeBizId || getCookieVal('session_business_id') || business?.id
     if (!businessId) return
@@ -1812,6 +1912,7 @@ export default function DashboardPage() {
     { id: 'metricas', label: 'Métricas', icon: LayoutDashboard },
     { id: 'configuracion', label: 'Configuración', icon: Settings },
     { id: 'productos', label: '🍔 Catálogo de Productos', icon: UtensilsCrossed },
+    { id: 'clientes', label: '👥 Clientes', icon: UserCheck },
     { id: 'redes', label: 'Redes y WhatsApp', icon: Smartphone },
     { id: 'menus', label: 'Gestión de Menús y QR', icon: QrCode },
     { id: 'geopush', label: 'Geopush', icon: MapIcon },
@@ -2096,6 +2197,20 @@ export default function DashboardPage() {
                 </div>
               </div>
 
+
+            </div>
+          )}
+
+          {/* ══════════════════════════════════════════
+              PESTAÑA NUEVA: CLIENTES & CRM
+          ══════════════════════════════════════════ */}
+          {pestaña === 'clientes' && (
+            <div className="space-y-6 animate-fadeIn max-w-3xl">
+              <div className="bg-white border border-[#e4e4e7] p-6 rounded-2xl shadow-sm space-y-2">
+                <h3 className="font-bold text-[#09090b]">👥 Clientes & CRM</h3>
+                <p className="text-xs text-[#71717a]">Visualiza e importa los socios de tu club de lealtad en un panel CRM unificado.</p>
+              </div>
+
               {/* ── IMPORTADOR MASIVO CSV ── */}
               <div className="bg-white border border-[#e4e4e7] rounded-2xl overflow-hidden shadow-sm mb-4">
                 <div
@@ -2208,105 +2323,11 @@ export default function DashboardPage() {
                   </div>
                 )}
               </div>
-
-              {/* VIP Clients Table */}
-              <div className="bg-white border border-[#e4e4e7] rounded-2xl overflow-hidden shadow-sm">
-                <div className="p-5 border-b border-[#e4e4e7]">
-                  <h3 className="text-sm font-bold text-[#09090b]">Tabla de Clientes VIP</h3>
-                  <p className="text-xs text-[#71717a] mt-0.5">Haz clic sobre un cliente para ver su perfil y enviarle alertas directas</p>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-[#fafafa] border-b border-[#e4e4e7]">
-                      <tr>
-                        {['Socio VIP', 'Estado', 'Progreso de Sellos', 'Acciones'].map(h => (
-                          <th key={h} className="px-6 py-4 text-left text-xs font-semibold text-[#71717a] uppercase tracking-wide whitespace-nowrap">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#f4f4f5]">
-                      {clientesVIP.map(c => {
-                        const sospechoso = sociosSospechosos[c.id]
-                        return (
-                          <tr key={c.id} className="hover:bg-[#fafafa] transition-colors group cursor-pointer" onClick={() => setClienteSeleccionadoModal(c)}>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="font-semibold text-[#09090b] group-hover:text-[#dc2626] transition-colors">{c.nombre}</div>
-                              <div className="text-xs text-[#a1a1aa] font-mono mt-0.5">{c.telefono || 'Sin tel.'}</div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              {sospechoso ? (
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-red-100 border border-red-200 text-red-600">
-                                  <AlertTriangle className="w-3 h-3" /> Sospechoso
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-green-100 border border-green-200 text-green-700">
-                                  <Check className="w-3 h-3" /> Verificado
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex items-center gap-3">
-                                <div className="w-24 h-1.5 bg-[#f4f4f5] rounded-full overflow-hidden">
-                                  <div className="h-full bg-[#dc2626] rounded-full" style={{ width: `${Math.min((c.puntos / Number(maxStamps)) * 100, 100)}%` }} />
-                                </div>
-                                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${c.puntos >= Number(maxStamps) ? 'bg-amber-100 text-amber-700' : 'bg-[#f4f4f5] text-[#71717a]'}`}>
-                                  {c.puntos}/{maxStamps} ★
-                                </span>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                              <div className="flex gap-2">
-                                <button onClick={() => abrirModalAjuste(c.id, c.nombre, c.puntos, 'resta')} className="w-8 h-8 rounded-lg border border-[#e4e4e7] hover:bg-[#fafafa] text-[#52525b] transition-colors flex items-center justify-center font-bold">−</button>
-                                <button onClick={() => abrirModalAjuste(c.id, c.nombre, c.puntos, 'suma')} className="w-8 h-8 rounded-lg bg-[#fef2f2] border border-[#fecaca] text-[#dc2626] hover:bg-red-50 transition-colors flex items-center justify-center font-bold">+</button>
-                                <button onClick={() => abrirEditarCliente(c)} className="w-8 h-8 rounded-lg border border-[#e4e4e7] hover:bg-[#fafafa] text-[#52525b] hover:text-[#dc2626] transition-colors flex items-center justify-center">
-                                  <Pencil className="w-3.5 h-3.5" />
-                                </button>
-                                <button onClick={() => eliminarCliente(c.id)} className="w-8 h-8 rounded-lg border border-[#e4e4e7] hover:bg-red-50 hover:border-red-200 text-[#a1a1aa] hover:text-red-500 transition-colors flex items-center justify-center">
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Auditoría */}
-              <div className="bg-white border border-[#e4e4e7] rounded-2xl overflow-hidden shadow-sm">
-                <div className="p-5 border-b border-[#e4e4e7]">
-                  <h3 className="text-sm font-bold text-[#09090b]">Auditoría de Movimientos</h3>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-[#fafafa] border-b border-[#e4e4e7]">
-                      <tr>
-                        {['Socio', 'Tipo', 'Cantidad', 'Descripción', 'Fecha'].map(h => (
-                          <th key={h} className="px-5 py-3 text-left text-xs font-semibold text-[#71717a] uppercase tracking-wide whitespace-nowrap">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#f4f4f5]">
-                      {historial.slice(0, 15).map(h => (
-                        <tr key={h.id} className="hover:bg-[#fafafa] transition-colors">
-                          <td className="px-5 py-3 font-medium text-[#09090b] whitespace-nowrap">{h.clientes?.nombre || 'Socio'}</td>
-                          <td className="px-5 py-3 whitespace-nowrap">
-                            <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${h.tipo_movimiento === 'suma' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
-                              {h.tipo_movimiento}
-                            </span>
-                          </td>
-                          <td className="px-5 py-3 font-mono font-bold text-amber-600 whitespace-nowrap">{h.cantidad} ★</td>
-                          <td className="px-5 py-3 text-[#71717a] max-w-xs truncate">{h.descripcion}</td>
-                          <td className="px-5 py-3 text-[#a1a1aa] font-mono text-xs whitespace-nowrap">{new Date(h.created_at).toLocaleString('es-MX')}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
             </div>
+          )}
+
+          {/* ══════════════════════════════════════════
+              PESTAÑA 2: CONFIGURACIÓN            </div>
           )}
 
           {/* ══════════════════════════════════════════
@@ -2354,11 +2375,23 @@ export default function DashboardPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className={LBL}>Logo del negocio (Emoji o URL)</label>
-                    <input type="text" value={logoUrlNegocio} onChange={e => setLogoUrlNegocio(e.target.value)} className={IC} placeholder="Ej: 🤠 o link de imagen" />
+                    <div className="flex gap-2">
+                      <input type="text" value={logoUrlNegocio} onChange={e => setLogoUrlNegocio(e.target.value)} className={IC + ' flex-1'} placeholder="Ej: 🤠 o link de imagen" />
+                      <label className="bg-[#09090b] hover:bg-zinc-800 text-white text-xs font-bold px-3.5 py-3 rounded-xl transition-all cursor-pointer flex items-center justify-center shrink-0">
+                        {subiendoLogo ? 'Subiendo...' : '📸 Subir'}
+                        <input type="file" accept="image/*" hidden onChange={e => { if (e.target.files?.[0]) subirBrandingImagen(e.target.files[0], 'logo') }} />
+                      </label>
+                    </div>
                   </div>
                   <div>
                     <label className={LBL}>Banner de fondo (URL de imagen)</label>
-                    <input type="text" value={bannerUrlNegocio} onChange={e => setBannerUrlNegocio(e.target.value)} className={IC} placeholder="Ej: https://..." />
+                    <div className="flex gap-2">
+                      <input type="text" value={bannerUrlNegocio} onChange={e => setBannerUrlNegocio(e.target.value)} className={IC + ' flex-1'} placeholder="Ej: https://..." />
+                      <label className="bg-[#09090b] hover:bg-zinc-800 text-white text-xs font-bold px-3.5 py-3 rounded-xl transition-all cursor-pointer flex items-center justify-center shrink-0">
+                        {subiendoBanner ? 'Subiendo...' : '📸 Subir'}
+                        <input type="file" accept="image/*" hidden onChange={e => { if (e.target.files?.[0]) subirBrandingImagen(e.target.files[0], 'banner') }} />
+                      </label>
+                    </div>
                   </div>
                   <div className="sm:col-span-2">
                     <label className={LBL}>Dirección Sucursal (Texto para clientes)</label>
@@ -2372,20 +2405,7 @@ export default function DashboardPage() {
                     <label className={LBL}>Longitud Sucursal</label>
                     <input type="number" step="any" value={longitudeNegocio} onChange={e => setLongitudeNegocio(e.target.value)} className={IC} placeholder="Ej: -102.067222" />
                   </div>
-                  <div className="sm:col-span-2 pt-2">
-                    <label className="flex items-center gap-3 bg-[#fafafa] border border-[#e4e4e7] rounded-xl p-4 cursor-pointer hover:bg-[#f4f4f5] transition-all">
-                      <input
-                        type="checkbox"
-                        checked={requiereMotivoSello}
-                        onChange={e => setRequiereMotivoSello(e.target.checked)}
-                        className="w-5 h-5 accent-[#dc2626] rounded cursor-pointer"
-                      />
-                      <div>
-                        <p className="text-sm font-bold text-[#09090b]">Explicación obligatoria en sellos manuales (Auditoría)</p>
-                        <p className="text-[11px] text-[#71717a] mt-0.5">Si se activa, los empleados deberán obligatoriamente escribir una razón en el motivo de auditoría al agregar o quitar sellos.</p>
-                      </div>
-                    </label>
-                  </div>
+
                 </div>
 
                 <div className="pt-2">
@@ -3026,150 +3046,197 @@ export default function DashboardPage() {
                           <p className="text-[#a1a1aa] text-sm font-bold">No hay categorías dinámicas creadas aún.</p>
                         </div>
                       ) : (
-                        menuGroups.map(g => {
+                                                menuGroups.map(g => {
                           const productosDeCat = menuProducts.filter(p => p.group_id === g.id)
                           const incompletos = productosDeCat.length === 0 || productosDeCat.some(p => !p.descripcion || !p.imagen_url)
+                          const isExpandida = !!categoriasExpandidas[g.id]
 
                           return (
-                            <div key={g.id} className="bg-white border border-[#e4e4e7] rounded-3xl p-4.5 flex justify-between items-center shadow-sm hover:shadow-md hover:border-[#d4d4d8] transition-all gap-4">
-                              <div className="flex items-center gap-3 min-w-0">
-                                <span className="text-[#a1a1aa] font-black text-sm shrink-0">❯</span>
-                                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 min-w-0">
-                                  <span className="font-black text-sm text-[#09090b] truncate">{g.nombre}</span>
-                                  {incompletos && (
-                                    <span className="text-[10px] bg-amber-50 border border-amber-100 text-amber-700 font-black px-2.5 py-0.5 rounded-full shrink-0 max-w-max">
-                                      Con productos incompletos
-                                    </span>
-                                  )}
-                                  {g.tipo_menu !== 'ambos' && (
-                                    <span className="text-[9px] bg-gray-50 border border-gray-100 text-gray-500 font-bold px-2 py-0.5 rounded-full shrink-0 uppercase max-w-max">
-                                      {g.tipo_menu === 'mesa' ? '🍽️ Local' : '🛵 Delivery'}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-
-                              <div className="flex items-center gap-3 shrink-0">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-xs text-[#71717a] font-bold">Activa</span>
-                                  <button
-                                    onClick={async (e) => {
-                                      e.stopPropagation()
-                                      const nuevoEstado = !g.activo
-                                      // Instant update for fluidity
-                                      setMenuGroups(prev => prev.map(item => item.id === g.id ? { ...item, activo: nuevoEstado } : item))
-                                      const { error } = await supabase
-                                        .from('menu_groups')
-                                        .update({ activo: nuevoEstado })
-                                        .eq('id', g.id)
-                                      if (error) {
-                                        alert('Error al actualizar: ' + error.message)
-                                        setMenuGroups(prev => prev.map(item => item.id === g.id ? { ...item, activo: !nuevoEstado } : item))
-                                      }
-                                    }}
-                                    className={`w-11 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors duration-300 ${
-                                      g.activo ? 'bg-blue-600' : 'bg-gray-200'
-                                    }`}
-                                  >
-                                    <div
-                                      className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-300 ${
-                                        g.activo ? 'translate-x-5' : 'translate-x-0'
-                                      }`}
-                                    />
-                                  </button>
+                            <div key={g.id} className="bg-white border border-[#e4e4e7] rounded-3xl shadow-sm overflow-hidden transition-all hover:border-[#d4d4d8]">
+                              {/* Header de la Categoría */}
+                              <div
+                                onClick={() => toggleCategoriaExpandida(g.id)}
+                                className="p-4.5 flex justify-between items-center cursor-pointer hover:bg-[#fafafa] transition-colors gap-4"
+                              >
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <span className={`text-[#dc2626] font-black text-xs shrink-0 transform transition-transform duration-200 ${isExpandida ? 'rotate-90' : ''}`}>
+                                    ❯
+                                  </span>
+                                  <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 min-w-0">
+                                    <span className="font-black text-sm text-[#09090b] truncate">{g.nombre}</span>
+                                    {incompletos && (
+                                      <span className="text-[10px] bg-amber-50 border border-amber-100 text-amber-700 font-black px-2.5 py-0.5 rounded-full shrink-0 max-w-max">
+                                        Con productos incompletos
+                                      </span>
+                                    )}
+                                    {g.tipo_menu !== 'ambos' && (
+                                      <span className="text-[9px] bg-gray-50 border border-gray-100 text-gray-500 font-bold px-2 py-0.5 rounded-full shrink-0 uppercase max-w-max">
+                                        {g.tipo_menu === 'mesa' ? '🍽️ Local' : '🛵 Delivery'}
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
 
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    alert(`📅 Agenda y Horarios especiales para "${g.nombre}" próximamente en LoyaltyClub Enterprise.`)
-                                  }}
-                                  className="p-2.5 border border-[#e4e4e7] rounded-xl hover:bg-[#fafafa] text-[#71717a] transition-all"
-                                  title="Calendario y Programación"
-                                >
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                  </svg>
-                                </button>
+                                <div className="flex items-center gap-3 shrink-0" onClick={e => e.stopPropagation()}>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs text-[#71717a] font-bold">Activa</span>
+                                    <button
+                                      onClick={async (e) => {
+                                        e.stopPropagation()
+                                        const nuevoEstado = !g.activo
+                                        // Instant update for fluidity
+                                        setMenuGroups(prev => prev.map(item => item.id === g.id ? { ...item, activo: nuevoEstado } : item))
+                                        const { error } = await supabase
+                                          .from('menu_groups')
+                                          .update({ activo: nuevoEstado })
+                                          .eq('id', g.id)
+                                        if (error) {
+                                          alert('Error al actualizar: ' + error.message)
+                                          setMenuGroups(prev => prev.map(item => item.id === g.id ? { ...item, activo: !nuevoEstado } : item))
+                                        }
+                                      }}
+                                      className={`w-11 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors duration-300 ${g.activo ? 'bg-blue-600' : 'bg-gray-200'}`}
+                                    >
+                                      <div
+                                        className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-300 ${g.activo ? 'translate-x-5' : 'translate-x-0'}`}
+                                      />
+                                    </button>
+                                  </div>
 
-                                <div className="relative inline-block text-left">
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation()
-                                      setMenuCategoriaAbierto(menuCategoriaAbierto === g.id ? null : g.id)
+                                      alert('📅 Agenda y Horarios especiales para ' + g.nombre + ' próximamente en LoyaltyClub Enterprise.')
                                     }}
-                                    className="p-2.5 border border-[#e4e4e7] rounded-xl hover:bg-[#fafafa] text-[#71717a] transition-all font-black text-xs tracking-widest"
+                                    className="p-2.5 border border-[#e4e4e7] rounded-xl hover:bg-[#fafafa] text-[#71717a] transition-all"
+                                    title="Calendario y Programación"
                                   >
-                                    •••
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                    </svg>
                                   </button>
-                                  
-                                  {menuCategoriaAbierto === g.id && (
-                                    <div className="absolute right-0 mt-2 w-48 bg-white border border-[#e4e4e7] rounded-2xl shadow-xl z-30 animate-fadeIn overflow-hidden">
-                                      <div className="py-1">
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation()
-                                            setMenuCategoriaAbierto(null)
-                                            setCategoriaAEditarModal(g)
-                                          }}
-                                          className="w-full text-left px-4 py-2.5 text-xs font-bold text-[#09090b] hover:bg-[#fafafa] transition-colors"
-                                        >
-                                          Editar
-                                        </button>
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation()
-                                            setMenuCategoriaAbierto(null)
-                                            const nuevoOrden = prompt(`Modificar orden visual para "${g.nombre}":`, g.orden)
-                                            if (nuevoOrden !== null) {
-                                              const num = Number(nuevoOrden)
-                                              if (!isNaN(num)) {
-                                                supabase.from('menu_groups').update({ orden: num }).eq('id', g.id).then(() => {
-                                                  const businessId = activeBizId || getCookieVal('session_business_id') || business?.id
-                                                  if (businessId) cargarDatosMenu(businessId)
-                                                })
+
+                                  <div className="relative inline-block text-left">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        setMenuCategoriaAbierto(menuCategoriaAbierto === g.id ? null : g.id)
+                                      }}
+                                      className="p-2.5 border border-[#e4e4e7] rounded-xl hover:bg-[#fafafa] text-[#71717a] transition-all font-black text-xs tracking-widest"
+                                    >
+                                      •••
+                                    </button>
+                                    
+                                    {menuCategoriaAbierto === g.id && (
+                                      <div className="absolute right-0 mt-2 w-48 bg-white border border-[#e4e4e7] rounded-2xl shadow-xl z-30 animate-fadeIn overflow-hidden">
+                                        <div className="py-1">
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation()
+                                              setMenuCategoriaAbierto(null)
+                                              setCategoriaAEditarModal(g)
+                                            }}
+                                            className="w-full text-left px-4 py-2.5 text-xs font-bold text-[#09090b] hover:bg-[#fafafa] transition-colors"
+                                          >
+                                            Editar
+                                          </button>
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation()
+                                              setMenuCategoriaAbierto(null)
+                                              const nuevoOrden = prompt('Modificar orden visual para ' + g.nombre + ':', g.orden)
+                                              if (nuevoOrden !== null) {
+                                                const num = Number(nuevoOrden)
+                                                if (!isNaN(num)) {
+                                                  supabase.from('menu_groups').update({ orden: num }).eq('id', g.id).then(() => {
+                                                    const businessId = activeBizId || getCookieVal('session_business_id') || business?.id
+                                                    if (businessId) cargarDatosMenu(businessId)
+                                                  })
+                                                }
                                               }
-                                            }
-                                          }}
-                                          className="w-full text-left px-4 py-2.5 text-xs font-bold text-[#09090b] hover:bg-[#fafafa] transition-colors"
-                                        >
-                                          Ordenar categoria
-                                        </button>
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation()
-                                            setMenuCategoriaAbierto(null)
-                                            setSubPestañaMenu('productos')
-                                            setGroupIdProd(g.id)
-                                          }}
-                                          className="w-full text-left px-4 py-2.5 text-xs font-bold text-[#09090b] hover:bg-[#fafafa] transition-colors"
-                                        >
-                                          Ordenar productos
-                                        </button>
-                                        <button
-                                          onClick={async (e) => {
-                                            e.stopPropagation()
-                                            setMenuCategoriaAbierto(null)
-                                            if (confirm(`¿Estás seguro de eliminar la categoría "${g.nombre}"? Se desvincularán sus productos.`)) {
-                                              const businessId = activeBizId || getCookieVal('session_business_id') || business?.id
-                                              if (!businessId) return
-                                              const { error } = await supabase.from('menu_groups').delete().eq('id', g.id)
-                                              if (error) {
-                                                alert('Error: ' + error.message)
-                                              } else {
-                                                cargarDatosMenu(businessId)
+                                            }}
+                                            className="w-full text-left px-4 py-2.5 text-xs font-bold text-[#09090b] hover:bg-[#fafafa] transition-colors"
+                                          >
+                                            Reordenar
+                                          </button>
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation()
+                                              setMenuCategoriaAbierto(null)
+                                              setSubPestañaMenu('productos')
+                                              setGroupIdProd(g.id)
+                                            }}
+                                            className="w-full text-left px-4 py-2.5 text-xs font-bold text-[#09090b] hover:bg-[#fafafa] transition-colors"
+                                          >
+                                            Ordenar productos
+                                          </button>
+                                          <button
+                                            onClick={async (e) => {
+                                              e.stopPropagation()
+                                              setMenuCategoriaAbierto(null)
+                                              if (confirm('¿Estás seguro de eliminar la categoría ' + g.nombre + '? Se desvincularán sus productos.')) {
+                                                const businessId = activeBizId || getCookieVal('session_business_id') || business?.id
+                                                if (!businessId) return
+                                                const { error } = await supabase.from('menu_groups').delete().eq('id', g.id)
+                                                if (error) {
+                                                  alert('Error: ' + error.message)
+                                                } else {
+                                                  cargarDatosMenu(businessId)
+                                                }
                                               }
-                                            }
-                                          }}
-                                          className="w-full text-left px-4 py-2.5 text-xs font-bold text-red-600 hover:bg-red-50/50 transition-colors border-t border-[#f4f4f5]"
-                                        >
-                                          Eliminar
-                                        </button>
+                                            }}
+                                            className="w-full text-left px-4 py-2.5 text-xs font-bold text-red-600 hover:bg-red-50/50 transition-colors border-t border-[#f4f4f5]"
+                                          >
+                                            Eliminar
+                                          </button>
+                                        </div>
                                       </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Panel del Acordeón Desplegado */}
+                              {isExpandida && (
+                                <div className="border-t border-[#f4f4f5] bg-[#fafafa] p-4.5 space-y-3 animate-fadeIn">
+                                  <p className="text-[10px] font-extrabold text-[#71717a] uppercase tracking-widest mb-2">🍽️ Productos en esta categoría</p>
+                                  {productosDeCat.length === 0 ? (
+                                    <p className="text-xs text-[#a1a1aa] italic py-2 pl-2">No hay productos en esta categoría todavía. Ve a la pestaña "🍔 Productos" para registrar uno.</p>
+                                  ) : (
+                                    <div className="space-y-2">
+                                      {productosDeCat.map(p => (
+                                        <div key={p.id} className="bg-white border border-[#e4e4e7] rounded-2xl p-3 flex justify-between items-center shadow-xs">
+                                          <div className="flex items-center gap-3 min-w-0">
+                                            {p.imagen_url ? (
+                                              <img src={p.imagen_url} alt="" className="w-10 h-10 rounded-xl object-cover border border-[#e4e4e7] shrink-0" />
+                                            ) : (
+                                              <div className="w-10 h-10 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center text-xs shrink-0 text-gray-400 font-bold">🍔</div>
+                                            )}
+                                            <div className="min-w-0">
+                                              <p className="text-xs font-bold text-[#09090b] truncate">{p.nombre}</p>
+                                              <p className="text-[10px] text-[#dc2626] font-mono font-bold mt-0.5">${p.precio} MXN</p>
+                                            </div>
+                                          </div>
+                                          
+                                          <div className="flex items-center gap-3 shrink-0">
+                                            <span className={`text-[10px] font-bold ${p.disponible ? 'text-green-600' : 'text-gray-400'}`}>
+                                              {p.disponible ? 'Disponible' : 'Agotado'}
+                                            </span>
+                                            <button
+                                              onClick={() => toggleProductoDisponible(p.id, p.disponible)}
+                                              className={`w-9 h-5 flex items-center rounded-full p-0.5 cursor-pointer transition-colors duration-300 ${p.disponible ? 'bg-green-600' : 'bg-gray-200'}`}
+                                            >
+                                              <div
+                                                className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-300 ${p.disponible ? 'translate-x-4' : 'translate-x-0'}`}
+                                              />
+                                            </button>
+                                          </div>
+                                        </div>
+                                      ))}
                                     </div>
                                   )}
                                 </div>
-                              </div>
+                              )}
                             </div>
                           )
                         })
@@ -3430,18 +3497,29 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                {/* Google Maps Iframe interactivo sin errores */}
-                <div className="space-y-2">
-                  <label className={LBL}>Mapa Interactivo de Google Maps (Preview)</label>
-                  <iframe
-                    width="100%"
-                    height="280"
-                    src={`https://maps.google.com/maps?q=${geoPushLat},${geoPushLng}&z=15&output=embed`}
-                    className="rounded-2xl border border-[#e4e4e7] shadow-sm bg-[#fafafa]"
-                    style={{ border: 0 }}
-                    allowFullScreen
-                    loading="lazy"
-                  ></iframe>
+                {/* OpenStreetMap Iframe interactivo sin errores */}
+                <div className="space-y-3">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                    <label className={LBL}>Mapa Interactivo de OpenStreetMap (Preview)</label>
+                    <button
+                      type="button"
+                      onClick={obtenerUbicacionGPS}
+                      className="text-xs bg-[#09090b] hover:bg-zinc-800 text-white font-extrabold px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 shrink-0"
+                    >
+                      📍 Obtener mi ubicación actual por GPS
+                    </button>
+                  </div>
+                  <div className="relative w-full rounded-2xl overflow-hidden border border-[#e4e4e7] shadow-sm bg-[#fafafa]" style={{ height: '280px' }}>
+                    <iframe
+                      title="Ubicación Geopush"
+                      width="100%"
+                      height="280"
+                      style={{ border: 0 }}
+                      loading="lazy"
+                      allowFullScreen
+                      src={`https://www.openstreetmap.org/export/embed.html?bbox=${Number(geoPushLng) - 0.005}%2C${Number(geoPushLat) - 0.004}%2C${Number(geoPushLng) + 0.005}%2C${Number(geoPushLat) + 0.004}&layer=mapnik&marker=${Number(geoPushLat)}%2C${Number(geoPushLng)}`}
+                    />
+                  </div>
                 </div>
 
                 {/* Slider para metros del radio perimetral */}
@@ -3801,10 +3879,130 @@ export default function DashboardPage() {
                   </div>
                 )}
               </div>
+
+
+              {/* Configuración de Auditoría */}
+              <div className="bg-white border border-[#e4e4e7] rounded-2xl p-6 shadow-sm space-y-4">
+                <div>
+                  <h3 className="text-sm font-bold text-[#09090b]">Configuración de Auditoría</h3>
+                  <p className="text-xs text-[#71717a] mt-0.5">Controla las políticas de validación para sellos otorgados de forma manual</p>
+                </div>
+                <label className="flex items-center gap-3 bg-[#fafafa] border border-[#e4e4e7] rounded-xl p-4 cursor-pointer hover:bg-[#f4f4f5] transition-all">
+                  <input
+                    type="checkbox"
+                    checked={requiereMotivoSello}
+                    onChange={e => toggleAuditoriaMotivo(e.target.checked)}
+                    className="w-5 h-5 accent-[#dc2626] rounded cursor-pointer"
+                  />
+                  <div>
+                    <p className="text-sm font-bold text-[#09090b]">Explicación obligatoria en sellos manuales (Auditoría)</p>
+                    <p className="text-[11px] text-[#71717a] mt-0.5">Si se activa, los empleados deberán obligatoriamente escribir una razón en el motivo de auditoría al agregar o quitar sellos.</p>
+                  </div>
+                </label>
+              </div>
+
+              {/* VIP Clients Table */}
+              <div className="bg-white border border-[#e4e4e7] rounded-2xl overflow-hidden shadow-sm">
+                <div className="p-5 border-b border-[#e4e4e7]">
+                  <h3 className="text-sm font-bold text-[#09090b]">Tabla de Clientes VIP</h3>
+                  <p className="text-xs text-[#71717a] mt-0.5">Haz clic sobre un cliente para ver su perfil y enviarle alertas directas</p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-[#fafafa] border-b border-[#e4e4e7]">
+                      <tr>
+                        {['Socio VIP', 'Estado', 'Progreso de Sellos', 'Acciones'].map(h => (
+                          <th key={h} className="px-6 py-4 text-left text-xs font-semibold text-[#71717a] uppercase tracking-wide whitespace-nowrap">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#f4f4f5]">
+                      {clientesVIP.map(c => {
+                        const sospechoso = sociosSospechosos[c.id]
+                        return (
+                          <tr key={c.id} className="hover:bg-[#fafafa] transition-colors group cursor-pointer" onClick={() => setClienteSeleccionadoModal(c)}>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="font-semibold text-[#09090b] group-hover:text-[#dc2626] transition-colors">{c.nombre}</div>
+                              <div className="text-xs text-[#a1a1aa] font-mono mt-0.5">{c.telefono || 'Sin tel.'}</div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              {sospechoso ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-red-100 border border-red-200 text-red-600">
+                                  <AlertTriangle className="w-3 h-3" /> Sospechoso
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-green-100 border border-green-200 text-green-700">
+                                  <Check className="w-3 h-3" /> Verificado
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex items-center gap-3">
+                                <div className="w-24 h-1.5 bg-[#f4f4f5] rounded-full overflow-hidden">
+                                  <div className="h-full bg-[#dc2626] rounded-full" style={{ width: `${Math.min((c.puntos / Number(maxStamps)) * 100, 100)}%` }} />
+                                </div>
+                                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${c.puntos >= Number(maxStamps) ? 'bg-amber-100 text-amber-700' : 'bg-[#f4f4f5] text-[#71717a]'}`}>
+                                  {c.puntos}/{maxStamps} ★
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex gap-2">
+                                <button onClick={() => abrirModalAjuste(c.id, c.nombre, c.puntos, 'resta')} className="w-8 h-8 rounded-lg border border-[#e4e4e7] hover:bg-[#fafafa] text-[#52525b] transition-colors flex items-center justify-center font-bold">−</button>
+                                <button onClick={() => abrirModalAjuste(c.id, c.nombre, c.puntos, 'suma')} className="w-8 h-8 rounded-lg bg-[#fef2f2] border border-[#fecaca] text-[#dc2626] hover:bg-red-50 transition-colors flex items-center justify-center font-bold">+</button>
+                                <button onClick={() => abrirEditarCliente(c)} className="w-8 h-8 rounded-lg border border-[#e4e4e7] hover:bg-[#fafafa] text-[#52525b] hover:text-[#dc2626] transition-colors flex items-center justify-center">
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                                <button onClick={() => eliminarCliente(c.id)} className="w-8 h-8 rounded-lg border border-[#e4e4e7] hover:bg-red-50 hover:border-red-200 text-[#a1a1aa] hover:text-red-500 transition-colors flex items-center justify-center">
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Auditoría */}
+              <div className="bg-white border border-[#e4e4e7] rounded-2xl overflow-hidden shadow-sm">
+                <div className="p-5 border-b border-[#e4e4e7]">
+                  <h3 className="text-sm font-bold text-[#09090b]">Auditoría de Movimientos</h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-[#fafafa] border-b border-[#e4e4e7]">
+                      <tr>
+                        {['Socio', 'Tipo', 'Cantidad', 'Descripción', 'Fecha'].map(h => (
+                          <th key={h} className="px-5 py-3 text-left text-xs font-semibold text-[#71717a] uppercase tracking-wide whitespace-nowrap">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#f4f4f5]">
+                      {historial.slice(0, 15).map(h => (
+                        <tr key={h.id} className="hover:bg-[#fafafa] transition-colors">
+                          <td className="px-5 py-3 font-medium text-[#09090b] whitespace-nowrap">{h.clientes?.nombre || 'Socio'}</td>
+                          <td className="px-5 py-3 whitespace-nowrap">
+                            <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${h.tipo_movimiento === 'suma' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                              {h.tipo_movimiento}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3 font-mono font-bold text-amber-600 whitespace-nowrap">{h.cantidad} ★</td>
+                          <td className="px-5 py-3 text-[#71717a] max-w-xs truncate">{h.descripcion}</td>
+                          <td className="px-5 py-3 text-[#a1a1aa] font-mono text-xs whitespace-nowrap">{new Date(h.created_at).toLocaleString('es-MX')}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           )}
 
           {/* ══════════════════════════════════════════
+              PESTAÑA 7: PROMOCIONES          {/* ══════════════════════════════════════════
               PESTAÑA 7: PROMOCIONES (CONFIGURACIÓN DE RULETA)
           ══════════════════════════════════════════ */}
           {pestaña === 'promociones' && (

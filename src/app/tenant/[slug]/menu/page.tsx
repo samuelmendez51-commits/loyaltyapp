@@ -68,6 +68,61 @@ export default function MenuPublico({ params }: { params: Promise<{ slug: string
 
   // Datos del checkout
   const [form, setForm] = useState({ nombre: '', telefono: '', calle: '', numero: '', colonia: '' })
+  const [telefonoAutocompletar, setTelefonoAutocompletar] = useState('')
+  const [mostrandoAutocompletar, setMostrandoAutocompletar] = useState(false)
+  const [buscandoAutocompletar, setBuscandoAutocompletar] = useState(false)
+
+  const ejecutarAutocompletado = async () => {
+    const telClean = telefonoAutocompletar.trim()
+    if (!telClean) {
+      alert('Por favor ingresa un número de teléfono.')
+      return
+    }
+    setBuscandoAutocompletar(true)
+    try {
+      const { data: cliente, error: cliErr } = await supabase
+        .from('clientes')
+        .select('*')
+        .eq('telefono', telClean)
+        .maybeSingle()
+
+      if (cliErr) {
+        console.error('Error al buscar cliente:', cliErr.message)
+      }
+
+      const { data: orders, error: orderErr } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('telefono', telClean)
+        .order('created_at', { ascending: false })
+        .limit(1)
+
+      if (orderErr) {
+        console.log('Error al buscar pedidos:', orderErr.message)
+      }
+
+      const ultimaOrden = orders?.[0]
+
+      if (cliente || ultimaOrden) {
+        setForm({
+          nombre: cliente?.nombre || ultimaOrden?.nombre || '',
+          telefono: telClean,
+          calle: ultimaOrden?.calle || '',
+          numero: ultimaOrden?.numero || '',
+          colonia: ultimaOrden?.colonia || ''
+        })
+        alert('✅ ¡Datos autocompletados con éxito! Por favor revisa y confirma si son correctos.')
+        setMostrandoAutocompletar(false)
+      } else {
+        alert('🔍 No encontramos registros con ese número de teléfono. Puedes registrarte ingresando tus datos abajo.')
+      }
+    } catch (e: any) {
+      alert('Error en autocompletado: ' + e.message)
+    } finally {
+      setBuscandoAutocompletar(false)
+    }
+  }
+
   const [clienteExistente, setClienteExistente] = useState<any>(null)
   const [aceptaVIP, setAceptaVIP] = useState(false)
   const [orderId, setOrderId] = useState('')
@@ -932,6 +987,42 @@ _Pedido procesado a través de LoyaltyApp VIP_`
           )}
         </div>
 
+        {/* Módulo Premium Autocompletar */}
+        <div className="bg-[#fafafa] border border-[#e4e4e7] rounded-2xl p-4 space-y-3 shadow-xs">
+          <div className="flex justify-between items-center">
+            <span className="text-xs font-black text-[#09090b]">🔑 ¿Ya tienes cuenta?</span>
+            <button
+              type="button"
+              onClick={() => setMostrandoAutocompletar(!mostrandoAutocompletar)}
+              className="text-[11px] bg-[#09090b] hover:bg-zinc-800 text-white font-extrabold px-3 py-1.5 rounded-xl transition-all"
+            >
+              {mostrandoAutocompletar ? 'Cancelar' : 'Autocompletar mis datos'}
+            </button>
+          </div>
+          {mostrandoAutocompletar && (
+            <div className="space-y-3 pt-1 border-t border-[#e4e4e7] animate-fadeIn">
+              <p className="text-[11px] text-[#71717a] leading-normal font-semibold">Ingresa tu número de celular y recuperaremos tu nombre y dirección histórica para ahorrarte tiempo.</p>
+              <div className="flex gap-2">
+                <input
+                  type="tel"
+                  placeholder="Ej: 3221234567"
+                  value={telefonoAutocompletar}
+                  onChange={e => setTelefonoAutocompletar(e.target.value)}
+                  className="bg-white border border-[#e4e4e7] rounded-xl px-4 py-2.5 text-xs text-[#09090b] flex-1 focus:outline-none focus:border-[#dc2626]"
+                />
+                <button
+                  type="button"
+                  onClick={ejecutarAutocompletado}
+                  disabled={buscandoAutocompletar}
+                  className="bg-[#dc2626] hover:bg-[#b91c1c] text-white text-xs font-black px-4 rounded-xl transition-all disabled:opacity-50"
+                >
+                  {buscandoAutocompletar ? 'Buscando...' : 'Buscar'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Formulario de datos */}
         <div className="space-y-4">
           {[
@@ -1108,22 +1199,7 @@ _Pedido procesado a través de LoyaltyApp VIP_`
                 </div>
               )}
 
-              {/* Tabs de grupos adhesivo secundario */}
-              <div className="sticky top-[73px] z-10 bg-white/95 backdrop-blur-sm border-b border-[#e4e4e7] px-4 overflow-x-auto">
-                <div className="flex gap-1 py-3">
-                  {grupos.map(g => (
-                    <button
-                      key={g.id}
-                      onClick={() => hacerScrollACategoria(g.id)}
-                      className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider whitespace-nowrap transition-all ${
-                        grupoActivo === g.id ? 'bg-[#dc2626] text-white shadow-sm' : 'text-[#a1a1aa] hover:text-[#52525b]'
-                      }`}
-                    >
-                      {g.nombre}
-                    </button>
-                  ))}
-                </div>
-              </div>
+
 
               {/* Lista de productos agrupada (Rappi-style) */}
               <div className="p-4 space-y-8 pb-32">
@@ -1137,7 +1213,7 @@ _Pedido procesado a través de LoyaltyApp VIP_`
                   const productosDelGrupo = productos.filter(p => p.group_id === g.id && p.disponible)
                   if (productosDelGrupo.length === 0) return null // no mostrar categorías vacías
                   
-                  const colapsada = categoriasColapsadas[g.id] || false
+                  const colapsada = categoriasColapsadas[g.id] !== undefined ? categoriasColapsadas[g.id] : true
                   return (
                     <div key={g.id} id={`category-section-${g.id}`} className="space-y-3 scroll-mt-[135px]">
                       <button

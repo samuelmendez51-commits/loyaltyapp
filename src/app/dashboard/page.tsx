@@ -151,6 +151,8 @@ export default function DashboardPage() {
   const [longitudeNegocio, setLongitudeNegocio] = useState('')
   const [requiereMotivoSello, setRequiereMotivoSello] = useState(false)
   const [guardandoBranding, setGuardandoBranding] = useState(false)
+  const [subiendoLogo, setSubiendoLogo] = useState(false)
+  const [subiendoBanner, setSubiendoBanner] = useState(false)
 
 
   // Horarios Estilo Rappi (Lunes a Domingo)
@@ -297,7 +299,17 @@ export default function DashboardPage() {
 
       setLogoUrlNegocio(bizData.logo_url || '')
       setBannerUrlNegocio(bizData.banner_url || '')
-      setDireccionNegocio(bizData.direccion || '')
+      
+      let cleanDir = bizData.direccion || ''
+      if (cleanDir.includes('|')) {
+        cleanDir = cleanDir.split('|')[0].trim()
+      }
+      if (cleanDir.includes('{')) {
+        const jsonStart = cleanDir.indexOf('{')
+        cleanDir = cleanDir.substring(0, jsonStart).trim()
+      }
+      setDireccionNegocio(cleanDir)
+
       setLatitudeNegocio(String(bizData.latitude || ''))
       setLongitudeNegocio(String(bizData.longitude || ''))
       setRequiereMotivoSello(!!(bizData as any).requiere_motivo_sello)
@@ -722,6 +734,39 @@ export default function DashboardPage() {
     const cleanTel = '52' + whatsappNegocio.replace(/\D/g, '').slice(-10)
     const msg = `*LoyaltyApp* 📲\n¡Tu conexión está activa! Sistema de notificaciones listo.`
     window.open(`https://wa.me/${cleanTel}?text=${encodeURIComponent(msg)}`, '_blank')
+  }
+
+  const subirBrandingImagen = async (file: File, tipo: 'logo' | 'banner') => {
+    const businessId = getCookieVal('session_business_id') || business?.id
+    if (!businessId) return
+    if (tipo === 'logo') setSubiendoLogo(true)
+    else setSubiendoBanner(true)
+
+    try {
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${businessId}/branding-${tipo}-${Date.now()}.${fileExt}`
+      const { error: uploadErr } = await supabase.storage
+        .from('menu-images')
+        .upload(fileName, file, { cacheControl: '3600', upsert: true, contentType: file.type || 'application/octet-stream' })
+      if (uploadErr) {
+        alert('Error al subir imagen: ' + uploadErr.message)
+        return
+      }
+      const { data: urlData } = supabase.storage.from('menu-images').getPublicUrl(fileName)
+      if (urlData?.publicUrl) {
+        if (tipo === 'logo') {
+          setLogoUrlNegocio(urlData.publicUrl)
+        } else {
+          setBannerUrlNegocio(urlData.publicUrl)
+        }
+        alert(`✅ ${tipo === 'logo' ? 'Logotipo' : 'Banner de fondo'} subido exitosamente!`)
+      }
+    } catch (e: any) {
+      alert('Error en subida: ' + e.message)
+    } finally {
+      if (tipo === 'logo') setSubiendoLogo(false)
+      else setSubiendoBanner(false)
+    }
   }
 
   // ── Menú Digital: Subir/Guardar ───────────────────────────────────────────────
@@ -1258,11 +1303,23 @@ export default function DashboardPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className={LBL}>Logo del negocio (Emoji o URL)</label>
-                    <input type="text" value={logoUrlNegocio} onChange={e => setLogoUrlNegocio(e.target.value)} className={IC} placeholder="Ej: 🤠 o link de imagen" />
+                    <div className="flex gap-2">
+                      <input type="text" value={logoUrlNegocio} onChange={e => setLogoUrlNegocio(e.target.value)} className={IC + ' flex-1'} placeholder="Ej: 🤠 o link de imagen" />
+                      <label className="bg-[#09090b] hover:bg-zinc-800 text-white text-xs font-bold px-3.5 py-3 rounded-xl transition-all cursor-pointer flex items-center justify-center shrink-0">
+                        {subiendoLogo ? 'Subiendo...' : '📸 Subir'}
+                        <input type="file" accept="image/*" hidden onChange={e => { if (e.target.files?.[0]) subirBrandingImagen(e.target.files[0], 'logo') }} />
+                      </label>
+                    </div>
                   </div>
                   <div>
                     <label className={LBL}>Banner de fondo (URL de imagen)</label>
-                    <input type="text" value={bannerUrlNegocio} onChange={e => setBannerUrlNegocio(e.target.value)} className={IC} placeholder="Ej: https://..." />
+                    <div className="flex gap-2">
+                      <input type="text" value={bannerUrlNegocio} onChange={e => setBannerUrlNegocio(e.target.value)} className={IC + ' flex-1'} placeholder="Ej: https://..." />
+                      <label className="bg-[#09090b] hover:bg-zinc-800 text-white text-xs font-bold px-3.5 py-3 rounded-xl transition-all cursor-pointer flex items-center justify-center shrink-0">
+                        {subiendoBanner ? 'Subiendo...' : '📸 Subir'}
+                        <input type="file" accept="image/*" hidden onChange={e => { if (e.target.files?.[0]) subirBrandingImagen(e.target.files[0], 'banner') }} />
+                      </label>
+                    </div>
                   </div>
                   <div className="sm:col-span-2">
                     <label className={LBL}>Dirección Sucursal (Texto para clientes)</label>
