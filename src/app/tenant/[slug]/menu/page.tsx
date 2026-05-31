@@ -1234,7 +1234,7 @@ _Pedido procesado a través de LoyaltyApp VIP_`
                 style={{ border: 0 }}
                 loading="lazy"
                 allowFullScreen
-                src={`https://maps.google.com/maps?q=${business.latitude},${business.longitude}&z=16&output=embed`}
+                src={`https://www.openstreetmap.org/export/embed.html?bbox=${Number(business.longitude) - 0.005}%2C${Number(business.latitude) - 0.004}%2C${Number(business.longitude) + 0.005}%2C${Number(business.latitude) + 0.004}&layer=mapnik&marker=${Number(business.latitude)}%2C${Number(business.longitude)}`}
               />
             ) : (
               <div className="absolute inset-0 bg-[#fafafa] flex flex-col items-center justify-center gap-3">
