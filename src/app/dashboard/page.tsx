@@ -143,6 +143,16 @@ export default function DashboardPage() {
   const [guardandoConfig, setGuardandoConfig] = useState(false)
   const [guardandoHorarios, setGuardandoHorarios] = useState(false)
 
+  // Nuevos Estados de Branding, Ubicación y Auditoría (Motivo Sello)
+  const [logoUrlNegocio, setLogoUrlNegocio] = useState('')
+  const [bannerUrlNegocio, setBannerUrlNegocio] = useState('')
+  const [direccionNegocio, setDireccionNegocio] = useState('')
+  const [latitudeNegocio, setLatitudeNegocio] = useState('')
+  const [longitudeNegocio, setLongitudeNegocio] = useState('')
+  const [requiereMotivoSello, setRequiereMotivoSello] = useState(false)
+  const [guardandoBranding, setGuardandoBranding] = useState(false)
+
+
   // Horarios Estilo Rappi (Lunes a Domingo)
   const [horariosSemanales, setHorariosSemanales] = useState<any[]>([
     { dia_text: 'Lunes', abierto: true, apertura: '14:00', cierre: '22:00' },
@@ -284,6 +294,14 @@ export default function DashboardPage() {
       setLinkInstagram((bizData as any).link_instagram || '')
       setLinkTiktok((bizData as any).link_tiktok || '')
       setLinkYoutube((bizData as any).link_youtube || '')
+
+      setLogoUrlNegocio(bizData.logo_url || '')
+      setBannerUrlNegocio(bizData.banner_url || '')
+      setDireccionNegocio(bizData.direccion || '')
+      setLatitudeNegocio(String(bizData.latitude || ''))
+      setLongitudeNegocio(String(bizData.longitude || ''))
+      setRequiereMotivoSello(!!(bizData as any).requiere_motivo_sello)
+
 
       const bId = bizData.id
       // Cargar Menús Digitales
@@ -636,6 +654,34 @@ export default function DashboardPage() {
       setGuardandoConfig(false)
     }
   }
+
+  const guardarBrandingYFidelizacion = async () => {
+    const businessId = getCookieVal('session_business_id') || business?.id
+    if (!businessId) return
+    setGuardandoBranding(true)
+    try {
+      const { error } = await supabase
+        .from('businesses')
+        .update({
+          logo_url: logoUrlNegocio.trim(),
+          banner_url: bannerUrlNegocio.trim(),
+          direccion: direccionNegocio.trim(),
+          latitude: parseFloat(latitudeNegocio) || null,
+          longitude: parseFloat(longitudeNegocio) || null,
+          requiere_motivo_sello: requiereMotivoSello
+        })
+        .eq('id', businessId)
+
+      if (error) throw error
+      alert('✅ Cambios de Apariencia, Ubicación y Seguridad guardados con éxito')
+      cargarDatos()
+    } catch (e: any) {
+      alert('Error al guardar configuración: ' + e.message)
+    } finally {
+      setGuardandoBranding(false)
+    }
+  }
+
 
   // ── Guardar Redes Sociales ────────────────────────────────────────────────────
   const guardarRedes = async () => {
@@ -1200,6 +1246,57 @@ export default function DashboardPage() {
                 <button onClick={guardarConfigEmpresa} disabled={guardandoConfig} className="btn-primary py-3 px-6 text-sm">
                   {guardandoConfig ? 'Guardando...' : 'Guardar Información de Empresa'}
                 </button>
+              </div>
+
+              {/* Apariencia, Ubicación y Seguridad */}
+              <div className="bg-white border border-[#e4e4e7] p-6 rounded-2xl shadow-sm space-y-6">
+                <div>
+                  <h3 className="font-bold text-[#09090b] mb-1">Apariencia, Ubicación & Seguridad</h3>
+                  <p className="text-xs text-[#71717a]">Configura el branding del negocio, coordenadas geográficas de la sucursal y políticas de auditoría para empleados.</p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className={LBL}>Logo del negocio (Emoji o URL)</label>
+                    <input type="text" value={logoUrlNegocio} onChange={e => setLogoUrlNegocio(e.target.value)} className={IC} placeholder="Ej: 🤠 o link de imagen" />
+                  </div>
+                  <div>
+                    <label className={LBL}>Banner de fondo (URL de imagen)</label>
+                    <input type="text" value={bannerUrlNegocio} onChange={e => setBannerUrlNegocio(e.target.value)} className={IC} placeholder="Ej: https://..." />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className={LBL}>Dirección Sucursal (Texto para clientes)</label>
+                    <input type="text" value={direccionNegocio} onChange={e => setDireccionNegocio(e.target.value)} className={IC} placeholder="Ej: Calle Principal 123, Centro" />
+                  </div>
+                  <div>
+                    <label className={LBL}>Latitud Sucursal</label>
+                    <input type="number" step="any" value={latitudeNegocio} onChange={e => setLatitudeNegocio(e.target.value)} className={IC} placeholder="Ej: 19.421583" />
+                  </div>
+                  <div>
+                    <label className={LBL}>Longitud Sucursal</label>
+                    <input type="number" step="any" value={longitudeNegocio} onChange={e => setLongitudeNegocio(e.target.value)} className={IC} placeholder="Ej: -102.067222" />
+                  </div>
+                  <div className="sm:col-span-2 pt-2">
+                    <label className="flex items-center gap-3 bg-[#fafafa] border border-[#e4e4e7] rounded-xl p-4 cursor-pointer hover:bg-[#f4f4f5] transition-all">
+                      <input
+                        type="checkbox"
+                        checked={requiereMotivoSello}
+                        onChange={e => setRequiereMotivoSello(e.target.checked)}
+                        className="w-5 h-5 accent-[#dc2626] rounded cursor-pointer"
+                      />
+                      <div>
+                        <p className="text-sm font-bold text-[#09090b]">Explicación obligatoria en sellos manuales (Auditoría)</p>
+                        <p className="text-[11px] text-[#71717a] mt-0.5">Si se activa, los empleados deberán obligatoriamente escribir una razón en el motivo de auditoría al agregar o quitar sellos.</p>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="pt-2">
+                  <button onClick={guardarBrandingYFidelizacion} disabled={guardandoBranding} className="btn-primary py-3 px-6 text-sm">
+                    {guardandoBranding ? 'Guardando configuración...' : 'Guardar Apariencia y Seguridad'}
+                  </button>
+                </div>
               </div>
 
               {/* Horarios de Servicio Estilo Rappi */}
