@@ -7,6 +7,17 @@ import { UtensilsCrossed, Bell, CreditCard, X, Gift, RotateCcw, Send, Lock, MapP
 
 // ── Interfaces ────────────────────────────────────────────────────────────────
 interface Premio { id: string; nombre: string; estampillas_requeridas: number; imagen_url?: string }
+interface MenuGroup { id: string; nombre: string; descripcion: string; tipo_menu: string; activo: boolean; orden: number }
+interface MenuProduct {
+  id: string; group_id: string; nombre: string; descripcion: string
+  precio: number; imagen_url: string; disponible: boolean; es_upsell?: boolean
+  product_modifiers?: ModifierGroup[]
+  suspension_tipo?: string
+  suspension_hasta?: string
+}
+interface ModifierGroup { id: string; nombre: string; requerido: boolean; modifier_options: ModifierOption[] }
+interface ModifierOption { id: string; nombre: string; precio_extra: number }
+interface CartItem { product: MenuProduct; cantidad: number; selecciones: Record<string, any>; subtotal: number }
 
 // ── Ruleta VIP ────────────────────────────────────────────────────────────────
 function RuletaVIP({
@@ -305,10 +316,68 @@ export default function TarjetaLealtadFinal() {
   const [linkYoutube, setLinkYoutube] = useState('')
   const [horarioSemanal, setHorarioSemanal] = useState<any>(null)
 
+  // ── Estados del Menú Interactivo ──
+  const [tipoMenu] = useState<'mesa' | 'delivery'>('delivery')
+  const [grupos, setGrupos] = useState<MenuGroup[]>([])
+  const [productos, setProductos] = useState<MenuProduct[]>([])
+  const [cart, setCart] = useState<CartItem[]>([])
+  const [grupoActivo, setGrupoActivo] = useState<string>('')
+  const [pasoMenu, setPasoMenu] = useState<'menu' | 'upsell' | 'checkout' | 'confirmado'>('menu')
+  const [enviando, setEnviando] = useState(false)
+  const [categoriasColapsadas, setCategoriasColapsadas] = useState<Record<string, boolean>>({})
+  const [fueraDeHorario, setFueraDeHorario] = useState(false)
+  const [horaAperturaHoy, setHoraAperturaHoy] = useState('14:00')
+  const [horaCierreHoy, setHoraCierreHoy] = useState('22:00')
+
+  // Modificadores
+  const [productoSeleccionadoMod, setProductoSeleccionadoMod] = useState<MenuProduct | null>(null)
+  const [seleccionesMod, setSeleccionesMod] = useState<Record<string, any>>({})
+
+  // Formulario Checkout
+  const [form, setForm] = useState({ nombre: '', telefono: '', calle: '', numero: '', colonia: '' })
+  const [telefonoAutocompletar, setTelefonoAutocompletar] = useState('')
+  const [mostrandoAutocompletar, setMostrandoAutocompletar] = useState(false)
+  const [buscandoAutocompletar, setBuscandoAutocompletar] = useState(false)
+  
+  const [clienteExistente, setClienteExistente] = useState<any>(null)
+  const [orderId, setOrderId] = useState('')
+  const [confeti, setConfeti] = useState(false)
+
   const getBaseUrl = () => {
     if (typeof window !== 'undefined') return window.location.origin
     if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL
     return 'http://localhost:3000'
+  }
+
+  // Lógica matemática para verificar si está cerrado en base al horario semanal
+  const verificarHorarioNegocio = (horario: any) => {
+    if (!horario) return false
+    const diasSemana = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado']
+    const ahora = new Date()
+    const diaActual = diasSemana[ahora.getDay()]
+    
+    const configDia = horario[diaActual]
+    if (!configDia) return false
+    if (configDia.cerrado) return true // Cerrado por descanso
+
+    const apertura = configDia.apertura || '14:00'
+    const cierre = configDia.cierre || '22:00'
+    
+    const horasActual = ahora.getHours()
+    const minsActual = ahora.getMinutes()
+    const tiempoActualMin = horasActual * 60 + minsActual
+    
+    const [hAp, mAp] = apertura.split(':').map(Number)
+    const [hCi, mCi] = cierre.split(':').map(Number)
+    const tiempoApMin = hAp * 60 + mAp
+    const tiempoCiMin = hCi * 60 + mCi
+    
+    if (tiempoApMin <= tiempoCiMin) {
+      return tiempoActualMin < tiempoApMin || tiempoActualMin > tiempoCiMin
+    } else {
+      // Cruce de medianoche
+      return tiempoActualMin < tiempoApMin && tiempoActualMin > tiempoCiMin
+    }
   }
 
   useEffect(() => {
@@ -322,6 +391,12 @@ export default function TarjetaLealtadFinal() {
 
       if (clienteData) {
         setCliente(clienteData)
+        setForm(prev => ({
+          ...prev,
+          nombre: clienteData.nombre || '',
+          telefono: clienteData.telefono || ''
+        }))
+        setTelefonoAutocompletar(clienteData.telefono || '')
         if (clienteData.business_id) {
           const { data: bizData } = await supabase
             .from('businesses')
@@ -373,7 +448,20 @@ export default function TarjetaLealtadFinal() {
               sabado: { cerrado: false, apertura: '14:00', cierre: '22:00' },
               domingo: { cerrado: false, apertura: '14:00', cierre: '21:30' }
             }
-            setHorarioSemanal(horarioSem || horarioDefault)
+            const horarioFinal = horarioSem || horarioDefault
+            setHorarioSemanal(horarioFinal)
+
+            // Validar si está cerrado por el horario comercial semanal
+            const estaCerrado = verificarHorarioNegocio(horarioFinal)
+            setFueraDeHorario(estaCerrado)
+
+            const diasSemana = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado']
+            const diaHoy = diasSemana[new Date().getDay()]
+            const configHoy = horarioFinal[diaHoy]
+            if (configHoy) {
+              setHoraAperturaHoy(configHoy.apertura || '14:00')
+              setHoraCierreHoy(configHoy.cierre || '22:00')
+            }
           }
 
           // Cargar premios del negocio
@@ -394,6 +482,52 @@ export default function TarjetaLealtadFinal() {
             .eq('activo', true)
             .maybeSingle()
           if (menuData) setMenuDigital(menuData)
+
+          // Cargar grupos del menú
+          try {
+            const { data: gData } = await supabase
+              .from('menu_groups')
+              .select('*')
+              .eq('business_id', clienteData.business_id)
+              .eq('activo', true)
+              .in('tipo_menu', [tipoMenu, 'ambos'])
+              .order('orden')
+            if (gData) {
+              setGrupos(gData)
+              if (gData.length > 0) setGrupoActivo(gData[0].id)
+            }
+          } catch (e) {
+            console.warn('Error loading menu groups:', e)
+          }
+
+          // Cargar productos con modificadores y saneamiento
+          try {
+            const { data: pData } = await supabase
+              .from('menu_products')
+              .select('*, product_modifiers(*, modifier_options(*))')
+              .eq('business_id', clienteData.business_id)
+            if (pData) {
+              const ahora = new Date()
+              let huboCambio = false
+
+              const productosProcesados = await Promise.all(pData.map(async (prod: any) => {
+                if (!prod.disponible && prod.suspension_hasta && new Date(prod.suspension_hasta) < ahora) {
+                  await supabase
+                    .from('menu_products')
+                    .update({ disponible: true, suspension_tipo: 'indefinida', suspension_hasta: null })
+                    .eq('id', prod.id)
+                  huboCambio = true
+                  return { ...prod, disponible: true, suspension_tipo: 'indefinida', suspension_hasta: null }
+                }
+                return prod
+              }))
+
+              const disponibles = productosProcesados.filter((p: any) => p.disponible)
+              setProductos(disponibles as MenuProduct[])
+            }
+          } catch (e) {
+            console.warn('Error loading menu products:', e)
+          }
 
           // Cargar Programa de Fidelidad Activo (Defensivo por si no se han corrido las migraciones aún)
           try {
@@ -491,6 +625,323 @@ export default function TarjetaLealtadFinal() {
 
   // La ruleta solo se activa si tiene la estructura y cumple el monto mínimo de su última compra
   const tieneRuletaActiva = tieneEstructuraRuleta && cumpleMontoMinimoRuleta
+
+  // ── Funciones del Carrito e Interacción del Menú ──
+  const ejecutarAutocompletado = async () => {
+    const telClean = telefonoAutocompletar.trim()
+    if (!telClean) {
+      alert('Por favor ingresa un número de teléfono.')
+      return
+    }
+    setBuscandoAutocompletar(true)
+    try {
+      const { data: colCliente, error: cliErr } = await supabase
+        .from('clientes')
+        .select('*')
+        .eq('telefono', telClean)
+        .maybeSingle()
+
+      if (cliErr) {
+        console.error('Error al buscar cliente:', cliErr.message)
+      }
+
+      const { data: orders, error: orderErr } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('telefono', telClean)
+        .order('created_at', { ascending: false })
+        .limit(1)
+
+      if (orderErr) {
+        console.log('Error al buscar pedidos:', orderErr.message)
+      }
+
+      const ultimaOrden = orders?.[0]
+
+      if (colCliente || ultimaOrden) {
+        setForm({
+          nombre: colCliente?.nombre || ultimaOrden?.nombre || '',
+          telefono: telClean,
+          calle: ultimaOrden?.calle || '',
+          numero: ultimaOrden?.numero || '',
+          colonia: ultimaOrden?.colonia || ''
+        })
+        alert('✅ ¡Datos autocompletados con éxito! Por favor revisa y confirma si son correctos.')
+        setMostrandoAutocompletar(false)
+      } else {
+        alert('🔍 No encontramos registros con ese número de teléfono. Puedes registrarte ingresando tus datos abajo.')
+      }
+    } catch (e: any) {
+      alert('Error en autocompletado: ' + e.message)
+    } finally {
+      setBuscandoAutocompletar(false)
+    }
+  }
+
+  const obtenerMaxSabores = (product: MenuProduct) => {
+    const nombre = product.nombre.toLowerCase()
+    if (!nombre.includes('alita') && !nombre.includes('wings')) return 1
+    
+    const matches = nombre.match(/\d+/g)
+    let piezas = 8
+    if (matches) {
+      const numeros = matches.map(m => parseInt(m, 10))
+      piezas = Math.max(...numeros)
+    }
+    
+    return Math.max(1, Math.floor(piezas / 8))
+  }
+
+  const esGrupoSabores = (modName: string) => {
+    const nombre = modName.toLowerCase()
+    return nombre.includes('sabor') || nombre.includes('salsa') || nombre.includes('flavor')
+  }
+
+  const hacerScrollACategoria = (groupId: string) => {
+    setGrupoActivo(groupId)
+    setCategoriasColapsadas(prev => ({ ...prev, [groupId]: false }))
+    const el = document.getElementById(`category-section-${groupId}`)
+    if (el) {
+      const yOffset = -130
+      const y = el.getBoundingClientRect().top + window.pageYOffset + yOffset
+      window.scrollTo({ top: y, behavior: 'smooth' })
+    }
+  }
+
+  const presionarAgregar = (product: MenuProduct) => {
+    if (product.product_modifiers && product.product_modifiers.length > 0) {
+      setProductoSeleccionadoMod(product)
+      const iniciales: Record<string, any> = {}
+      product.product_modifiers.forEach(mod => {
+        if (mod.modifier_options && mod.modifier_options.length > 0) {
+          const esSabor = esGrupoSabores(mod.nombre)
+          const maxS = obtenerMaxSabores(product)
+          if (esSabor && maxS > 1) {
+            iniciales[mod.id] = [mod.modifier_options[0]] // Primer sabor seleccionado por defecto como array
+          } else {
+            iniciales[mod.id] = mod.modifier_options[0]
+          }
+        }
+      })
+      setSeleccionesMod(iniciales)
+    } else {
+      agregarAlCarritoDirecto(product, {})
+    }
+  }
+
+  const seleccionarOpcion = (mod: ModifierGroup, opt: ModifierOption) => {
+    const maxSabores = obtenerMaxSabores(productoSeleccionadoMod!)
+    const esSabor = esGrupoSabores(mod.nombre)
+
+    if (esSabor && maxSabores > 1) {
+      const actuales: ModifierOption[] = Array.isArray(seleccionesMod[mod.id])
+        ? seleccionesMod[mod.id]
+        : (seleccionesMod[mod.id] ? [seleccionesMod[mod.id]] : [])
+
+      const yaSeleccionado = actuales.some(item => item.id === opt.id)
+      if (yaSeleccionado) {
+        if (actuales.length > 1 || !mod.requerido) {
+          const nuevos = actuales.filter(item => item.id !== opt.id)
+          setSeleccionesMod(prev => ({ ...prev, [mod.id]: nuevos }))
+        }
+      } else {
+        if (actuales.length < maxSabores) {
+          const nuevos = [...actuales, opt]
+          setSeleccionesMod(prev => ({ ...prev, [mod.id]: nuevos }))
+        } else {
+          alert(`Solo puedes seleccionar hasta ${maxSabores} sabores para esta orden de alitas.`)
+        }
+      }
+    } else {
+      setSeleccionesMod(prev => ({ ...prev, [mod.id]: opt }))
+    }
+  }
+
+  const agregarAlCarritoDirecto = (product: MenuProduct, selecciones: Record<string, any>) => {
+    const precioExtra = Object.values(selecciones).reduce((sum, opt) => {
+      if (Array.isArray(opt)) {
+        return sum + opt.reduce((s, o) => s + (Number(o.precio_extra) || 0), 0)
+      }
+      return sum + (Number(opt?.precio_extra) || 0)
+    }, 0)
+    const precioUnitario = Number(product.precio) + precioExtra
+    
+    setCart(prev => {
+      const existente = prev.find(item => {
+        if (item.product.id !== product.id) return false
+        const keys1 = Object.keys(item.selecciones)
+        const keys2 = Object.keys(selecciones)
+        if (keys1.length !== keys2.length) return false
+        return keys1.every(k => {
+          const opt1 = item.selecciones[k]
+          const opt2 = selecciones[k]
+          if (Array.isArray(opt1) && Array.isArray(opt2)) {
+            if (opt1.length !== opt2.length) return false
+            return opt1.every(o1 => opt2.some(o2 => o2.id === o1.id))
+          }
+          return opt1?.id === opt2?.id
+        })
+      })
+
+      if (existente) {
+        return prev.map(item => {
+          const matched = item.product.id === product.id && Object.keys(item.selecciones).every(k => {
+            const opt1 = item.selecciones[k]
+            const opt2 = selecciones[k]
+            if (Array.isArray(opt1) && Array.isArray(opt2)) {
+              if (opt1.length !== opt2.length) return false
+              return opt1.every(o1 => opt2.some(o2 => o2.id === o1.id))
+            }
+            return opt1?.id === opt2?.id
+          })
+          if (matched) {
+            const nuevaCant = item.cantidad + 1
+            return { ...item, cantidad: nuevaCant, subtotal: nuevaCant * precioUnitario }
+          }
+          return item
+        })
+      }
+      
+      return [...prev, { product, cantidad: 1, selecciones, subtotal: precioUnitario }]
+    })
+    
+    setProductoSeleccionadoMod(null)
+    setSeleccionesMod({})
+  }
+
+  const agregarAlCarrito = (product: MenuProduct) => {
+    presionarAgregar(product)
+  }
+
+  const quitarDelCarrito = (productId: string) => {
+    setCart(prev => {
+      const index = prev.map(item => item.product.id).lastIndexOf(productId)
+      if (index === -1) return prev
+      const item = prev[index]
+      if (item.cantidad <= 1) {
+        return prev.filter((_, idx) => idx !== index)
+      }
+      const precioExtra = Object.values(item.selecciones).reduce((sum, opt) => {
+        if (Array.isArray(opt)) {
+          return sum + opt.reduce((s, o) => s + (Number(o.precio_extra) || 0), 0)
+        }
+        return sum + (Number(opt?.precio_extra) || 0)
+      }, 0)
+      const precioUnitario = Number(item.product.precio) + precioExtra
+      
+      return prev.map((it, idx) => idx === index
+        ? { ...it, cantidad: it.cantidad - 1, subtotal: (it.cantidad - 1) * precioUnitario }
+        : it)
+    })
+  }
+
+  const totalCarrito = cart.reduce((s, i) => s + i.subtotal, 0)
+  const cantidadTotal = cart.reduce((s, i) => s + i.cantidad, 0)
+
+  const generarTextoWhatsApp = () => {
+    if (!business) return ''
+    
+    let itemsText = cart.map(i => {
+      const modTextList = Object.entries(i.selecciones).map(([key, o]: [string, any]) => {
+        if (key === 'salsa-aparte') return o ? ' (*Salsa Aparte*)' : ''
+        if (Array.isArray(o)) {
+          return o.map(subOpt => ` (+ ${subOpt.nombre})`).join('')
+        }
+        return o ? ` (+ ${o.nombre})` : ''
+      })
+      const modText = modTextList.join('')
+      return `• ${i.cantidad}x ${i.product.nombre}${modText} - $${i.subtotal.toLocaleString()} MXN`
+    }).join('\n')
+    
+    let tipoText = tipoMenu === 'delivery' ? '🛵 A Domicilio (Delivery)' : '🍽️ Comer en Restaurante (Mesa)'
+    
+    let direccionText = tipoMenu === 'delivery' 
+      ? `\n*Dirección:* ${form.calle} #${form.numero}, ${form.colonia}`
+      : ''
+
+    const msg = `*NUEVO PEDIDO DE CLIENTE VIP - ${business.nombre.toUpperCase()}* 🛍️✨
+-----------------------------------
+*Socio VIP:* ${form.nombre} (ID: ${cliente?.id?.substring(0, 8) || ''})
+*Teléfono:* ${form.telefono}
+*Tipo:* ${tipoText}${direccionText}
+
+*Resumen de Compra:*
+${itemsText}
+
+-----------------------------------
+*TOTAL:* $${totalCarrito.toLocaleString()} MXN
+-----------------------------------
+_Pedido procesado a través de LoyaltyApp VIP_`
+
+    return encodeURIComponent(msg)
+  }
+
+  const crearPedido = async () => {
+    if (!business || !cliente) return
+    setEnviando(true)
+
+    const superaMinimo = totalCarrito >= (business.monto_minimo_sello || 0)
+    const otorgarSello = superaMinimo
+
+    const { data: order, error } = await supabase.from('orders').insert({
+      business_id: business.id,
+      cliente_id: cliente.id,
+      nombre_cliente: form.nombre,
+      telefono_cliente: form.telefono,
+      calle: form.calle,
+      numero: form.numero,
+      colonia: form.colonia,
+      tipo: tipoMenu,
+      items: cart.map(i => ({
+        id: i.product.id,
+        nombre: i.product.nombre,
+        cantidad: i.cantidad,
+        precio_unitario: i.product.precio,
+        subtotal: i.subtotal,
+      })),
+      total: totalCarrito,
+      sello_otorgado: otorgarSello,
+      sello_aprobado: false,
+      sello_rechazado: false,
+      estado: 'pendiente',
+    }).select().single()
+
+    if (error || !order) { 
+      setEnviando(false)
+      alert('Error al procesar el pedido')
+      return 
+    }
+
+    setOrderId(order.id)
+
+    if (otorgarSello) {
+      await supabase.from('tracking_events').insert({
+        business_id: business.id,
+        cliente_id: cliente.id,
+        order_id: order.id,
+        event_type: 'created_pending',
+        metadata: { total: totalCarrito, tipo: tipoMenu, es_nuevo: false },
+      })
+
+      const nuevosPuntos = (cliente.puntos || 0) + 1
+      await supabase.from('clientes')
+        .update({ puntos: nuevosPuntos })
+        .eq('id', cliente.id)
+      
+      setCliente((prev: any) => prev ? { ...prev, puntos: nuevosPuntos } : null)
+      if (nuevosPuntos >= sellosTotales) {
+        setConfeti(true)
+      }
+    }
+
+    setEnviando(false)
+    setPasoMenu('confirmado')
+
+    const tel = '52' + (business.telefono_whatsapp || '').replace(/\D/g, '').slice(-10)
+    const textMsg = generarTextoWhatsApp()
+    const waUrl = `https://wa.me/${tel}?text=${textMsg}`
+    window.open(waUrl, '_blank')
+  }
 
   if (cargando) return (
     <div className="min-h-screen flex items-center justify-center bg-[#fafafa]">
@@ -751,9 +1202,9 @@ export default function TarjetaLealtadFinal() {
         </div>
       )}
 
-      {/* ── Vista: Menú Digital ── */}
+      {/* ── Vista: Menú Digital Interactiva ── */}
       {vistaActiva === 'menu' && (
-        <div className="max-w-sm mx-auto pt-8 px-4 space-y-5 animate-fadeIn">
+        <div className="max-w-sm mx-auto pt-8 px-4 space-y-5 animate-fadeIn text-[#09090b]">
           {/* Header del portal */}
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-2xl overflow-hidden border border-[#e4e4e7] shadow-sm bg-white shrink-0">
@@ -770,83 +1221,276 @@ export default function TarjetaLealtadFinal() {
             </div>
           </div>
 
-          {/* Tarjeta Unificada / Sección Integrada */}
-          <div className="bg-white rounded-3xl shadow-[0_4px_24px_rgba(0,0,0,0.08)] border border-[#f0f0f0] overflow-hidden p-6 space-y-5">
-            <div>
-              <p className="text-[10px] font-semibold text-[#dc2626] uppercase tracking-wider">Menú y Catálogos</p>
-              <h3 className="text-lg font-bold text-[#09090b] tracking-tight mt-0.5">Nuestra Carta Digital</h3>
-            </div>
-
-            {/* Listado de Catálogos */}
-            <div className="space-y-3">
-              {menuDigital?.url_consumo_local && (
-                <a
-                  href={menuDigital.url_consumo_local}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-3 bg-[#fafafa] border border-[#e4e4e7] rounded-2xl p-4 hover:bg-[#fef2f2] transition-colors"
-                >
-                  <div className="w-10 h-10 bg-white border border-[#e4e4e7] rounded-xl flex items-center justify-center shrink-0">
-                    <span className="text-lg">📋</span>
-                  </div>
+          {pasoMenu === 'menu' && (
+            <div className="space-y-5">
+              {/* Sección de Pedido Rápido (Top) */}
+              {business?.telefono_whatsapp && (
+                <div className="bg-green-50/50 border border-green-200 rounded-3xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.02)] flex items-center justify-between gap-3">
                   <div className="min-w-0 flex-1">
-                    <p className="font-bold text-sm text-[#09090b] truncate">Catálogo PDF (Comer Aquí)</p>
-                    <p className="text-[11px] text-[#71717a] truncate">Menú oficial para consumo en mesa</p>
+                    <p className="font-extrabold text-[11px] text-green-700 uppercase tracking-wider">⚡ Pedido por Chat Directo</p>
+                    <p className="text-[11px] text-[#71717a] mt-0.5 leading-relaxed font-medium">¿Prefieres ordenar platicando directamente con nosotros por WhatsApp?</p>
                   </div>
-                  <span className="text-xs font-bold text-[#dc2626] shrink-0">Ver →</span>
-                </a>
-              )}
-
-              {menuDigital?.url_domicilio && (
-                <a
-                  href={menuDigital.url_domicilio}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-3 bg-[#fafafa] border border-[#e4e4e7] rounded-2xl p-4 hover:bg-[#fef2f2] transition-colors"
-                >
-                  <div className="w-10 h-10 bg-white border border-[#e4e4e7] rounded-xl flex items-center justify-center shrink-0">
-                    <span className="text-lg">🛵</span>
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-bold text-sm text-[#09090b] truncate">Catálogo Web (Domicilio)</p>
-                    <p className="text-[11px] text-[#71717a] truncate">Pide directamente a domicilio</p>
-                  </div>
-                  <span className="text-xs font-bold text-[#dc2626] shrink-0">Ver →</span>
-                </a>
-              )}
-
-              {(!menuDigital?.url_consumo_local && !menuDigital?.url_domicilio) && (
-                <div className="bg-[#fafafa] rounded-2xl p-6 text-center border border-[#e4e4e7]">
-                  <p className="text-3xl mb-1.5">🍽️</p>
-                  <p className="font-bold text-sm text-[#09090b]">Menú No Disponible</p>
-                  <p className="text-xs text-[#71717a] mt-0.5">El negocio no ha configurado sus cartas digitales.</p>
+                  <a
+                    href={`https://wa.me/${'52' + (business.telefono_whatsapp || '').replace(/\D/g, '').slice(-10)}?text=${encodeURIComponent(`¡Hola! Soy cliente VIP (${cliente?.nombre}) y quiero hacer un pedido.`)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-[#25D366] hover:bg-[#20ba5a] text-white font-black text-[10px] uppercase tracking-widest px-4 py-3 rounded-xl transition-all shadow-[0_2px_8px_rgba(37,211,102,0.25)] flex items-center gap-1.5 shrink-0"
+                  >
+                    💬 Chat
+                  </a>
                 </div>
               )}
-            </div>
 
-            {/* Invitación al Club VIP */}
-            <div className="border-t border-[#f0f0f0] pt-5">
-              <div className="bg-gradient-to-br from-[#fef2f2] to-[#fffaf8] border border-[#fecaca] rounded-2xl p-4 flex flex-col gap-3">
-                <div className="flex gap-2.5 items-start">
-                  <div className="w-9 h-9 rounded-xl bg-white border border-[#fca5a5] flex items-center justify-center shrink-0">
-                    <span className="text-lg">🎟️</span>
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-[#dc2626] uppercase tracking-wider">¡Club de Lealtad VIP!</h4>
-                    <p className="text-xs text-[#52525b] mt-0.5 leading-relaxed">
-                      Acumula sellos en cada compra para ganar postres, bebidas o comidas gratis en sucursal.
-                    </p>
-                  </div>
+              {/* Cocina fuera de horario */}
+              {fueraDeHorario && (
+                <div className="bg-red-50/50 border border-red-200 rounded-3xl p-5 text-center space-y-2.5 animate-fadeIn">
+                  <span className="text-2xl block">😴</span>
+                  <h4 className="text-xs font-black text-[#dc2626] uppercase tracking-wider">Cocina Cerrada Temporalmente</h4>
+                  <p className="text-[11px] text-red-700 leading-relaxed font-semibold">
+                    Actualmente estamos fuera del horario de cocina comercial. Nuestro horario de hoy es de <strong>{horaAperturaHoy} a {horaCierreHoy}</strong>. Puedes ver nuestros productos, pero el envío de pedidos por WhatsApp está inhabilitado por ahora.
+                  </p>
                 </div>
-                <button
-                  onClick={() => setVistaActiva('tarjeta')}
-                  className="w-full bg-[#dc2626] hover:bg-[#b91c1c] text-white text-xs font-bold py-2.5 px-4 rounded-xl transition-all shadow-[0_2px_8px_rgba(220,38,38,0.25)] flex items-center justify-center gap-1.5"
-                >
-                  Ver Mi Tarjeta VIP
-                </button>
+              )}
+
+              {/* Selector de Categorías en Pills */}
+              {grupos.length > 0 && (
+                <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory">
+                  {grupos.map(g => (
+                    <button
+                      key={g.id}
+                      onClick={() => hacerScrollACategoria(g.id)}
+                      className={`snap-start px-4 py-2.5 rounded-2xl text-xs font-bold transition-all shrink-0 border ${
+                        grupoActivo === g.id
+                          ? 'bg-[#dc2626] border-[#dc2626] text-white shadow-[0_2px_8px_rgba(220,38,38,0.25)]'
+                          : 'bg-white border-[#e4e4e7] text-[#52525b] hover:bg-[#fafafa]'
+                      }`}
+                    >
+                      {g.nombre}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Grid interactivo de productos por categoría */}
+              <div className="space-y-6">
+                {grupos.map(grupo => {
+                  const prodGrupo = productos.filter(p => p.group_id === grupo.id)
+                  if (prodGrupo.length === 0) return null
+                  
+                  const colapsado = !!categoriasColapsadas[grupo.id]
+                  
+                  return (
+                    <div key={grupo.id} id={`category-section-${grupo.id}`} className="bg-white border border-[#f0f0f0] rounded-3xl p-5 shadow-[0_4px_20px_rgba(0,0,0,0.04)] space-y-4 transition-all">
+                      {/* Header de Categoría */}
+                      <div className="flex justify-between items-center border-b border-[#f4f4f5] pb-2.5 cursor-pointer" onClick={() => setCategoriasColapsadas(prev => ({ ...prev, [grupo.id]: !colapsado }))}>
+                        <div>
+                          <h3 className="text-sm font-black text-[#09090b] uppercase tracking-wider">{grupo.nombre}</h3>
+                          {grupo.descripcion && <p className="text-[10px] text-[#71717a] mt-0.5 font-medium">{grupo.descripcion}</p>}
+                        </div>
+                        <span className="text-[10px] text-[#a1a1aa] font-black uppercase tracking-wider px-2 py-0.5 bg-[#fafafa] border border-[#e4e4e7] rounded-lg">{colapsado ? 'Mostrar' : 'Ocultar'}</span>
+                      </div>
+                      
+                      {/* Listado de Productos */}
+                      {!colapsado && (
+                        <div className="space-y-4 divide-y divide-[#f4f4f5]">
+                          {prodGrupo.map((prod, pIdx) => {
+                            const cantEnCarrito = cart.filter(item => item.product.id === prod.id).reduce((sum, item) => sum + item.cantidad, 0)
+                            return (
+                              <div key={prod.id} className={`flex gap-3.5 pt-4 first:pt-0 ${pIdx > 0 ? 'border-t border-[#f4f4f5]' : ''} animate-fadeIn`}>
+                                {prod.imagen_url && (
+                                  <div className="w-16 h-16 rounded-2xl overflow-hidden border border-[#e4e4e7] shadow-sm shrink-0 bg-[#fafafa]">
+                                    <img src={prod.imagen_url} alt={prod.nombre} className="w-full h-full object-cover" />
+                                  </div>
+                                )}
+                                
+                                <div className="min-w-0 flex-1 flex flex-col justify-between">
+                                  <div>
+                                    <h4 className="text-xs font-black text-[#09090b] leading-tight">{prod.nombre}</h4>
+                                    {prod.descripcion && <p className="text-[10px] text-[#71717a] mt-0.5 line-clamp-2 leading-relaxed font-medium">{prod.descripcion}</p>}
+                                  </div>
+                                  <p className="text-[#dc2626] font-mono font-bold text-xs mt-1.5">${prod.precio.toLocaleString()} MXN</p>
+                                </div>
+                                
+                                {/* Controles de Carrito */}
+                                <div className="flex flex-col justify-end shrink-0">
+                                  {cantEnCarrito > 0 ? (
+                                    <div className="flex items-center bg-[#fafafa] border border-[#e4e4e7] rounded-xl overflow-hidden shadow-sm">
+                                      <button
+                                        onClick={() => quitarDelCarrito(prod.id)}
+                                        className="w-8 h-8 flex items-center justify-center font-bold text-[#52525b] hover:bg-zinc-100 transition-colors"
+                                      >
+                                        -
+                                      </button>
+                                      <span className="w-6 text-center text-xs font-black text-[#09090b]">{cantEnCarrito}</span>
+                                      <button
+                                        onClick={() => agregarAlCarrito(prod)}
+                                        className="w-8 h-8 flex items-center justify-center font-bold text-[#52525b] hover:bg-zinc-100 transition-colors"
+                                      >
+                                        +
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      onClick={() => agregarAlCarrito(prod)}
+                                      className="bg-[#dc2626] hover:bg-[#b91c1c] text-white font-black text-[10px] uppercase tracking-wider px-3.5 py-2.5 rounded-xl transition-all shadow-md shadow-red-500/10 active:scale-95"
+                                    >
+                                      Añadir
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
+
+              {/* Floating Bottom Cart Bar */}
+              {cantidadTotal > 0 && (
+                <div className="fixed bottom-20 left-0 right-0 px-4 z-40 animate-slideUp">
+                  <div className="max-w-sm mx-auto bg-[#09090b] text-white rounded-3xl p-4 shadow-[0_8px_30px_rgba(0,0,0,0.15)] border border-[#27272a] flex justify-between items-center gap-4">
+                    <div className="min-w-0">
+                      <p className="text-[9px] text-white/50 uppercase tracking-widest font-black">Mi Orden VIP</p>
+                      <p className="font-extrabold text-sm">{cantidadTotal} {cantidadTotal === 1 ? 'producto' : 'productos'} · <span className="font-mono text-red-400">${totalCarrito.toLocaleString()} MXN</span></p>
+                    </div>
+                    <button
+                      onClick={() => setPasoMenu('checkout')}
+                      className="bg-[#dc2626] hover:bg-[#b91c1c] text-white font-black text-xs uppercase tracking-widest py-3 px-5 rounded-2xl transition-all flex items-center gap-1.5 shrink-0 shadow-md active:scale-95"
+                    >
+                      <span>Ver Carrito 🛒</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
+          )}
+
+          {/* CHECKOUT FLOW */}
+          {pasoMenu === 'checkout' && (
+            <div className="bg-white border border-[#f0f0f0] rounded-3xl p-6 shadow-[0_4px_24px_rgba(0,0,0,0.08)] space-y-6 animate-fadeIn">
+              <div className="flex justify-between items-center">
+                <button onClick={() => setPasoMenu('menu')} className="text-xs text-[#71717a] font-bold hover:text-[#09090b] transition-colors">← Volver al Menú</button>
+                <span className="text-[9px] bg-red-50 border border-red-100 text-[#dc2626] px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider">Paso 2 de 2</span>
+              </div>
+              
+              <div>
+                <h3 className="text-lg font-bold text-[#09090b] tracking-tight">Confirmar Mi Pedido</h3>
+                <p className="text-xs text-[#71717a] mt-0.5">Por favor revisa tu orden y proporciona tus datos de entrega.</p>
+              </div>
+              
+              {/* Resumen Carrito */}
+              <div className="bg-[#fafafa] border border-[#e4e4e7] rounded-2xl p-4 space-y-3 shadow-xs">
+                {cart.map((item, index) => (
+                  <div key={`${item.product.id}-${index}`} className="flex justify-between items-start gap-4 border-b border-[#f4f4f5] pb-2.5 last:border-b-0 last:pb-0">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <button 
+                          onClick={() => setCart(prev => prev.filter((_, idx) => idx !== index))}
+                          className="text-red-500 hover:text-red-700 transition-colors w-4 h-4 rounded-full bg-red-50 hover:bg-red-100 flex items-center justify-center font-bold text-[10px] shrink-0"
+                        >
+                          ×
+                        </button>
+                        <p className="font-bold text-xs text-[#09090b]">{item.cantidad}x {item.product.nombre}</p>
+                      </div>
+                      {Object.keys(item.selecciones).length > 0 && (
+                        <p className="text-[9px] text-[#71717a] mt-0.5 pl-6 font-medium leading-relaxed">
+                          {Object.entries(item.selecciones).map(([key, o]: [string, any]) => {
+                            if (key === 'salsa-aparte') return o ? '🥣 Salsa Aparte' : ''
+                            if (Array.isArray(o)) return o.map(subOpt => `• ${subOpt.nombre}`).join(', ')
+                            return `• ${o?.nombre || ''}`
+                          }).filter(Boolean).join(', ')}
+                        </p>
+                      )}
+                    </div>
+                    <p className="text-[#dc2626] font-mono font-bold text-xs shrink-0">${item.subtotal.toLocaleString()} MXN</p>
+                  </div>
+                ))}
+                
+                <div className="border-t border-[#e4e4e7] pt-3 flex justify-between font-black text-sm">
+                  <span className="text-[#09090b]">Total</span>
+                  <span className="text-[#dc2626] text-base">${totalCarrito.toLocaleString()} MXN</span>
+                </div>
+                
+                {totalCarrito >= (business?.monto_minimo_sello || 0) ? (
+                  <p className="text-green-700 text-[10px] font-bold text-center bg-green-50 border border-green-200 rounded-xl py-2">
+                    ⭐ ¡Felicidades! Este pedido califica para recibir un sello VIP.
+                  </p>
+                ) : (
+                  <p className="text-[#71717a] text-[9px] font-medium text-center bg-[#f4f4f5] rounded-xl py-2">
+                    Agrega ${((business?.monto_minimo_sello || 0) - totalCarrito).toLocaleString()} MXN más para ganar un sello.
+                  </p>
+                )}
+              </div>
+              
+              {/* Datos del Cliente */}
+              <div className="space-y-4">
+                {[
+                  { key: 'nombre', label: 'Nombre completo', placeholder: 'Juan García', type: 'text' },
+                  { key: 'telefono', label: 'Número de teléfono', placeholder: '3221234567', type: 'tel' },
+                  { key: 'calle', label: 'Calle', placeholder: 'Av. Principal', type: 'text' },
+                  { key: 'numero', label: 'Número', placeholder: '123', type: 'text' },
+                  { key: 'colonia', label: 'Colonia', placeholder: 'Centro', type: 'text' },
+                ].map(field => (
+                  <div key={field.key}>
+                    <label className="text-[10px] text-[#52525b] uppercase tracking-widest font-bold block mb-1">{field.label}</label>
+                    <input
+                      type={field.type}
+                      value={form[field.key as keyof typeof form]}
+                      onChange={e => setForm(prev => ({ ...prev, [field.key]: e.target.value }))}
+                      placeholder={field.placeholder}
+                      className="w-full bg-[#fafafa] border border-[#e4e4e7] rounded-xl px-3.5 py-2.5 text-[#09090b] text-xs focus:outline-none focus:border-[#dc2626] transition-colors font-medium"
+                    />
+                  </div>
+                ))}
+              </div>
+              
+              <button
+                onClick={crearPedido}
+                disabled={!form.nombre || !form.telefono || fueraDeHorario || enviando}
+                className="w-full bg-[#dc2626] hover:bg-[#b91c1c] text-white font-black py-4 rounded-2xl uppercase tracking-widest text-xs transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-md shadow-red-500/10 active:scale-95"
+              >
+                {enviando ? 'Procesando...' : '📦 Confirmar y Enviar a WhatsApp'}
+              </button>
+            </div>
+          )}
+
+          {/* CONFIRMATION FLOW */}
+          {pasoMenu === 'confirmado' && (
+            <div className="bg-white border border-[#f0f0f0] rounded-3xl p-8 shadow-[0_4px_24px_rgba(0,0,0,0.08)] text-center space-y-5 animate-fadeIn">
+              <div className="w-16 h-16 rounded-full bg-green-50 border border-green-200 flex items-center justify-center mx-auto text-green-600">
+                <span className="text-3xl">🎉</span>
+              </div>
+              
+              <div className="space-y-1.5">
+                <h3 className="text-lg font-black text-[#09090b] tracking-tight">¡Pedido Procesado!</h3>
+                <p className="text-xs text-[#71717a] leading-relaxed font-medium">
+                  Hemos guardado tu pedido en el sistema VIP y se ha abierto WhatsApp para que envíes el mensaje de confirmación al negocio.
+                </p>
+              </div>
+              
+              {totalCarrito >= (business?.monto_minimo_sello || 0) && (
+                <div className="bg-gradient-to-br from-[#fffbeb] to-[#fffaf0] border border-[#fef3c7] rounded-2xl p-4 text-xs text-[#854d0e] leading-relaxed font-bold">
+                  ⭐ ¡Sello VIP Sumado!
+                  <p className="text-[10px] text-[#b45309] font-normal mt-1 leading-normal">
+                    En cuanto el negocio reciba y apruebe tu pedido, el sello se consolidará permanentemente en tu tarjeta VIP.
+                  </p>
+                </div>
+              )}
+              
+              <button
+                onClick={() => {
+                  setCart([])
+                  setPasoMenu('menu')
+                }}
+                className="w-full bg-[#dc2626] hover:bg-[#b91c1c] text-white font-black py-3.5 rounded-xl text-xs uppercase tracking-widest shadow-md transition-all active:scale-95"
+              >
+                Aceptar y Volver al Menú
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -1166,6 +1810,164 @@ export default function TarjetaLealtadFinal() {
           })}
         </div>
       </nav>
+
+      {/* MODAL DE MODIFICADORES */}
+      {productoSeleccionadoMod && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white border border-[#e4e4e7] rounded-3xl p-6 w-full max-w-md shadow-2xl relative animate-fadeIn text-[#09090b]">
+            <button 
+              onClick={() => setProductoSeleccionadoMod(null)}
+              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-[#fafafa] hover:bg-[#f4f4f5] flex items-center justify-center transition-colors text-[#71717a] font-bold"
+            >
+              ✕
+            </button>
+            
+            <div className="flex gap-4 mb-6">
+              {productoSeleccionadoMod.imagen_url && (
+                <img src={productoSeleccionadoMod.imagen_url} alt="" className="w-16 h-16 rounded-xl object-cover shrink-0" />
+              )}
+              <div>
+                <h3 className="text-sm font-black text-[#09090b] tracking-tight">{productoSeleccionadoMod.nombre}</h3>
+                <p className="text-[#52525b] text-[10px] mt-1 leading-relaxed font-semibold">{productoSeleccionadoMod.descripcion}</p>
+                <p className="text-[#dc2626] font-black text-sm mt-2">${productoSeleccionadoMod.precio.toLocaleString()} MXN</p>
+              </div>
+            </div>
+
+            {/* Listar modificadores */}
+            <div className="space-y-6 max-h-[45vh] overflow-y-auto mb-6 pr-2">
+              {productoSeleccionadoMod.product_modifiers?.map(mod => {
+                const maxSabores = obtenerMaxSabores(productoSeleccionadoMod)
+                const esSabor = esGrupoSabores(mod.nombre)
+                
+                // Inyectar la opción virtual "Naturales (Sin Salsa)" si es un modificador de sabores
+                const modifierOptionsFinal = [...(mod.modifier_options || [])]
+                if (esSabor && !modifierOptionsFinal.some(o => o.nombre.toLowerCase().includes('natural'))) {
+                  modifierOptionsFinal.push({
+                    id: 'natural-opt-virtual',
+                    nombre: 'Naturales (Sin Salsa)',
+                    precio_extra: 0
+                  })
+                }
+
+                return (
+                  <div key={mod.id} className="space-y-3">
+                    <div className="flex justify-between items-center border-b border-[#f4f4f5] pb-2">
+                      <div>
+                        <p className="text-xs font-black text-[#09090b] uppercase tracking-wider">{mod.nombre}</p>
+                        {esSabor && maxSabores > 1 && (
+                          <p className="text-[9px] text-[#dc2626] font-bold">Selecciona hasta {maxSabores} sabores</p>
+                        )}
+                      </div>
+                      {mod.requerido && (
+                        <span className="text-[9px] bg-red-50 border border-red-100 text-[#dc2626] px-2.5 py-0.5 rounded-full font-black uppercase">Requerido</span>
+                      )}
+                    </div>
+                    
+                    <div className="space-y-2">
+                      {modifierOptionsFinal.map(opt => {
+                        let seleccionado = false
+                        if (esSabor && maxSabores > 1) {
+                          const actuales = seleccionesMod[mod.id] || []
+                          seleccionado = Array.isArray(actuales)
+                            ? actuales.some((item: any) => item.id === opt.id)
+                            : actuales.id === opt.id
+                        } else {
+                          seleccionado = seleccionesMod[mod.id]?.id === opt.id
+                        }
+
+                        return (
+                          <label 
+                            key={opt.id}
+                            onClick={() => seleccionarOpcion(mod, opt)}
+                            className={`flex justify-between items-center p-3 rounded-xl border cursor-pointer transition-all ${
+                              seleccionado 
+                                ? 'bg-red-50/50 border-[#dc2626] text-[#dc2626]' 
+                                : 'bg-[#fafafa] border-[#e4e4e7] text-[#52525b] hover:border-[#d4d4d8]'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className={`w-5 h-5 border flex items-center justify-center ${
+                                esSabor && maxSabores > 1 ? 'rounded-lg' : 'rounded-full'
+                              } ${
+                                seleccionado ? 'border-[#dc2626] bg-[#dc2626]/10' : 'border-[#e4e4e7]'
+                              }`}>
+                                {seleccionado && (
+                                  <div className={`bg-[#dc2626] ${
+                                    esSabor && maxSabores > 1 ? 'w-2.5 h-2.5 rounded-sm' : 'w-2.5 h-2.5 rounded-full'
+                                  }`} />
+                                )}
+                              </div>
+                              <span className="text-xs font-black">{opt.nombre}</span>
+                            </div>
+                            {opt.precio_extra > 0 && (
+                              <span className="text-[#dc2626] text-xs font-mono font-bold">+${opt.precio_extra.toLocaleString()} MXN</span>
+                            )}
+                          </label>
+                        )
+                      })}
+
+                      {/* Checkbox "Salsa Aparte" para grupos de salsa/sabores */}
+                      {esSabor && (
+                        <label 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSeleccionesMod(prev => ({ ...prev, 'salsa-aparte': !prev['salsa-aparte'] }))
+                          }}
+                          className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer mt-3 transition-all ${
+                            seleccionesMod['salsa-aparte']
+                              ? 'bg-red-50/50 border-[#dc2626] text-[#dc2626]' 
+                              : 'bg-[#fafafa] border-[#e4e4e7] text-[#52525b] hover:border-[#d4d4d8]'
+                          }`}
+                        >
+                          <div className={`w-5 h-5 border flex items-center justify-center rounded-lg ${
+                            seleccionesMod['salsa-aparte'] ? 'border-[#dc2626] bg-[#dc2626]/10' : 'border-[#e4e4e7]'
+                          }`}>
+                            {seleccionesMod['salsa-aparte'] && (
+                              <div className="bg-[#dc2626] w-2.5 h-2.5 rounded-sm" />
+                            )}
+                          </div>
+                          <span className="text-xs font-bold flex items-center gap-1.5">
+                            <span>Salsa Aparte 🥣</span>
+                            <span className="text-[9px] text-[#71717a] font-normal font-sans">(Se enviará la salsa en un vasito por separado)</span>
+                          </span>
+                        </label>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Footer modal */}
+            <div className="border-t border-[#f4f4f5] pt-4 flex gap-3">
+              <button 
+                onClick={() => setProductoSeleccionadoMod(null)}
+                className="flex-1 py-3 border border-[#e4e4e7] rounded-xl text-[#52525b] text-xs font-bold hover:bg-[#fafafa] transition-colors"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={() => {
+                  const faltanRequeridos = productoSeleccionadoMod.product_modifiers?.some(mod => {
+                    if (!mod.requerido) return false
+                    const sel = seleccionesMod[mod.id]
+                    if (Array.isArray(sel)) return sel.length === 0
+                    return !sel
+                  })
+                  if (faltanRequeridos) {
+                    alert('Por favor selecciona las opciones obligatorias antes de continuar.')
+                    return
+                  }
+                  agregarAlCarritoDirecto(productoSeleccionadoMod, seleccionesMod)
+                }}
+                className="flex-1 py-3 bg-[#dc2626] hover:bg-[#b91c1c] text-white rounded-xl font-black uppercase tracking-wider text-xs shadow-md transition-all active:scale-95"
+              >
+                Añadir al Pedido
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   )
 }
