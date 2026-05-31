@@ -429,53 +429,9 @@ export default function TarjetaLealtadFinal() {
   }
 
   const generarPaseApple = async () => {
-    setGenerandoApple(true)
-    try {
-      const res = await fetch(`${getBaseUrl()}/api/wallet/apple`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          clienteId: cliente.id,
-          nombre: cliente.nombre,
-          puntos: cliente.puntos,
-          businessId: business?.id
-        })
-      })
-
-      if (res.ok) {
-        const contentType = res.headers.get('Content-Type')
-        if (contentType && contentType.includes('application/vnd.apple.pkpass')) {
-          const blob = await res.blob()
-          const url = window.URL.createObjectURL(blob)
-          const a = document.createElement('a')
-          a.href = url
-          a.download = `${(business?.nombre || 'VIP').replace(/\s+/g, '')}-${cliente.id.substring(0, 8)}.pkpass`
-          document.body.appendChild(a)
-          a.click()
-          window.URL.revokeObjectURL(url)
-          document.body.removeChild(a)
-        } else {
-          const data = await res.json()
-          if (data.webPass) {
-            document.open()
-            document.write(data.html)
-            document.close()
-          } else if (data.simulacion) {
-            alert(data.mensaje)
-          } else {
-            alert('Error al generar pase Apple: ' + (data.error || 'Respuesta inválida'))
-          }
-        }
-      } else {
-        const errData = await res.json()
-        alert('Error: ' + (errData.error || res.statusText))
-      }
-    } catch (error) {
-      console.error('[ClientePage] Error Apple Wallet:', error)
-      alert('Error de red al conectar con el servidor.')
-    } finally {
-      setGenerandoApple(false)
-    }
+    // Redirección directa hacia el endpoint GET de Apple Wallet para descarga y registro nativo en Safari/Brave
+    const targetUrl = `${getBaseUrl()}/api/wallet/apple?clienteId=${cliente.id}&businessId=${business?.id || ''}`
+    window.location.href = targetUrl
   }
 
   const sellosTotales = business?.max_sellos || 10

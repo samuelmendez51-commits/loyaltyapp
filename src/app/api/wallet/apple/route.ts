@@ -109,38 +109,86 @@ A1iZQT0xWmJArzmoUUOSqwSonMJNsUvSq3xKX+udO7xPiEAGE/+QF4oIRynoYpgp
 pU8RBWk6z/Kf
 -----END CERTIFICATE-----`
 
+// ── Helper: Sanitizar PEM ─────────────────────────────────────────────────────
+function sanitizePem(raw: string, type: 'CERTIFICATE' | 'PRIVATE KEY'): string {
+  if (!raw) return ''
+  let clean = raw.trim()
+  
+  // Quitar comillas si están presentes
+  if ((clean.startsWith('"') && clean.endsWith('"')) || (clean.startsWith("'") && clean.endsWith("'"))) {
+    clean = clean.slice(1, -1)
+  }
+  
+  // Reemplazar saltos de línea escapados
+  clean = clean.replace(/\\n/g, '\n')
+  
+  // Reconstruir si se han aplanado los saltos de línea con espacios
+  if (!clean.includes('\n')) {
+    const header = `-----BEGIN ${type}-----`
+    const footer = `-----END ${type}-----`
+    if (clean.includes(header) && clean.includes(footer)) {
+      let body = clean.replace(header, '').replace(footer, '').trim()
+      body = body.replace(/\s+/g, '\n')
+      clean = `${header}\n${body}\n${footer}`
+    }
+  }
+  
+  return clean.trim()
+}
+
 // ── Función: leer certificados con lógica híbrida priorizando base64 para producción ──
 function leerCertificados(): { signerCert: string; signerKey: string; wwdrCert: string } {
   let signerCert = ''
   let signerKey = ''
   let wwdrCert = ''
 
-  // Paso 1: Intentar leer variables de entorno Base64 (máxima estabilidad en producción en Vercel)
+  // Paso 1: Intentar leer variables de entorno (PEM plano o Base64)
   if (process.env.APPLE_WWDR_CERT) {
-    try {
-      wwdrCert = Buffer.from(process.env.APPLE_WWDR_CERT, 'base64').toString('utf8')
-      console.log('[AppleWallet] ✅ WWDR cargado desde APPLE_WWDR_CERT (Base64 env)')
-    } catch (e: any) { console.error('[AppleWallet] Error decodificando APPLE_WWDR_CERT:', e.message) }
+    const raw = process.env.APPLE_WWDR_CERT.trim()
+    if (raw.includes('BEGIN CERTIFICATE')) {
+      wwdrCert = sanitizePem(raw, 'CERTIFICATE')
+      console.log('[AppleWallet] ✅ WWDR cargado directamente desde APPLE_WWDR_CERT (PEM plano env)')
+    } else {
+      try {
+        const decoded = Buffer.from(raw, 'base64').toString('utf8')
+        if (decoded.includes('BEGIN CERTIFICATE')) {
+          wwdrCert = sanitizePem(decoded, 'CERTIFICATE')
+          console.log('[AppleWallet] ✅ WWDR cargado desde APPLE_WWDR_CERT (Base64 env)')
+        }
+      } catch (e: any) { console.error('[AppleWallet] Error decodificando APPLE_WWDR_CERT:', e.message) }
+    }
   }
 
   if (process.env.APPLE_SIGNER_CERT) {
-    try {
-      const decoded = Buffer.from(process.env.APPLE_SIGNER_CERT, 'base64').toString('utf8')
-      if (decoded.includes('BEGIN CERTIFICATE')) {
-        signerCert = decoded
-        console.log('[AppleWallet] ✅ Certificado cargado desde APPLE_SIGNER_CERT (Base64 env)')
-      }
-    } catch (e: any) { console.error('[AppleWallet] Error decodificando APPLE_SIGNER_CERT:', e.message) }
+    const raw = process.env.APPLE_SIGNER_CERT.trim()
+    if (raw.includes('BEGIN CERTIFICATE')) {
+      signerCert = sanitizePem(raw, 'CERTIFICATE')
+      console.log('[AppleWallet] ✅ Certificado cargado directamente desde APPLE_SIGNER_CERT (PEM plano env)')
+    } else {
+      try {
+        const decoded = Buffer.from(raw, 'base64').toString('utf8')
+        if (decoded.includes('BEGIN CERTIFICATE')) {
+          signerCert = sanitizePem(decoded, 'CERTIFICATE')
+          console.log('[AppleWallet] ✅ Certificado cargado desde APPLE_SIGNER_CERT (Base64 env)')
+        }
+      } catch (e: any) { console.error('[AppleWallet] Error decodificando APPLE_SIGNER_CERT:', e.message) }
+    }
   }
 
   if (process.env.APPLE_SIGNER_KEY) {
-    try {
-      const decoded = Buffer.from(process.env.APPLE_SIGNER_KEY, 'base64').toString('utf8')
-      if (decoded.includes('BEGIN')) {
-        signerKey = decoded
-        console.log('[AppleWallet] ✅ Llave cargada desde APPLE_SIGNER_KEY (Base64 env)')
-      }
-    } catch (e: any) { console.error('[AppleWallet] Error decodificando APPLE_SIGNER_KEY:', e.message) }
+    const raw = process.env.APPLE_SIGNER_KEY.trim()
+    if (raw.includes('BEGIN')) {
+      signerKey = sanitizePem(raw, 'PRIVATE KEY')
+      console.log('[AppleWallet] ✅ Llave cargada directamente desde APPLE_SIGNER_KEY (PEM plano env)')
+    } else {
+      try {
+        const decoded = Buffer.from(raw, 'base64').toString('utf8')
+        if (decoded.includes('BEGIN')) {
+          signerKey = sanitizePem(decoded, 'PRIVATE KEY')
+          console.log('[AppleWallet] ✅ Llave cargada desde APPLE_SIGNER_KEY (Base64 env)')
+        }
+      } catch (e: any) { console.error('[AppleWallet] Error decodificando APPLE_SIGNER_KEY:', e.message) }
+    }
   }
 
   // Paso 2: Intentar leer archivos físicos si no están presentes las variables de entorno (para desarrollo local)
@@ -414,5 +462,237 @@ export async function POST(req: Request) {
       code: error.code,
     })
     return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+}
+
+// ── GET HANDLER (Nativo para descarga directa y registro en iOS Safari) ────────
+export async function GET(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url)
+    const clienteId = searchParams.get('clienteId')
+    const businessId = searchParams.get('businessId')
+
+    if (!clienteId) {
+      return new NextResponse('Falta clienteId', { status: 400 })
+    }
+
+    // 1. Obtener cliente de Supabase
+    const { data: cliente, error: clientErr } = await supabase
+      .from('clientes')
+      .select('*')
+      .eq('id', clienteId)
+      .maybeSingle()
+
+    if (clientErr || !cliente) {
+      return new NextResponse(`Cliente no encontrado: ${clientErr?.message || ''}`, { status: 404 })
+    }
+
+    const nombre = cliente.nombre
+    const puntos = cliente.puntos
+
+    // Cargar datos del negocio si están presentes
+    let business: any = null
+    const bId = businessId || cliente.business_id
+    if (bId) {
+      try {
+        const { data } = await supabase
+          .from('businesses')
+          .select('*')
+          .eq('id', bId)
+          .maybeSingle()
+        if (data) business = data
+      } catch (e: any) {
+        console.warn('[AppleWallet] No se pudo cargar negocio:', e.message)
+      }
+    }
+
+    // Leer certificados con lógica robusta
+    const { signerCert, signerKey, wwdrCert } = leerCertificados()
+
+    // Construir el PKPass usando passkit-generator
+    try {
+      const logoPngPath = path.resolve(process.cwd(), 'public/logo.png')
+      let logoBuffer: Buffer
+      try {
+        logoBuffer = fs.readFileSync(logoPngPath)
+      } catch {
+        logoBuffer = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64')
+      }
+
+      const passBuffers: Record<string, Buffer> = {
+        "icon.png": logoBuffer,
+        "icon@2x.png": logoBuffer,
+        "logo.png": logoBuffer,
+        "logo@2x.png": logoBuffer
+      }
+
+      // Agregar imágenes si disponibles
+      try {
+        const logoUrl = business?.logo_url
+        if (logoUrl && (logoUrl.startsWith('http') || logoUrl.startsWith('/'))) {
+          let remoteBuffer: Buffer | null = null
+          if (logoUrl.startsWith('http')) {
+            const logoRes = await fetch(logoUrl)
+            if (logoRes.ok) {
+              remoteBuffer = Buffer.from(await logoRes.arrayBuffer())
+            }
+          } else {
+            const localImgPath = path.join(process.cwd(), 'public', logoUrl)
+            if (fs.existsSync(localImgPath)) {
+              remoteBuffer = fs.readFileSync(localImgPath)
+            }
+          }
+          if (remoteBuffer) {
+            passBuffers["icon.png"] = remoteBuffer
+            passBuffers["icon@2x.png"] = remoteBuffer
+            passBuffers["logo.png"] = remoteBuffer
+            passBuffers["logo@2x.png"] = remoteBuffer
+          }
+        }
+      } catch (imgErr: any) {
+        console.warn('[AppleWallet] No se pudieron cargar imágenes:', imgErr.message)
+      }
+
+      const modelObject: any = {
+        formatVersion: 1,
+        passTypeIdentifier: PASS_TYPE_IDENTIFIER,
+        teamIdentifier: TEAM_IDENTIFIER,
+        organizationName: business ? `${business.nombre} Club` : 'La Burrería Club',
+        description: business ? `Pase VIP de Fidelidad — ${business.nombre}` : 'Pase VIP de Fidelidad La Burrería',
+        logoText: business ? business.nombre : 'La Burrería',
+        foregroundColor: 'rgb(9, 9, 11)',
+        backgroundColor: 'rgb(255, 255, 255)',
+        labelColor: 'rgb(220, 38, 38)',
+        storeCard: {
+          headerFields: [
+            { key: 'sellos', label: 'SELLOS', value: String(puntos || 0), textAlignment: 'PKTextAlignmentRight' }
+          ],
+          primaryFields: [
+            { key: 'cliente', label: 'SOCIO VIP', value: nombre }
+          ],
+          secondaryFields: [
+            { key: 'id', label: 'ID DE SOCIO', value: clienteId.substring(0, 8) },
+            { key: 'negocio', label: 'NEGOCIO', value: business?.nombre || 'La Burrería' }
+          ],
+          backFields: [
+            { key: 'info', label: 'CÓMO ACUMULAR', value: 'Presenta tu código QR en cada visita para acumular sellos y ganar premios.' },
+            { key: 'contacto', label: 'CONTACTO', value: business?.telefono_whatsapp ? `+${business.telefono_whatsapp}` : 'Consulta al cajero' }
+          ]
+        },
+        barcode: {
+          message: clienteId,
+          format: 'PKBarcodeFormatQR',
+          messageEncoding: 'iso-8859-1',
+          altText: `ID: ${clienteId.substring(0, 8)}`
+        }
+      }
+
+      if (business?.latitude && business?.longitude) {
+        modelObject.locations = [{
+          latitude: Number(business.latitude),
+          longitude: Number(business.longitude),
+          relevantText: `¡Estás cerca! Visita ${business.nombre} y acumula sellos.`
+        }]
+      } else {
+        modelObject.locations = [{
+          latitude: 19.421583,
+          longitude: -102.067222,
+          relevantText: '¡Estás cerca! Pasa por La Burrería.'
+        }]
+      }
+
+      passBuffers["pass.json"] = Buffer.from(JSON.stringify(modelObject))
+
+      const pass = new PKPass(
+        passBuffers,
+        {
+          wwdr: wwdrCert || undefined,
+          signerCert: signerCert,
+          signerKey: signerKey
+        },
+        {
+          serialNumber: clienteId,
+          webServiceURL: process.env.NEXT_PUBLIC_SITE_URL || 'https://laburreria.loyaltyclub.mx',
+          authenticationToken: process.env.APPLE_PASS_AUTH_TOKEN || 'secure_token_laburreria_2026',
+        }
+      )
+
+      const passBuffer = pass.getAsBuffer()
+
+      console.log('[AppleWallet] ✅ Pase .pkpass generado exitosamente via GET para:', clienteId)
+      return new NextResponse(passBuffer as any, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/vnd.apple.pkpass',
+          'Content-Disposition': `attachment; filename="${(business?.nombre || 'VIP').replace(/\s+/g, '')}-${clienteId.substring(0, 8)}.pkpass"`,
+        },
+      })
+
+    } catch (passError: any) {
+      console.warn('[AppleWallet] Error generando .pkpass via GET (generando HTML de respaldo):', passError.message)
+
+      // Fallback: Pase Web Premium en HTML para el navegador
+      const logoText = business ? business.nombre : 'La Burrería'
+      const starsHtml = Array.from({ length: 10 }).map((_, idx) =>
+        idx < (puntos || 0)
+          ? `<div style="width:32px;height:32px;background:linear-gradient(135deg,#FFD700,#FDB931);border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 0 12px rgba(255,215,0,0.5);"><span style="color:#452000;font-size:1.1rem;font-weight:900;">★</span></div>`
+          : `<div style="width:32px;height:32px;border:2px dashed #e4e4e7;border-radius:50%;display:flex;align-items:center;justify-content:center;"><span style="color:#d4d4d8;font-size:1rem;">★</span></div>`
+      ).join('')
+
+      const htmlContent = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pase VIP — ${logoText}</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap');
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', sans-serif; background: #fafafa; color: #09090b; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 1.5rem; }
+    .card { background: white; border: 1px solid #e4e4e7; border-radius: 24px; padding: 2rem; max-width: 360px; width: 100%; box-shadow: 0 10px 40px rgba(0,0,0,0.08); }
+    .badge { background: #fef2f2; color: #dc2626; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; padding: 4px 10px; border-radius: 999px; border: 1px solid #fecaca; }
+    .name { font-size: 1.6rem; font-weight: 900; letter-spacing: -0.03em; margin: 1rem 0 0.25rem; }
+    .stamps { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; padding: 1.25rem; background: #fafafa; border-radius: 16px; margin: 1.25rem 0; }
+    .qr-wrap { background: white; border: 1px solid #e4e4e7; border-radius: 12px; padding: 0.75rem; display: inline-block; }
+    .tip { margin-top: 1.5rem; text-align: center; font-size: 12px; color: #71717a; line-height: 1.6; }
+    .tip strong { color: #dc2626; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div style="text-align:left;margin-bottom:1.25rem;">
+      <a href="javascript:history.back()" style="color:#71717a;text-decoration:none;font-size:12px;font-weight:650;display:inline-flex;align-items:center;gap:4px;transition:colors 0.2s;">← Regresar al Portal</a>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
+      <div>
+        <p style="font-size:11px;color:#71717a;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;">${logoText}</p>
+        <p style="font-size:11px;color:#dc2626;font-weight:700;letter-spacing:0.04em;">Club de Fidelización</p>
+      </div>
+      <span class="badge">Pase VIP</span>
+    </div>
+    <p style="font-size:11px;color:#a1a1aa;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Titular</p>
+    <h1 class="name">${nombre}</h1>
+    <p style="font-size:11px;color:#a1a1aa;font-family:monospace;">ID: ${clienteId.substring(0, 8)}</p>
+    <div class="stamps">${starsHtml}</div>
+    <p style="text-align:center;font-size:28px;font-weight:900;color:#09090b;margin-bottom:0.25rem;">${puntos || 0}<span style="font-size:14px;color:#a1a1aa;font-weight:600;"> / 10 sellos</span></p>
+    <div style="text-align:center;margin-top:1.25rem;">
+      <div class="qr-wrap">
+        <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${clienteId}&bgcolor=ffffff&color=09090b&margin=0" alt="QR VIP" width="150" height="150" />
+      </div>
+    </div>
+    <p class="tip">📸 Guarda esta página en tus favoritos o toma una captura de pantalla para acceder a tu pase VIP en cualquier momento.<br><br><strong>Muestra el QR en caja para acumular sellos.</strong></p>
+  </div>
+</body>
+</html>`
+
+      return new NextResponse(htmlContent, {
+        status: 200,
+        headers: { 'Content-Type': 'text/html' }
+      })
+    }
+
+  } catch (error: any) {
+    console.error('[AppleWallet] Error crítico en GET handler:', error.message)
+    return new NextResponse(`Error: ${error.message}`, { status: 500 })
   }
 }
