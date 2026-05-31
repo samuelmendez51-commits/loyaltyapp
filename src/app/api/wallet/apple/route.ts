@@ -6,6 +6,8 @@ import path from 'path'
 // ── Importación CommonJS estricta para evitar conflictos ESM/CJS ──────────────
 // @ts-ignore
 const { PKPass } = require('passkit-generator')
+// @ts-ignore
+const Jimp = require('jimp')
 
 // ── Supabase ──────────────────────────────────────────────────────────────────
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://hjaeireljkcvjnigfhzb.supabase.co'
@@ -134,6 +136,22 @@ function sanitizePem(raw: string, type: 'CERTIFICATE' | 'PRIVATE KEY'): string {
   }
   
   return clean.trim()
+}
+
+// ── Helper: Redimensionar y comprimir imágenes con Jimp ───────────────────────
+async function resizeImage(buffer: Buffer, width: number, height: number, mode: 'cover' | 'contain'): Promise<Buffer> {
+  try {
+    const image = await Jimp.read(buffer)
+    if (mode === 'cover') {
+      image.cover(width, height)
+    } else {
+      image.contain(width, height)
+    }
+    return await image.quality(75).getBufferAsync(Jimp.MIME_PNG)
+  } catch (err: any) {
+    console.warn(`[AppleWallet] Error resizing image to ${width}x${height}:`, err.message)
+    return buffer // Fallback to raw buffer if resize fails
+  }
 }
 
 // ── Función: leer certificados con lógica híbrida priorizando base64 para producción ──
@@ -274,45 +292,42 @@ export async function POST(req: Request) {
     // Construir el PKPass usando passkit-generator v3 API
     try {
       const logoPngPath = path.resolve(process.cwd(), 'public/logo.png')
-      let logoBuffer: Buffer
+      let baseBuffer: Buffer
       try {
-        logoBuffer = fs.readFileSync(logoPngPath)
+        baseBuffer = fs.readFileSync(logoPngPath)
       } catch {
-        logoBuffer = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64')
+        baseBuffer = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64')
       }
 
-      const passBuffers: Record<string, Buffer> = {
-        "icon.png": logoBuffer,
-        "icon@2x.png": logoBuffer,
-        "logo.png": logoBuffer,
-        "logo@2x.png": logoBuffer
-      }
-
-      // Agregar imágenes si disponibles
+      // Intentar cargar logo remoto/específico del negocio si está disponible
       try {
         const logoUrl = business?.logo_url
         if (logoUrl && (logoUrl.startsWith('http') || logoUrl.startsWith('/'))) {
-          let remoteBuffer: Buffer | null = null
           if (logoUrl.startsWith('http')) {
             const logoRes = await fetch(logoUrl)
             if (logoRes.ok) {
-              remoteBuffer = Buffer.from(await logoRes.arrayBuffer())
+              baseBuffer = Buffer.from(await logoRes.arrayBuffer())
+              console.log('[AppleWallet] ✅ Logo remoto cargado para compresión')
             }
           } else {
             const localImgPath = path.join(process.cwd(), 'public', logoUrl)
             if (fs.existsSync(localImgPath)) {
-              remoteBuffer = fs.readFileSync(localImgPath)
+              baseBuffer = fs.readFileSync(localImgPath)
+              console.log('[AppleWallet] ✅ Logo local cargado para compresión')
             }
-          }
-          if (remoteBuffer) {
-            passBuffers["icon.png"] = remoteBuffer
-            passBuffers["icon@2x.png"] = remoteBuffer
-            passBuffers["logo.png"] = remoteBuffer
-            passBuffers["logo@2x.png"] = remoteBuffer
           }
         }
       } catch (imgErr: any) {
-        console.warn('[AppleWallet] No se pudieron cargar imágenes:', imgErr.message)
+        console.warn('[AppleWallet] No se pudo cargar imagen del negocio, usando logo por defecto:', imgErr.message)
+      }
+
+      // Redimensionar las imágenes de forma ultra-ligera en base a baseBuffer
+      console.log('[AppleWallet] 🎨 Redimensionando y comprimiendo imágenes para el pase...')
+      const passBuffers: Record<string, Buffer> = {
+        "icon.png": await resizeImage(baseBuffer, 29, 29, 'cover'),
+        "icon@2x.png": await resizeImage(baseBuffer, 58, 58, 'cover'),
+        "logo.png": await resizeImage(baseBuffer, 160, 50, 'contain'),
+        "logo@2x.png": await resizeImage(baseBuffer, 320, 100, 'contain')
       }
 
       const modelObject: any = {
@@ -512,45 +527,42 @@ export async function GET(req: Request) {
     // Construir el PKPass usando passkit-generator
     try {
       const logoPngPath = path.resolve(process.cwd(), 'public/logo.png')
-      let logoBuffer: Buffer
+      let baseBuffer: Buffer
       try {
-        logoBuffer = fs.readFileSync(logoPngPath)
+        baseBuffer = fs.readFileSync(logoPngPath)
       } catch {
-        logoBuffer = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64')
+        baseBuffer = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64')
       }
 
-      const passBuffers: Record<string, Buffer> = {
-        "icon.png": logoBuffer,
-        "icon@2x.png": logoBuffer,
-        "logo.png": logoBuffer,
-        "logo@2x.png": logoBuffer
-      }
-
-      // Agregar imágenes si disponibles
+      // Intentar cargar logo remoto/específico del negocio si está disponible
       try {
         const logoUrl = business?.logo_url
         if (logoUrl && (logoUrl.startsWith('http') || logoUrl.startsWith('/'))) {
-          let remoteBuffer: Buffer | null = null
           if (logoUrl.startsWith('http')) {
             const logoRes = await fetch(logoUrl)
             if (logoRes.ok) {
-              remoteBuffer = Buffer.from(await logoRes.arrayBuffer())
+              baseBuffer = Buffer.from(await logoRes.arrayBuffer())
+              console.log('[AppleWallet] ✅ Logo remoto cargado para compresión')
             }
           } else {
             const localImgPath = path.join(process.cwd(), 'public', logoUrl)
             if (fs.existsSync(localImgPath)) {
-              remoteBuffer = fs.readFileSync(localImgPath)
+              baseBuffer = fs.readFileSync(localImgPath)
+              console.log('[AppleWallet] ✅ Logo local cargado para compresión')
             }
-          }
-          if (remoteBuffer) {
-            passBuffers["icon.png"] = remoteBuffer
-            passBuffers["icon@2x.png"] = remoteBuffer
-            passBuffers["logo.png"] = remoteBuffer
-            passBuffers["logo@2x.png"] = remoteBuffer
           }
         }
       } catch (imgErr: any) {
-        console.warn('[AppleWallet] No se pudieron cargar imágenes:', imgErr.message)
+        console.warn('[AppleWallet] No se pudo cargar imagen del negocio, usando logo por defecto:', imgErr.message)
+      }
+
+      // Redimensionar las imágenes de forma ultra-ligera en base a baseBuffer
+      console.log('[AppleWallet] 🎨 Redimensionando y comprimiendo imágenes para el pase...')
+      const passBuffers: Record<string, Buffer> = {
+        "icon.png": await resizeImage(baseBuffer, 29, 29, 'cover'),
+        "icon@2x.png": await resizeImage(baseBuffer, 58, 58, 'cover'),
+        "logo.png": await resizeImage(baseBuffer, 160, 50, 'contain'),
+        "logo@2x.png": await resizeImage(baseBuffer, 320, 100, 'contain')
       }
 
       const modelObject: any = {
