@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import fs from 'fs'
 import path from 'path'
+import crypto from 'crypto'
 
 // ── Certificado de Apple Wallet actualizado el 31 de Mayo de 2026 (C=MX) ────────
 // ── Importación CommonJS estricta para evitar conflictos ESM/CJS ──────────────
@@ -198,6 +199,18 @@ function leerCertificados(): { signerCert: string; signerKey: string; wwdrCert: 
           console.log('[AppleWallet] ✅ WWDR cargado desde APPLE_WWDR_CERT (Base64 env)')
         }
       } catch (e: any) { console.error('[AppleWallet] Error decodificando APPLE_WWDR_CERT:', e.message) }
+    }
+
+    if (wwdrCert) {
+      try {
+        const x509 = new crypto.X509Certificate(wwdrCert)
+        if (x509.subject.includes('pass.com.laburreria.vip') || x509.subject.includes('Pass Type ID')) {
+          console.warn('[AppleWallet] ⚠️ El certificado cargado en la variable APPLE_WWDR_CERT es un certificado de cliente pass, no un certificado Apple WWDR CA. Descartándolo para usar fallback.')
+          wwdrCert = ''
+        }
+      } catch (e: any) {
+        console.error('[AppleWallet] Error validando APPLE_WWDR_CERT:', e.message)
+      }
     }
   }
 
