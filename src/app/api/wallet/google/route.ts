@@ -1,6 +1,8 @@
 import { JWT } from 'google-auth-library'
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { SignJWT, importPKCS8 } from 'jose'
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SUPABASE — cliente server-side (sin RLS restrictions para uso en API routes)
