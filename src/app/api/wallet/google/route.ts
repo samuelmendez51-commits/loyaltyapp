@@ -67,6 +67,18 @@ function sanitizePrivateKey(raw: string): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// HELPER: Sanitizar el email del Service Account
+// ─────────────────────────────────────────────────────────────────────────────
+function sanitizeEmail(raw: string | undefined): string {
+  if (!raw) return ''
+  let email = raw.trim()
+  if ((email.startsWith('"') && email.endsWith('"')) || (email.startsWith("'") && email.endsWith("'"))) {
+    email = email.slice(1, -1)
+  }
+  return email.trim()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // HELPER: Normalizar color hexadecimal (Google requiere #RRGGBB exactamente)
 // ─────────────────────────────────────────────────────────────────────────────
 function normalizeHexColor(color: string | null | undefined, fallback = '#1a5e3a'): string {
@@ -88,20 +100,21 @@ let lastGoogleError = ''
 // HELPER: Obtener Access Token OAuth2 via JWT de service account
 // ─────────────────────────────────────────────────────────────────────────────
 async function getGoogleAccessToken(clientEmail: string, privateKey: string): Promise<string | null> {
+  const email = sanitizeEmail(clientEmail)
   try {
     lastGoogleError = ''
-    if (!clientEmail) {
-      lastGoogleError = 'Missing GOOGLE_SERVICE_ACCOUNT_EMAIL env variable'
+    if (!email) {
+      lastGoogleError = 'Missing or invalid GOOGLE_SERVICE_ACCOUNT_EMAIL'
       return null
     }
     if (!privateKey) {
-      lastGoogleError = 'Missing GOOGLE_PRIVATE_KEY env variable'
+      lastGoogleError = 'Missing GOOGLE_PRIVATE_KEY'
       return null
     }
     const now = Math.floor(Date.now() / 1000)
     const privateKeyObj = await importPKCS8(privateKey, 'RS256')
     const jwt = await new SignJWT({
-      iss: clientEmail,
+      iss: email,
       scope: 'https://www.googleapis.com/auth/wallet_object.issuer',
       aud: 'https://oauth2.googleapis.com/token',
       iat: now,
@@ -119,7 +132,7 @@ async function getGoogleAccessToken(clientEmail: string, privateKey: string): Pr
     if (!res.ok) {
       const errText = await res.text()
       console.error('[GoogleWallet] OAuth2 token error:', res.status, errText)
-      lastGoogleError = `OAuth2 Error (${res.status}): ${errText}`
+      lastGoogleError = `OAuth2 Error (${res.status}): ${errText} | Sanitized email used: ${JSON.stringify(email)}`
       return null
     }
 
@@ -133,7 +146,7 @@ async function getGoogleAccessToken(clientEmail: string, privateKey: string): Pr
     const end = privateKey ? privateKey.substring(Math.max(0, privateKey.length - 35)) : ''
     const hasNewlines = privateKey ? privateKey.includes('\n') : false
     
-    lastGoogleError = `Exception: ${err.message} | Key metadata: len=${keyLen}, start=${JSON.stringify(start)}, end=${JSON.stringify(end)}, newlines=${hasNewlines}`
+    lastGoogleError = `Exception: ${err.message} | Email: ${JSON.stringify(email)} (len=${email.length}) | Key: len=${keyLen}, start=${JSON.stringify(start)}, end=${JSON.stringify(end)}, newlines=${hasNewlines}`
     return null
   }
 }
