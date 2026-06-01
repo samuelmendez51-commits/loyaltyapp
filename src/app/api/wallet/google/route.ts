@@ -1,4 +1,4 @@
-import { SignJWT, importPKCS8 } from 'jose'
+import { JWT } from 'google-auth-library'
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
@@ -101,52 +101,36 @@ let lastGoogleError = ''
 // ─────────────────────────────────────────────────────────────────────────────
 async function getGoogleAccessToken(clientEmail: string, privateKey: string): Promise<string | null> {
   const email = sanitizeEmail(clientEmail)
+  const key = sanitizePrivateKey(privateKey)
   try {
     lastGoogleError = ''
     if (!email) {
       lastGoogleError = 'Missing or invalid GOOGLE_SERVICE_ACCOUNT_EMAIL'
       return null
     }
-    if (!privateKey) {
-      lastGoogleError = 'Missing GOOGLE_PRIVATE_KEY'
-      return null
-    }
-    const now = Math.floor(Date.now() / 1000)
-    const privateKeyObj = await importPKCS8(privateKey, 'RS256')
-    const jwt = await new SignJWT({
-      iss: email,
-      scope: 'https://www.googleapis.com/auth/wallet_object.issuer',
-      aud: 'https://oauth2.googleapis.com/token',
-      iat: now,
-      exp: now + 3600,
-    })
-      .setProtectedHeader({ alg: 'RS256' })
-      .sign(privateKeyObj)
-
-    const res = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: `grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=${jwt}`,
-    })
-
-    if (!res.ok) {
-      const errText = await res.text()
-      console.error('[GoogleWallet] OAuth2 token error:', res.status, errText)
-      lastGoogleError = `OAuth2 Error (${res.status}): ${errText} | Sanitized email used: ${JSON.stringify(email)}`
+    if (!key) {
+      lastGoogleError = 'Missing or invalid GOOGLE_PRIVATE_KEY'
       return null
     }
 
-    const tokenData = await res.json()
-    return tokenData.access_token || null
+    // Usar la librería oficial de Google para firmar y autorizar de forma robusta
+    const client = new JWT({
+      email: email,
+      key: key,
+      scopes: ['https://www.googleapis.com/auth/wallet_object.issuer']
+    })
+
+    const credentials = await client.authorize()
+    return credentials.access_token || null
   } catch (err: any) {
-    console.error('[GoogleWallet] getGoogleAccessToken error:', err)
+    console.error('[GoogleWallet] google-auth-library error:', err)
     
     const keyLen = privateKey ? privateKey.length : 0
     const start = privateKey ? privateKey.substring(0, 35) : ''
     const end = privateKey ? privateKey.substring(Math.max(0, privateKey.length - 35)) : ''
     const hasNewlines = privateKey ? privateKey.includes('\n') : false
     
-    lastGoogleError = `Exception: ${err.message} | Email: ${JSON.stringify(email)} (len=${email.length}) | Key: len=${keyLen}, start=${JSON.stringify(start)}, end=${JSON.stringify(end)}, newlines=${hasNewlines}`
+    lastGoogleError = `GoogleAuthException: ${err.message} | Email: ${JSON.stringify(email)} | Key: len=${keyLen}, start=${JSON.stringify(start)}, end=${JSON.stringify(end)}, newlines=${hasNewlines}`
     return null
   }
 }
