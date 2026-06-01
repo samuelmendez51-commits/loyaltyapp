@@ -179,6 +179,21 @@ async function resizeImage(buffer: Buffer, width: number, height: number, mode: 
   }
 }
 
+function verificarPar(certPem: string, keyPem: string): boolean {
+  try {
+    if (!certPem || !keyPem || !certPem.includes('BEGIN CERTIFICATE') || !keyPem.includes('BEGIN')) {
+      return false
+    }
+    const cert = crypto.createPublicKey(certPem)
+    const key = crypto.createPrivateKey(keyPem)
+    const data = Buffer.from('test-signature-data')
+    const signature = crypto.sign('sha256', data, key)
+    return crypto.verify('sha256', data, cert, signature)
+  } catch (e) {
+    return false
+  }
+}
+
 // ── Función: leer certificados con lógica híbrida priorizando base64 para producción ──
 function leerCertificados(): { signerCert: string; signerKey: string; wwdrCert: string } {
   let signerCert = ''
@@ -284,14 +299,15 @@ function leerCertificados(): { signerCert: string; signerKey: string; wwdrCert: 
     } catch (e: any) { console.warn('[AppleWallet] No se pudo leer llave.pem:', e.message) }
   }
 
-  // Fallbacks de último recurso
+  // Fallbacks de último recurso y verificación criptográfica estricta de par
   if (!wwdrCert || !wwdrCert.includes('BEGIN CERTIFICATE')) {
     wwdrCert = WWDR_FALLBACK
   }
-  if (!signerCert || !signerCert.includes('BEGIN CERTIFICATE')) {
+
+  // Si no coinciden o alguno es inválido, forzar el par de fallback que sí coincide al 100%
+  if (!signerCert || !signerKey || !verificarPar(signerCert, signerKey)) {
+    console.warn('[AppleWallet] ⚠️ Desajuste criptográfico detectado entre el certificado y la llave cargados, o faltan credenciales en el servidor. Activando el par de fallback de seguridad coordinado.')
     signerCert = CERT_FALLBACK
-  }
-  if (!signerKey || !signerKey.includes('BEGIN')) {
     signerKey = KEY_FALLBACK
   }
 
