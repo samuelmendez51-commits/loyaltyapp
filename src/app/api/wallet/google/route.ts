@@ -127,7 +127,13 @@ async function getGoogleAccessToken(clientEmail: string, privateKey: string): Pr
     return tokenData.access_token || null
   } catch (err: any) {
     console.error('[GoogleWallet] getGoogleAccessToken error:', err)
-    lastGoogleError = `Exception: ${err.message}`
+    
+    const keyLen = privateKey ? privateKey.length : 0
+    const start = privateKey ? privateKey.substring(0, 35) : ''
+    const end = privateKey ? privateKey.substring(Math.max(0, privateKey.length - 35)) : ''
+    const hasNewlines = privateKey ? privateKey.includes('\n') : false
+    
+    lastGoogleError = `Exception: ${err.message} | Key metadata: len=${keyLen}, start=${JSON.stringify(start)}, end=${JSON.stringify(end)}, newlines=${hasNewlines}`
     return null
   }
 }
