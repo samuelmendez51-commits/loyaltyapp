@@ -82,11 +82,22 @@ function normalizeHexColor(color: string | null | undefined, fallback = '#1a5e3a
   return fallback
 }
 
+let lastGoogleError = ''
+
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPER: Obtener Access Token OAuth2 via JWT de service account
 // ─────────────────────────────────────────────────────────────────────────────
 async function getGoogleAccessToken(clientEmail: string, privateKey: string): Promise<string | null> {
   try {
+    lastGoogleError = ''
+    if (!clientEmail) {
+      lastGoogleError = 'Missing GOOGLE_SERVICE_ACCOUNT_EMAIL env variable'
+      return null
+    }
+    if (!privateKey) {
+      lastGoogleError = 'Missing GOOGLE_PRIVATE_KEY env variable'
+      return null
+    }
     const now = Math.floor(Date.now() / 1000)
     const privateKeyObj = await importPKCS8(privateKey, 'RS256')
     const jwt = await new SignJWT({
@@ -108,16 +119,19 @@ async function getGoogleAccessToken(clientEmail: string, privateKey: string): Pr
     if (!res.ok) {
       const errText = await res.text()
       console.error('[GoogleWallet] OAuth2 token error:', res.status, errText)
+      lastGoogleError = `OAuth2 Error (${res.status}): ${errText}`
       return null
     }
 
     const tokenData = await res.json()
     return tokenData.access_token || null
-  } catch (err) {
+  } catch (err: any) {
     console.error('[GoogleWallet] getGoogleAccessToken error:', err)
+    lastGoogleError = `Exception: ${err.message}`
     return null
   }
 }
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPER: Construir el payload de la LoyaltyClass con override dinámico
@@ -365,7 +379,11 @@ export async function POST(req: Request) {
     if (!clientEmail || !privateKey || privateKey.length < 100) {
       console.warn('[GoogleWallet] ⚠️ Sin credenciales de Google. Modo simulación.')
       const simUrl = `/google-wallet-simulacion?id=${encodeURIComponent(cliente.id)}&nombre=${encodeURIComponent(cliente.nombre)}&puntos=${cliente.puntos}&business_name=${encodeURIComponent(business.nombre)}&logo_url=${encodeURIComponent(business.logo_url || '')}&banner_url=${encodeURIComponent(business.banner_url || '')}`
-      return NextResponse.json({ url: simUrl, simulacion: true })
+      return NextResponse.json({ 
+        url: simUrl, 
+        simulacion: true, 
+        error: `Missing credentials. Email: ${!!clientEmail}, KeyLength: ${privateKey?.length || 0}` 
+      })
     }
 
     // ── 4. IDs únicos para esta clase y objeto ────────────────────────────
@@ -383,7 +401,11 @@ export async function POST(req: Request) {
     if (!accessToken) {
       console.warn('[GoogleWallet] ⚠️ Error de autenticación. Cayendo en modo simulación.')
       const simUrl = `/google-wallet-simulacion?id=${encodeURIComponent(cliente.id)}&nombre=${encodeURIComponent(cliente.nombre)}&puntos=${cliente.puntos}&business_name=${encodeURIComponent(business.nombre)}&logo_url=${encodeURIComponent(business.logo_url || '')}&banner_url=${encodeURIComponent(business.banner_url || '')}`
-      return NextResponse.json({ url: simUrl, simulacion: true })
+      return NextResponse.json({ 
+        url: simUrl, 
+        simulacion: true, 
+        error: `Authentication failed: ${lastGoogleError}` 
+      })
     }
 
     // ── 6. Asegurar que la LoyaltyClass existe y está actualizada ─────────
