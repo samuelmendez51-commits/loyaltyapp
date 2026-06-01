@@ -27,7 +27,7 @@ export async function GET() {
       } catch {}
     }
 
-    let certDetails = 'None';
+    let certDetails: any = 'None';
     if (certUsed) {
       try {
         let pem = certUsed;
@@ -41,9 +41,29 @@ export async function GET() {
           validFrom: cert.validFrom,
           validTo: cert.validTo,
           serialNumber: cert.serialNumber
-        } as any;
+        };
       } catch (e: any) {
         certDetails = 'Error parsing cert: ' + e.message;
+      }
+    }
+
+    let wwdrDetails: any = 'None';
+    if (process.env.APPLE_WWDR_CERT) {
+      try {
+        let pem = process.env.APPLE_WWDR_CERT.trim();
+        if (!pem.includes('BEGIN CERTIFICATE')) {
+          pem = Buffer.from(pem, 'base64').toString('utf8');
+        }
+        const cert = new crypto.X509Certificate(pem);
+        wwdrDetails = {
+          subject: cert.subject,
+          issuer: cert.issuer,
+          validFrom: cert.validFrom,
+          validTo: cert.validTo,
+          serialNumber: cert.serialNumber
+        };
+      } catch (e: any) {
+        wwdrDetails = 'Error parsing WWDR: ' + e.message;
       }
     }
 
@@ -54,7 +74,8 @@ export async function GET() {
         APPLE_SIGNER_KEY: hasSignerKey
       },
       currentCertSource: source,
-      currentCertDetails: certDetails
+      currentCertDetails: certDetails,
+      wwdrEnvDetails: wwdrDetails
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

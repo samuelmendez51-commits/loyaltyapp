@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import fs from 'fs'
 import path from 'path'
 
+// ── Certificado de Apple Wallet actualizado el 31 de Mayo de 2026 (C=MX) ────────
 // ── Importación CommonJS estricta para evitar conflictos ESM/CJS ──────────────
 // @ts-ignore
 const { PKPass } = require('passkit-generator')
