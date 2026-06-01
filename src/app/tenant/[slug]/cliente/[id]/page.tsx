@@ -307,6 +307,8 @@ export default function TarjetaLealtadFinal() {
 
   const [vistaActiva, setVistaActiva] = useState<'tarjeta' | 'menu' | 'pedido' | 'ubicacion' | 'horarios' | 'redes'>('tarjeta')
   const [mostrarRuleta, setMostrarRuleta] = useState(false)
+  const [mostrarGuiaInicio, setMostrarGuiaInicio] = useState(false)
+  const [osDetectado, setOsDetectado] = useState<'ios' | 'android' | 'otro'>('ios')
   const [menuDigital, setMenuDigital] = useState<any>(null)
   const [ultimoPedidoTotal, setUltimoPedidoTotal] = useState<number>(0)
 
@@ -379,6 +381,21 @@ export default function TarjetaLealtadFinal() {
       return tiempoActualMin < tiempoApMin && tiempoActualMin > tiempoCiMin
     }
   }
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const ua = window.navigator.userAgent.toLowerCase()
+      const isIOS = /iphone|ipad|ipod/.test(ua)
+      const isAndroid = /android/.test(ua)
+      if (isIOS) {
+        setOsDetectado('ios')
+      } else if (isAndroid) {
+        setOsDetectado('android')
+      } else {
+        setOsDetectado('otro')
+      }
+    }
+  }, [])
 
   useEffect(() => {
     const cargarDatos = async () => {
@@ -1039,6 +1056,140 @@ _Pedido procesado a través de LoyaltyApp VIP_`
         />
       )}
 
+      {/* ── Guía de Instalación Modal ── */}
+      {mostrarGuiaInicio && (
+        <div className="fixed inset-0 bg-black/75 z-50 flex items-end sm:items-center justify-center p-4 backdrop-blur-xs transition-opacity animate-fadeIn">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl border border-[#e4e4e7] animate-slideUp max-h-[85vh] flex flex-col">
+            {/* Header */}
+            <div className="px-6 py-5 border-b border-[#f4f4f5] flex justify-between items-center shrink-0">
+              <div>
+                <h3 className="font-black text-sm text-[#09090b] tracking-tight">📲 Agregar a Inicio</h3>
+                <p className="text-[10px] text-[#71717a]">Guarda tu tarjeta de socio en tu pantalla principal</p>
+              </div>
+              <button
+                onClick={() => setMostrarGuiaInicio(false)}
+                className="w-7 h-7 rounded-full bg-[#f4f4f5] hover:bg-[#e4e4e7] text-[#71717a] font-bold flex items-center justify-center text-sm transition-colors"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Content (Scrollable) */}
+            <div className="p-6 overflow-y-auto space-y-6 flex-1 text-xs text-[#09090b]">
+              {/* Previsualización del Icono */}
+              <div className="flex flex-col items-center bg-[#fafafa] border border-[#f4f4f5] rounded-2xl p-4 text-center">
+                <p className="text-[10px] font-bold text-[#71717a] uppercase tracking-wider mb-3">Así se verá en tu celular</p>
+                <div className="relative w-16 h-16 bg-black rounded-3xl flex items-center justify-center border border-white/10 shadow-[0_0_20px_rgba(0,0,0,0.2)] mb-2.5">
+                  <img
+                    src={programaActivo?.logo_url || business?.logo_url || '/logo.png'}
+                    alt="Logo"
+                    className="w-11 h-11 object-cover rounded-xl"
+                    onError={(e) => { (e.target as HTMLImageElement).src = '/logo.png' }}
+                  />
+                  <div className="absolute inset-0 rounded-3xl bg-gradient-to-tr from-white/15 to-transparent animate-pulse" />
+                </div>
+                <p className="font-extrabold text-[#09090b] text-[11px]">{business?.nombre || 'La Burrería'}</p>
+                <p className="text-[9px] text-[#a1a1aa] font-mono mt-0.5">Acceso VIP directo</p>
+              </div>
+
+              {/* Selector de pestañas OS */}
+              <div className="flex bg-[#f4f4f5] rounded-xl p-1 shrink-0">
+                <button
+                  onClick={() => setOsDetectado('ios')}
+                  className={`flex-1 py-2 text-center rounded-lg font-bold text-[10px] uppercase tracking-wider transition-all ${
+                    osDetectado === 'ios'
+                      ? 'bg-white text-[#09090b] shadow-xs'
+                      : 'text-[#71717a] hover:text-[#09090b]'
+                  }`}
+                >
+                  🍎 iOS (Apple Safari)
+                </button>
+                <button
+                  onClick={() => setOsDetectado('android')}
+                  className={`flex-1 py-2 text-center rounded-lg font-bold text-[10px] uppercase tracking-wider transition-all ${
+                    osDetectado === 'android'
+                      ? 'bg-white text-[#09090b] shadow-xs'
+                      : 'text-[#71717a] hover:text-[#09090b]'
+                  }`}
+                >
+                  🤖 Android (Chrome)
+                </button>
+              </div>
+
+              {/* Instrucciones iOS */}
+              {osDetectado === 'ios' && (
+                <div className="space-y-4 animate-fadeIn">
+                  <div className="flex gap-3">
+                    <span className="w-5 h-5 rounded-full bg-[#fef2f2] border border-[#fee2e2] text-[#dc2626] flex items-center justify-center font-black text-[10px] shrink-0">1</span>
+                    <p className="leading-relaxed text-[#09090b]">
+                      Presiona el botón de <strong>Compartir</strong> en la barra de navegación de Safari (abajo en tu iPhone, arriba en iPad):
+                      <span className="block mt-1.5 p-2 bg-[#f4f4f5] rounded-lg text-center text-base font-semibold">
+                        📤 <span className="text-[10px] text-[#71717a] ml-1 font-medium font-mono">(Compartir)</span>
+                      </span>
+                    </p>
+                  </div>
+                  <div className="flex gap-3">
+                    <span className="w-5 h-5 rounded-full bg-[#fef2f2] border border-[#fee2e2] text-[#dc2626] flex items-center justify-center font-black text-[10px] shrink-0">2</span>
+                    <p className="leading-relaxed text-[#09090b]">
+                      Desplázate hacia abajo y selecciona la opción de <strong>"Agregar al inicio"</strong>:
+                      <span className="block mt-1.5 p-2 bg-[#f4f4f5] rounded-lg text-center text-base font-semibold">
+                        ➕ <span className="text-[10px] text-[#09090b] ml-1 font-bold font-mono">Agregar a inicio</span>
+                      </span>
+                    </p>
+                  </div>
+                  <div className="flex gap-3">
+                    <span className="w-5 h-5 rounded-full bg-[#fef2f2] border border-[#fee2e2] text-[#dc2626] flex items-center justify-center font-black text-[10px] shrink-0">3</span>
+                    <p className="leading-relaxed text-[#09090b]">
+                      Toca <strong>"Agregar"</strong> en la esquina superior derecha del panel. ¡Y listo! Tendrás tu tarjeta guardada para siempre.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Instrucciones Android */}
+              {osDetectado !== 'ios' && (
+                <div className="space-y-4 animate-fadeIn">
+                  <div className="flex gap-3">
+                    <span className="w-5 h-5 rounded-full bg-[#fef2f2] border border-[#fee2e2] text-[#dc2626] flex items-center justify-center font-black text-[10px] shrink-0">1</span>
+                    <p className="leading-relaxed text-[#09090b]">
+                      Toca el menú de los <strong>tres puntos</strong> en la esquina superior derecha del navegador Chrome:
+                      <span className="block mt-1.5 p-2 bg-[#f4f4f5] rounded-lg text-center text-base font-semibold">
+                        ⋮ <span className="text-[10px] text-[#71717a] ml-1 font-medium font-mono">(Menú)</span>
+                      </span>
+                    </p>
+                  </div>
+                  <div className="flex gap-3">
+                    <span className="w-5 h-5 rounded-full bg-[#fef2f2] border border-[#fee2e2] text-[#dc2626] flex items-center justify-center font-black text-[10px] shrink-0">2</span>
+                    <p className="leading-relaxed text-[#09090b]">
+                      Selecciona la opción de <strong>"Agregar a la pantalla principal"</strong> o <strong>"Instalar aplicación"</strong>:
+                      <span className="block mt-1.5 p-2 bg-[#f4f4f5] rounded-lg text-center text-base font-semibold">
+                        📲 <span className="text-[10px] text-[#09090b] ml-1 font-bold font-mono">Instalar / Agregar a inicio</span>
+                      </span>
+                    </p>
+                  </div>
+                  <div className="flex gap-3">
+                    <span className="w-5 h-5 rounded-full bg-[#fef2f2] border border-[#fee2e2] text-[#dc2626] flex items-center justify-center font-black text-[10px] shrink-0">3</span>
+                    <p className="leading-relaxed text-[#09090b]">
+                      Confirma la acción. Chrome colocará automáticamente el icono brillante y elegante del club de lealtad en tu celular.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer Button */}
+            <div className="p-4 bg-[#fafafa] border-t border-[#f4f4f5] shrink-0">
+              <button
+                onClick={() => setMostrarGuiaInicio(false)}
+                className="w-full bg-[#09090b] hover:bg-[#27272a] text-white font-black py-3 rounded-xl text-xs uppercase tracking-widest shadow-md transition-all active:scale-95"
+              >
+                Entendido, ¡Guardar Acceso! 🚀
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Vista: Tarjeta de Lealtad ── */}
       {vistaActiva === 'tarjeta' && (
         <div className="max-w-sm mx-auto pt-8 px-4 space-y-5 animate-fadeIn">
@@ -1231,6 +1382,32 @@ _Pedido procesado a través de LoyaltyApp VIP_`
                 </>
               )}
             </button>
+          </div>
+
+          {/* Card / Banner de Acceso Directo a Inicio (PWA) */}
+          <div className="bg-gradient-to-br from-[#09090b] via-[#1a1a1e] to-[#09090b] border border-white/10 rounded-3xl p-5 mt-5 shadow-[0_4px_20px_rgba(0,0,0,0.15)] flex gap-4 items-center animate-fadeIn">
+            <div className="relative w-14 h-14 bg-black rounded-2xl flex items-center justify-center border border-white/10 shadow-[0_0_15px_rgba(255,255,255,0.4)] animate-pulse shrink-0">
+              <img
+                src={programaActivo?.logo_url || business?.logo_url || '/logo.png'}
+                alt="Logo"
+                className="w-10 h-10 object-cover rounded-xl"
+                onError={(e) => { (e.target as HTMLImageElement).src = '/logo.png' }}
+              />
+              <div className="absolute inset-0 rounded-2xl bg-gradient-to-tr from-white/15 to-transparent" />
+            </div>
+            
+            <div className="flex-1 min-w-0">
+              <h4 className="text-xs font-black text-white tracking-wide">📲 Acceso Directo VIP</h4>
+              <p className="text-[10px] text-[#a1a1aa] mt-1 font-medium leading-relaxed">
+                Guarda esta aplicación en tu inicio para ver tus sellos y pedir sin loguearte.
+              </p>
+              <button
+                onClick={() => setMostrarGuiaInicio(true)}
+                className="mt-2.5 bg-white hover:bg-zinc-100 text-[#09090b] text-[10px] font-black uppercase tracking-wider py-1.5 px-3.5 rounded-xl transition-all active:scale-95 shadow-md shadow-white/5"
+              >
+                Instalar / Guardar ⚡
+              </button>
+            </div>
           </div>
         </div>
       )}
