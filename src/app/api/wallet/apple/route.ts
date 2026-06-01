@@ -563,7 +563,6 @@ export async function POST(req: Request) {
         teamIdentifier: TEAM_IDENTIFIER,
         organizationName: business ? `${business.nombre} Club` : 'La Burrería Club',
         description: business ? `Pase VIP de Fidelidad — ${business.nombre}` : 'Pase VIP de Fidelidad La Burrería',
-        logoText: '',
         foregroundColor: 'rgb(249, 246, 240)', // Alabastro / Blanco premium (Legible y lujoso)
         backgroundColor: 'rgb(91, 25, 27)',     // Borgoña Premium Lujoso
         labelColor: 'rgb(212, 175, 55)',        // Oro Metálico Antiguo
@@ -580,12 +579,14 @@ export async function POST(req: Request) {
             { key: 'contacto', label: 'CONTACTO', value: business?.telefono_whatsapp ? `+${business.telefono_whatsapp}` : 'Consulta al cajero' }
           ]
         },
-        barcode: {
-          message: clienteId,
-          format: 'PKBarcodeFormatQR',
-          messageEncoding: 'iso-8859-1',
-          altText: `ID: ${clienteId.substring(0, 8)}`
-        }
+        barcodes: [
+          {
+            message: clienteId,
+            format: 'PKBarcodeFormatQR',
+            messageEncoding: 'iso-8859-1',
+            altText: `ID: ${clienteId.substring(0, 8)}`
+          }
+        ]
       }
 
       // Agregar geolocalización si disponible
@@ -823,7 +824,6 @@ export async function GET(req: Request) {
         teamIdentifier: TEAM_IDENTIFIER,
         organizationName: business ? `${business.nombre} Club` : 'La Burrería Club',
         description: business ? `Pase VIP de Fidelidad — ${business.nombre}` : 'Pase VIP de Fidelidad La Burrería',
-        logoText: '',
         foregroundColor: 'rgb(249, 246, 240)', // Alabastro / Blanco premium (Legible y lujoso)
         backgroundColor: 'rgb(91, 25, 27)',     // Borgoña Premium Lujoso
         labelColor: 'rgb(212, 175, 55)',        // Oro Metálico Antiguo
@@ -840,12 +840,14 @@ export async function GET(req: Request) {
             { key: 'contacto', label: 'CONTACTO', value: business?.telefono_whatsapp ? `+${business.telefono_whatsapp}` : 'Consulta al cajero' }
           ]
         },
-        barcode: {
-          message: clienteId,
-          format: 'PKBarcodeFormatQR',
-          messageEncoding: 'iso-8859-1',
-          altText: `ID: ${clienteId.substring(0, 8)}`
-        }
+        barcodes: [
+          {
+            message: clienteId,
+            format: 'PKBarcodeFormatQR',
+            messageEncoding: 'iso-8859-1',
+            altText: `ID: ${clienteId.substring(0, 8)}`
+          }
+        ]
       }
 
       if (business?.latitude && business?.longitude) {
