@@ -609,12 +609,31 @@ export async function GET(req: Request) {
 
       // Redimensionar las imágenes de forma ultra-ligera en base a baseBuffer
       console.log('[AppleWallet] 🎨 Redimensionando y comprimiendo imágenes para el pase...')
+      const toRgb = (hex: string, def: string) => {
+        if (!hex) return def
+        const clean = hex.replace('#', '')
+        if (clean.length === 3) {
+          return `rgb(${parseInt(clean[0]+clean[0], 16)}, ${parseInt(clean[1]+clean[1], 16)}, ${parseInt(clean[2]+clean[2], 16)})`
+        }
+        if (clean.length === 6) {
+          return `rgb(${parseInt(clean.substring(0, 2), 16)}, ${parseInt(clean.substring(2, 4), 16)}, ${parseInt(clean.substring(4, 6), 16)})`
+        }
+        return def
+      }
+
       const passBuffers: Record<string, Buffer> = {
         "icon.png": await resizeImage(baseBuffer, 29, 29, 'cover'),
         "icon@2x.png": await resizeImage(baseBuffer, 58, 58, 'cover'),
         "logo.png": await resizeImage(baseBuffer, 160, 50, 'contain'),
-        "logo@2x.png": await resizeImage(baseBuffer, 320, 100, 'contain')
+        "logo@2x.png": await resizeImage(baseBuffer, 320, 100, 'contain'),
+        "strip.png": await resizeImage(baseBuffer, 375, 123, 'contain'),
+        "strip@2x.png": await resizeImage(baseBuffer, 750, 246, 'contain')
       }
+
+      // Crear tarjeta de estrellas con Unicode
+      const starsString = Array.from({ length: 10 })
+        .map((_, i) => i < (puntos || 0) ? '★' : '☆')
+        .join(' ')
 
       const modelObject: any = {
         formatVersion: 1,
@@ -625,7 +644,7 @@ export async function GET(req: Request) {
         logoText: business ? business.nombre : 'La Burrería',
         foregroundColor: 'rgb(9, 9, 11)',
         backgroundColor: 'rgb(255, 255, 255)',
-        labelColor: 'rgb(220, 38, 38)',
+        labelColor: toRgb(business?.color_primario, 'rgb(220, 38, 38)'),
         storeCard: {
           headerFields: [
             { key: 'sellos', label: 'SELLOS', value: String(puntos || 0), textAlignment: 'PKTextAlignmentRight' }
@@ -636,6 +655,9 @@ export async function GET(req: Request) {
           secondaryFields: [
             { key: 'id', label: 'ID DE SOCIO', value: clienteId.substring(0, 8) },
             { key: 'negocio', label: 'NEGOCIO', value: business?.nombre || 'La Burrería' }
+          ],
+          auxiliaryFields: [
+            { key: 'estrellas', label: 'TARJETA DE SELLOS', value: starsString }
           ],
           backFields: [
             { key: 'info', label: 'CÓMO ACUMULAR', value: 'Presenta tu código QR en cada visita para acumular sellos y ganar premios.' },
