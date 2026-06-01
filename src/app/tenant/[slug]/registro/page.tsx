@@ -67,6 +67,9 @@ export default function RegistroCliente() {
         setMensaje({ texto: 'Error al buscar tu socio. Intenta de nuevo.', tipo: 'error' })
       } else if (data) {
         setMensaje({ texto: '¡Bienvenido de vuelta! Abriendo tu tarjeta...', tipo: 'exito' })
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('vip_cliente_id', data.id)
+        }
         setTimeout(() => {
           router.push(`/cliente/${data.id}`)
         }, 1500)
@@ -134,6 +137,9 @@ export default function RegistroCliente() {
 
             if (cliente) {
               setMensaje({ texto: '¡Socio encontrado! Iniciando sesión...', tipo: 'exito' })
+              if (typeof window !== 'undefined') {
+                localStorage.setItem('vip_cliente_id', cliente.id)
+              }
               setTimeout(() => {
                 router.push(`/cliente/${cliente.id}`)
               }, 1500)
@@ -154,6 +160,9 @@ export default function RegistroCliente() {
         }
       } else if (data && data[0]) {
         setMensaje({ texto: '¡Bienvenido al Club! Generando tu tarjeta VIP...', tipo: 'exito' })
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('vip_cliente_id', data[0].id)
+        }
         setTimeout(() => {
           router.push(`/cliente/${data[0].id}`)
         }, 1500)
@@ -171,6 +180,9 @@ export default function RegistroCliente() {
 
           if (cliente) {
             setMensaje({ texto: '¡Socio encontrado! Iniciando sesión...', tipo: 'exito' })
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('vip_cliente_id', cliente.id)
+            }
             setTimeout(() => {
               router.push(`/cliente/${cliente.id}`)
             }, 1500)

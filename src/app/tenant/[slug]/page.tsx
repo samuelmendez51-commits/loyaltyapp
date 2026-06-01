@@ -26,6 +26,13 @@ export default function TenantLandingPage() {
   const [error, setError] = useState(false)
 
   useEffect(() => {
+    // Redirección automática si el socio ya tiene una sesión activa guardada en este navegador
+    const savedClientId = typeof window !== 'undefined' ? localStorage.getItem('vip_cliente_id') : null
+    if (savedClientId) {
+      router.replace(`/cliente/${savedClientId}`)
+      return
+    }
+
     const cargarBranding = async () => {
       if (!slug) return
       try {
@@ -170,24 +177,32 @@ export default function TenantLandingPage() {
             </button>
 
             <button
-              onClick={() => router.push('/login')}
+              onClick={() => router.push('/registro')}
               className="w-full bg-[#09090b] text-white hover:bg-zinc-800 py-4 rounded-2xl text-xs font-bold uppercase tracking-wider shadow-sm transition-all active:scale-[0.99] flex items-center justify-center gap-2.5"
             >
-              <LogIn size={16} />
-              Acceso de Personal
+              <Award size={16} style={{ color: colorActivo }} />
+              Soy Socio VIP (Ingresar / Registro)
             </button>
           </div>
         </div>
       </div>
 
         {/* Footer corporativo sutil */}
-        <div className="text-center space-y-1">
+        <div className="text-center space-y-2">
           <p className="text-[10px] text-[#a1a1aa] uppercase tracking-[0.2em] font-medium">
             Portal Oficial de Socio VIP
           </p>
           <p className="text-[9px] text-[#c4c4c5] font-semibold">
             Powered by LoyaltyClub.mx
           </p>
+          <div className="pt-2">
+            <button 
+              onClick={() => router.push('/login')} 
+              className="text-[9px] text-zinc-400 hover:text-zinc-600 transition-colors font-medium underline"
+            >
+              Acceso de Personal / Administración
+            </button>
+          </div>
         </div>
       </div>
     </main>

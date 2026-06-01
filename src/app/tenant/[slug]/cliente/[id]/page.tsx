@@ -334,7 +334,7 @@ export default function TarjetaLealtadFinal() {
   const [seleccionesMod, setSeleccionesMod] = useState<Record<string, any>>({})
 
   // Formulario Checkout
-  const [form, setForm] = useState({ nombre: '', telefono: '', calle: '', numero: '', colonia: '' })
+  const [form, setForm] = useState({ nombre: '', telefono: '', calle: '', numero: '', colonia: '', referencia: '' })
   const [telefonoAutocompletar, setTelefonoAutocompletar] = useState('')
   const [mostrandoAutocompletar, setMostrandoAutocompletar] = useState(false)
   const [buscandoAutocompletar, setBuscandoAutocompletar] = useState(false)
@@ -659,12 +659,20 @@ export default function TarjetaLealtadFinal() {
       const ultimaOrden = orders?.[0]
 
       if (colCliente || ultimaOrden) {
+        let coloniaLimpia = ultimaOrden?.colonia || ''
+        let referenciaExtraida = ''
+        if (coloniaLimpia.includes(' (Ref: ')) {
+          const partes = coloniaLimpia.split(' (Ref: ')
+          coloniaLimpia = partes[0]
+          referenciaExtraida = partes[1].replace(/\)$/, '')
+        }
         setForm({
           nombre: colCliente?.nombre || ultimaOrden?.nombre || '',
           telefono: telClean,
           calle: ultimaOrden?.calle || '',
           numero: ultimaOrden?.numero || '',
-          colonia: ultimaOrden?.colonia || ''
+          colonia: coloniaLimpia,
+          referencia: referenciaExtraida
         })
         alert('✅ ¡Datos autocompletados con éxito! Por favor revisa y confirma si son correctos.')
         setMostrandoAutocompletar(false)
@@ -838,10 +846,22 @@ export default function TarjetaLealtadFinal() {
   const totalCarrito = cart.reduce((s, i) => s + i.subtotal, 0)
   const cantidadTotal = cart.reduce((s, i) => s + i.cantidad, 0)
 
+  const obtenerAdicionalesCombo = (nombre: string): string => {
+    const n = nombre.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    if (n.includes('combo taco') || (n.includes('combo') && n.includes('taco'))) {
+      return ' (+ Consomé de cortesía)'
+    }
+    if (n.includes('hamburguesa sencilla')) {
+      return ' (+ Papas a la francesa de cortesía)'
+    }
+    return ''
+  }
+
   const generarTextoWhatsApp = () => {
     if (!business) return ''
     
     let itemsText = cart.map(i => {
+      const adicionalesCombo = obtenerAdicionalesCombo(i.product.nombre)
       const modTextList = Object.entries(i.selecciones).map(([key, o]: [string, any]) => {
         if (key === 'salsa-aparte') return o ? ' (*Salsa Aparte*)' : ''
         if (Array.isArray(o)) {
@@ -850,13 +870,13 @@ export default function TarjetaLealtadFinal() {
         return o ? ` (+ ${o.nombre})` : ''
       })
       const modText = modTextList.join('')
-      return `• ${i.cantidad}x ${i.product.nombre}${modText} - $${i.subtotal.toLocaleString()} MXN`
+      return `• ${i.cantidad}x ${i.product.nombre}${adicionalesCombo}${modText} - $${i.subtotal.toLocaleString()} MXN`
     }).join('\n')
     
     let tipoText = tipoMenu === 'delivery' ? '🛵 A Domicilio (Delivery)' : '🍽️ Comer en Restaurante (Mesa)'
     
     let direccionText = tipoMenu === 'delivery' 
-      ? `\n*Dirección:* ${form.calle} #${form.numero}, ${form.colonia}`
+      ? `\n*Dirección:* ${form.calle} #${form.numero}, ${form.colonia}${form.referencia ? ` (Ref: ${form.referencia})` : ''}`
       : ''
 
     const msg = `*NUEVO PEDIDO DE CLIENTE VIP - ${business.nombre.toUpperCase()}* 🛍️✨
@@ -883,6 +903,8 @@ _Pedido procesado a través de LoyaltyApp VIP_`
     const superaMinimo = totalCarrito >= (business.monto_minimo_sello || 0)
     const otorgarSello = superaMinimo
 
+    const coloniaCombinada = form.referencia ? `${form.colonia} (Ref: ${form.referencia})` : form.colonia
+
     const { data: order, error } = await supabase.from('orders').insert({
       business_id: business.id,
       cliente_id: cliente.id,
@@ -890,15 +912,26 @@ _Pedido procesado a través de LoyaltyApp VIP_`
       telefono_cliente: form.telefono,
       calle: form.calle,
       numero: form.numero,
-      colonia: form.colonia,
+      colonia: coloniaCombinada,
       tipo: tipoMenu,
-      items: cart.map(i => ({
-        id: i.product.id,
-        nombre: i.product.nombre,
-        cantidad: i.cantidad,
-        precio_unitario: i.product.precio,
-        subtotal: i.subtotal,
-      })),
+      items: cart.map(i => {
+        const adicionalesCombo = obtenerAdicionalesCombo(i.product.nombre)
+        const modTextList = Object.entries(i.selecciones).map(([key, o]: [string, any]) => {
+          if (key === 'salsa-aparte') return o ? ' (*Salsa Aparte*)' : ''
+          if (Array.isArray(o)) {
+            return o.map(subOpt => ` (+ ${subOpt.nombre})`).join('')
+          }
+          return o ? ` (+ ${o.nombre})` : ''
+        })
+        const modText = modTextList.join('')
+        return {
+          id: i.product.id,
+          nombre: `${i.product.nombre}${adicionalesCombo}${modText}`,
+          cantidad: i.cantidad,
+          precio_unitario: i.product.precio,
+          subtotal: i.subtotal,
+        }
+      }),
       total: totalCarrito,
       sello_otorgado: otorgarSello,
       sello_aprobado: false,
@@ -1277,7 +1310,7 @@ _Pedido procesado a través de LoyaltyApp VIP_`
                   const prodGrupo = productos.filter(p => p.group_id === grupo.id)
                   if (prodGrupo.length === 0) return null
                   
-                  const colapsado = !!categoriasColapsadas[grupo.id]
+                  const colapsado = categoriasColapsadas[grupo.id] !== false
                   
                   return (
                     <div key={grupo.id} id={`category-section-${grupo.id}`} className="bg-white border border-[#f0f0f0] rounded-3xl p-5 shadow-[0_4px_20px_rgba(0,0,0,0.04)] space-y-4 transition-all">
@@ -1348,23 +1381,7 @@ _Pedido procesado a través de LoyaltyApp VIP_`
                 })}
               </div>
 
-              {/* Floating Bottom Cart Bar */}
-              {cantidadTotal > 0 && (
-                <div className="fixed bottom-20 left-0 right-0 px-4 z-40 animate-slideUp">
-                  <div className="max-w-sm mx-auto bg-[#09090b] text-white rounded-3xl p-4 shadow-[0_8px_30px_rgba(0,0,0,0.15)] border border-[#27272a] flex justify-between items-center gap-4">
-                    <div className="min-w-0">
-                      <p className="text-[9px] text-white/50 uppercase tracking-widest font-black">Mi Orden VIP</p>
-                      <p className="font-extrabold text-sm">{cantidadTotal} {cantidadTotal === 1 ? 'producto' : 'productos'} · <span className="font-mono text-red-400">${totalCarrito.toLocaleString()} MXN</span></p>
-                    </div>
-                    <button
-                      onClick={() => setPasoMenu('checkout')}
-                      className="bg-[#dc2626] hover:bg-[#b91c1c] text-white font-black text-xs uppercase tracking-widest py-3 px-5 rounded-2xl transition-all flex items-center gap-1.5 shrink-0 shadow-md active:scale-95"
-                    >
-                      <span>Ver Carrito 🛒</span>
-                    </button>
-                  </div>
-                </div>
-              )}
+
             </div>
           )}
 
@@ -1433,6 +1450,7 @@ _Pedido procesado a través de LoyaltyApp VIP_`
                   { key: 'calle', label: 'Calle', placeholder: 'Av. Principal', type: 'text' },
                   { key: 'numero', label: 'Número', placeholder: '123', type: 'text' },
                   { key: 'colonia', label: 'Colonia', placeholder: 'Centro', type: 'text' },
+                  { key: 'referencia', label: 'Referencia / Entre calles (Opcional)', placeholder: 'Frente al parque, portón café', type: 'text' },
                 ].map(field => (
                   <div key={field.key}>
                     <label className="text-[10px] text-[#52525b] uppercase tracking-widest font-bold block mb-1">{field.label}</label>
@@ -1965,6 +1983,24 @@ _Pedido procesado a través de LoyaltyApp VIP_`
                 Añadir al Pedido
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Bottom Cart Bar (Rendered at Root Level to Prevent Parent Containing Block Clips) */}
+      {cantidadTotal > 0 && pasoMenu === 'menu' && vistaActiva === 'menu' && (
+        <div className="fixed bottom-[76px] left-0 right-0 px-4 z-40 animate-slideUp">
+          <div className="max-w-sm mx-auto bg-[#09090b] text-white rounded-3xl p-4 shadow-[0_8px_30px_rgba(0,0,0,0.15)] border border-[#27272a] flex justify-between items-center gap-4">
+            <div className="min-w-0">
+              <p className="text-[9px] text-white/50 uppercase tracking-widest font-black">Mi Orden VIP</p>
+              <p className="font-extrabold text-sm">{cantidadTotal} {cantidadTotal === 1 ? 'producto' : 'productos'} · <span className="font-mono text-red-400">${totalCarrito.toLocaleString()} MXN</span></p>
+            </div>
+            <button
+              onClick={() => setPasoMenu('checkout')}
+              className="bg-[#dc2626] hover:bg-[#b91c1c] text-white font-black text-xs uppercase tracking-widest py-3 px-5 rounded-2xl transition-all flex items-center gap-1.5 shrink-0 shadow-md active:scale-95"
+            >
+              <span>Ver Carrito 🛒</span>
+            </button>
           </div>
         </div>
       )}
