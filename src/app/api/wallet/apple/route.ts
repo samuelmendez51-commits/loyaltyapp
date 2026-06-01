@@ -743,6 +743,39 @@ export async function GET(req: Request) {
       }
     }
 
+    const type = searchParams.get('type')
+    if (type === 'strip') {
+      let bannerBuffer: Buffer | null = null
+      try {
+        const bannerUrl = business?.banner_url
+        if (bannerUrl && (bannerUrl.startsWith('http') || bannerUrl.startsWith('/'))) {
+          if (bannerUrl.startsWith('http')) {
+            const bannerRes = await fetch(bannerUrl)
+            if (bannerRes.ok) {
+              bannerBuffer = Buffer.from(await bannerRes.arrayBuffer())
+            }
+          } else {
+            const localImgPath = path.join(process.cwd(), 'public', bannerUrl)
+            if (fs.existsSync(localImgPath)) {
+              bannerBuffer = fs.readFileSync(localImgPath)
+            }
+          }
+        }
+      } catch (imgErr: any) {
+        console.warn('[AppleWallet] Error cargando banner para type=strip:', imgErr.message)
+      }
+
+      const maxSellos = business?.max_sellos || 10
+      const stripBuffer = await generateStripImage(bannerBuffer, puntos || 0, maxSellos)
+      return new NextResponse(stripBuffer as any, {
+        status: 200,
+        headers: {
+          'Content-Type': 'image/png',
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        }
+      })
+    }
+
     // Leer certificados con lógica robusta
     const { signerCert, signerKey, wwdrCert } = leerCertificados()
 

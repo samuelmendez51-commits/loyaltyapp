@@ -500,23 +500,18 @@ export async function POST(req: Request) {
         ],
       },
 
-      // ── Imagen de hero override a nivel de objeto (refuerza el visual) ───
-      // Nota: Google Wallet puede ignorar hero a nivel de objeto si ya está en la clase
-      ...(business.banner_url
-        ? {
-            heroImage: {
-              sourceUri: {
-                uri: business.banner_url,
-              },
-              contentDescription: {
-                defaultValue: {
-                  language: 'es-MX',
-                  value: `${business.nombre} — Portada`,
-                },
-              },
-            },
-          }
-        : {}),
+      // Premium Dynamic Hero Image from Apple Wallet dynamic strip endpoint containing the exact same Jimp-drawn stamps
+      heroImage: {
+        sourceUri: {
+          uri: `https://${business.slug}.loyaltyclub.mx/api/wallet/apple?clienteId=${cliente.id}&type=strip&v=${cliente.puntos || 0}`,
+        },
+        contentDescription: {
+          defaultValue: {
+            language: 'es-MX',
+            value: `${business.nombre} — Portada con Sellos`,
+          },
+        },
+      },
     }
 
     // ── 8. Construir el payload JWT (Save to Wallet) ──────────────────────
