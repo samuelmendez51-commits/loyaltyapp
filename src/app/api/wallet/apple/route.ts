@@ -179,6 +179,149 @@ async function resizeImage(buffer: Buffer, width: number, height: number, mode: 
   }
 }
 
+
+// ── Helper: Dibujo geométrico dinámico en Jimp ────────────────────────────────
+function isPointInPolygon(x: number, y: number, polygon: [number, number][]): boolean {
+  let inside = false
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i][0], yi = polygon[i][1]
+    const xj = polygon[j][0], yj = polygon[j][1]
+    const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)
+    if (intersect) inside = !inside
+  }
+  return inside
+}
+
+function getStarPolygon(cx: number, cy: number, rOuter: number, rInner: number): [number, number][] {
+  const points: [number, number][] = []
+  for (let i = 0; i < 10; i++) {
+    const angle = (i * Math.PI) / 5 - Math.PI / 2
+    const r = i % 2 === 0 ? rOuter : rInner
+    points.push([cx + r * Math.cos(angle), cy + r * Math.sin(angle)])
+  }
+  return points
+}
+
+async function generateStripImage(
+  bannerBuffer: Buffer | null,
+  puntos: number,
+  maxSellos: number
+): Promise<Buffer> {
+  const width = 750
+  const height = 246
+
+  let canvas: any
+  if (bannerBuffer) {
+    try {
+      const bannerImg = await Jimp.read(bannerBuffer)
+      try {
+        canvas = bannerImg.cover({ w: width, h: height })
+      } catch {
+        canvas = bannerImg.cover(width, height)
+      }
+    } catch (err) {
+      console.warn('[AppleWallet] Error leyendo bannerBuffer, usando color sólido de fallback:', err)
+      canvas = new Jimp({ width, height, color: 0x5B191BFF })
+    }
+  } else {
+    canvas = new Jimp({ width, height, color: 0x5B191BFF })
+  }
+
+  // Dibujar los sellos (1 a 10 sellos dinámicos)
+  const rows = maxSellos > 5 ? 2 : 1
+  const cols = rows === 2 ? Math.ceil(maxSellos / 2) : maxSellos
+  const stampRadius = 24
+  const innerStarRadiusOuter = 14
+  const innerStarRadiusInner = 6
+
+  // Espaciado dinámico
+  const gapX = cols > 5 ? 80 : 100
+  const totalGridWidth = (cols - 1) * gapX
+  const startX = (width - totalGridWidth) / 2
+  
+  const gapY = 85
+  const startY = rows === 2 ? 65 : 123
+
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const idx = row * cols + col
+      if (idx >= maxSellos) break
+
+      const cx = startX + col * gapX
+      const cy = startY + row * gapY
+      const isCompleted = idx < puntos
+
+      // Dibujar círculo blanco de fondo
+      for (let y = cy - stampRadius; y <= cy + stampRadius; y++) {
+        for (let x = cx - stampRadius; x <= cx + stampRadius; x++) {
+          if (x < 0 || x >= width || y < 0 || y >= height) continue
+
+          const dx = x - cx
+          const dy = y - cy
+          const distSq = dx * dx + dy * dy
+
+          if (distSq <= stampRadius * stampRadius) {
+            if (distSq >= (stampRadius - 2) * (stampRadius - 2)) {
+              canvas.setPixelColor(0x000000FF, x, y) // Borde negro
+            } else {
+              canvas.setPixelColor(0xFFFFFFFF, x, y) // Círculo blanco
+            }
+          }
+        }
+      }
+
+      // Dibujar estrella
+      const starPoly = getStarPolygon(cx, cy, innerStarRadiusOuter, innerStarRadiusInner)
+      const starColor = isCompleted ? 0xF59E0BFF : 0xD1D5DBFF // Amarillo/Gris
+      const starBorderColor = isCompleted ? 0xD97706FF : 0x9CA3AFFF
+
+      for (let y = cy - innerStarRadiusOuter; y <= cy + innerStarRadiusOuter; y++) {
+        for (let x = cx - innerStarRadiusOuter; x <= cx + innerStarRadiusOuter; x++) {
+          if (x < 0 || x >= width || y < 0 || y >= height) continue
+
+          if (isPointInPolygon(x, y, starPoly)) {
+            let isBorder = false
+            for (let i = 0; i < starPoly.length; i++) {
+              const p1 = starPoly[i]
+              const p2 = starPoly[(i + 1) % starPoly.length]
+              
+              const l2 = (p2[0]-p1[0])**2 + (p2[1]-p1[1])**2
+              let t = ((x-p1[0])*(p2[0]-p1[0]) + (y-p1[1])*(p2[1]-p1[1])) / l2
+              t = Math.max(0, Math.min(1, t))
+              const projX = p1[0] + t*(p2[0]-p1[0])
+              const projY = p1[1] + t*(p2[1]-p1[1])
+              const distToSeg = (x-projX)**2 + (y-projY)**2
+              
+              if (distToSeg <= 1.5) {
+                isBorder = true
+                break
+              }
+            }
+
+            if (isBorder) {
+              canvas.setPixelColor(starBorderColor, x, y)
+            } else {
+              canvas.setPixelColor(starColor, x, y)
+            }
+          }
+        }
+      }
+    }
+  }
+
+  const mimePng = Jimp.MIME_PNG || "image/png"
+  if (typeof canvas.getBuffer === 'function') {
+    const res = canvas.getBuffer(mimePng)
+    if (res && typeof res.then === 'function') {
+      return await res
+    }
+    return res
+  } else if (typeof canvas.getBufferAsync === 'function') {
+    return await canvas.getBufferAsync(mimePng)
+  }
+  return Buffer.from('')
+}
+
 function verificarPar(certPem: string, keyPem: string): boolean {
   try {
     if (!certPem || !keyPem || !certPem.includes('BEGIN CERTIFICATE') || !keyPem.includes('BEGIN')) {
@@ -352,36 +495,67 @@ export async function POST(req: Request) {
         baseBuffer = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64')
       }
 
-      // Intentar cargar logo remoto/específico del negocio si está disponible
+      // Intentar cargar logo y banner remotos del negocio si están disponibles
+      let logoBuffer = baseBuffer
+      let bannerBuffer: Buffer | null = null
+
       try {
         const logoUrl = business?.logo_url
         if (logoUrl && (logoUrl.startsWith('http') || logoUrl.startsWith('/'))) {
           if (logoUrl.startsWith('http')) {
             const logoRes = await fetch(logoUrl)
             if (logoRes.ok) {
-              baseBuffer = Buffer.from(await logoRes.arrayBuffer())
-              console.log('[AppleWallet] ✅ Logo remoto cargado para compresión')
+              logoBuffer = Buffer.from(await logoRes.arrayBuffer())
+              console.log('[AppleWallet] ✅ Logo remoto cargado para POST')
             }
           } else {
             const localImgPath = path.join(process.cwd(), 'public', logoUrl)
             if (fs.existsSync(localImgPath)) {
-              baseBuffer = fs.readFileSync(localImgPath)
-              console.log('[AppleWallet] ✅ Logo local cargado para compresión')
+              logoBuffer = fs.readFileSync(localImgPath)
+              console.log('[AppleWallet] ✅ Logo local cargado para POST')
             }
           }
         }
       } catch (imgErr: any) {
-        console.warn('[AppleWallet] No se pudo cargar imagen del negocio, usando logo por defecto:', imgErr.message)
+        console.warn('[AppleWallet] Error cargando logo:', imgErr.message)
       }
 
-      // Redimensionar las imágenes de forma ultra-ligera en base a baseBuffer
+      try {
+        const bannerUrl = business?.banner_url
+        if (bannerUrl && (bannerUrl.startsWith('http') || bannerUrl.startsWith('/'))) {
+          if (bannerUrl.startsWith('http')) {
+            const bannerRes = await fetch(bannerUrl)
+            if (bannerRes.ok) {
+              bannerBuffer = Buffer.from(await bannerRes.arrayBuffer())
+              console.log('[AppleWallet] ✅ Banner remoto cargado para POST')
+            }
+          } else {
+            const localImgPath = path.join(process.cwd(), 'public', bannerUrl)
+            if (fs.existsSync(localImgPath)) {
+              bannerBuffer = fs.readFileSync(localImgPath)
+              console.log('[AppleWallet] ✅ Banner local cargado para POST')
+            }
+          }
+        }
+      } catch (imgErr: any) {
+        console.warn('[AppleWallet] Error cargando banner:', imgErr.message)
+      }
+
+      // Generar la portada dinámica con estrellas circulares
+      const maxSellos = business?.max_sellos || 10
+      const stripBuffer = await generateStripImage(bannerBuffer, puntos || 0, maxSellos)
+
       console.log('[AppleWallet] 🎨 Redimensionando y comprimiendo imágenes para el pase...')
       const passBuffers: Record<string, Buffer> = {
-        "icon.png": await resizeImage(baseBuffer, 29, 29, 'cover'),
-        "icon@2x.png": await resizeImage(baseBuffer, 58, 58, 'cover'),
-        "logo.png": await resizeImage(baseBuffer, 160, 50, 'contain'),
-        "logo@2x.png": await resizeImage(baseBuffer, 320, 100, 'contain')
+        "icon.png": await resizeImage(logoBuffer, 29, 29, 'cover'),
+        "icon@2x.png": await resizeImage(logoBuffer, 58, 58, 'cover'),
+        "logo.png": await resizeImage(logoBuffer, 160, 50, 'contain'),
+        "logo@2x.png": await resizeImage(logoBuffer, 320, 100, 'contain'),
+        "strip.png": await resizeImage(stripBuffer, 375, 123, 'cover'),
+        "strip@2x.png": stripBuffer
       }
+
+      const firstName = (nombre || 'SOCIO').split(' ')[0].toUpperCase()
 
       const modelObject: any = {
         formatVersion: 1,
@@ -389,23 +563,20 @@ export async function POST(req: Request) {
         teamIdentifier: TEAM_IDENTIFIER,
         organizationName: business ? `${business.nombre} Club` : 'La Burrería Club',
         description: business ? `Pase VIP de Fidelidad — ${business.nombre}` : 'Pase VIP de Fidelidad La Burrería',
-        logoText: business ? business.nombre : 'La Burrería',
-        foregroundColor: 'rgb(9, 9, 11)',
-        backgroundColor: 'rgb(255, 255, 255)',
-        labelColor: 'rgb(220, 38, 38)',
+        logoText: '',
+        foregroundColor: 'rgb(249, 246, 240)', // Alabastro / Blanco premium (Legible y lujoso)
+        backgroundColor: 'rgb(91, 25, 27)',     // Borgoña Premium Lujoso
+        labelColor: 'rgb(212, 175, 55)',        // Oro Metálico Antiguo
         storeCard: {
           headerFields: [
-            { key: 'sellos', label: 'SELLOS', value: String(puntos || 0), textAlignment: 'PKTextAlignmentRight' }
-          ],
-          primaryFields: [
-            { key: 'cliente', label: 'SOCIO VIP', value: nombre }
+            { key: 'socio', label: 'SOCIO', value: firstName, textAlignment: 'PKTextAlignmentRight' }
           ],
           secondaryFields: [
-            { key: 'id', label: 'ID DE SOCIO', value: clienteId.substring(0, 8) },
-            { key: 'negocio', label: 'NEGOCIO', value: business?.nombre || 'La Burrería' }
+            { key: 'totales', label: 'ESTAMPILLAS TOTALES', value: String(maxSellos), textAlignment: 'PKTextAlignmentLeft' },
+            { key: 'completadas', label: 'ESTAMPILLAS COMPLETADAS', value: String(puntos || 0), textAlignment: 'PKTextAlignmentRight' }
           ],
           backFields: [
-            { key: 'info', label: 'CÓMO ACUMULAR', value: 'Presenta tu código QR en cada visita para acumular sellos y ganar premios.' },
+            { key: 'info', label: 'CÓMO ACUMULAR', value: 'Presenta tu código QR en caja para acumular sellos y ganar premios.' },
             { key: 'contacto', label: 'CONTACTO', value: business?.telefono_whatsapp ? `+${business.telefono_whatsapp}` : 'Consulta al cajero' }
           ]
         },
@@ -530,7 +701,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
-
 // ── GET HANDLER (Nativo para descarga directa y registro en iOS Safari) ────────
 export async function GET(req: Request) {
   try {
@@ -585,55 +755,67 @@ export async function GET(req: Request) {
         baseBuffer = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64')
       }
 
-      // Intentar cargar logo remoto/específico del negocio si está disponible
+      // Intentar cargar logo y banner remotos del negocio si están disponibles
+      let logoBuffer = baseBuffer
+      let bannerBuffer: Buffer | null = null
+
       try {
         const logoUrl = business?.logo_url
         if (logoUrl && (logoUrl.startsWith('http') || logoUrl.startsWith('/'))) {
           if (logoUrl.startsWith('http')) {
             const logoRes = await fetch(logoUrl)
             if (logoRes.ok) {
-              baseBuffer = Buffer.from(await logoRes.arrayBuffer())
-              console.log('[AppleWallet] ✅ Logo remoto cargado para compresión')
+              logoBuffer = Buffer.from(await logoRes.arrayBuffer())
+              console.log('[AppleWallet] ✅ Logo remoto cargado para GET')
             }
           } else {
             const localImgPath = path.join(process.cwd(), 'public', logoUrl)
             if (fs.existsSync(localImgPath)) {
-              baseBuffer = fs.readFileSync(localImgPath)
-              console.log('[AppleWallet] ✅ Logo local cargado para compresión')
+              logoBuffer = fs.readFileSync(localImgPath)
+              console.log('[AppleWallet] ✅ Logo local cargado para GET')
             }
           }
         }
       } catch (imgErr: any) {
-        console.warn('[AppleWallet] No se pudo cargar imagen del negocio, usando logo por defecto:', imgErr.message)
+        console.warn('[AppleWallet] Error cargando logo:', imgErr.message)
       }
 
-      // Redimensionar las imágenes de forma ultra-ligera en base a baseBuffer
+      try {
+        const bannerUrl = business?.banner_url
+        if (bannerUrl && (bannerUrl.startsWith('http') || bannerUrl.startsWith('/'))) {
+          if (bannerUrl.startsWith('http')) {
+            const bannerRes = await fetch(bannerUrl)
+            if (bannerRes.ok) {
+              bannerBuffer = Buffer.from(await bannerRes.arrayBuffer())
+              console.log('[AppleWallet] ✅ Banner remoto cargado para GET')
+            }
+          } else {
+            const localImgPath = path.join(process.cwd(), 'public', bannerUrl)
+            if (fs.existsSync(localImgPath)) {
+              bannerBuffer = fs.readFileSync(localImgPath)
+              console.log('[AppleWallet] ✅ Banner local cargado para GET')
+            }
+          }
+        }
+      } catch (imgErr: any) {
+        console.warn('[AppleWallet] Error cargando banner:', imgErr.message)
+      }
+
+      // Generar la portada dinámica con estrellas circulares
+      const maxSellos = business?.max_sellos || 10
+      const stripBuffer = await generateStripImage(bannerBuffer, puntos || 0, maxSellos)
+
       console.log('[AppleWallet] 🎨 Redimensionando y comprimiendo imágenes para el pase...')
-      const toRgb = (hex: string, def: string) => {
-        if (!hex) return def
-        const clean = hex.replace('#', '')
-        if (clean.length === 3) {
-          return `rgb(${parseInt(clean[0]+clean[0], 16)}, ${parseInt(clean[1]+clean[1], 16)}, ${parseInt(clean[2]+clean[2], 16)})`
-        }
-        if (clean.length === 6) {
-          return `rgb(${parseInt(clean.substring(0, 2), 16)}, ${parseInt(clean.substring(2, 4), 16)}, ${parseInt(clean.substring(4, 6), 16)})`
-        }
-        return def
-      }
-
       const passBuffers: Record<string, Buffer> = {
-        "icon.png": await resizeImage(baseBuffer, 29, 29, 'cover'),
-        "icon@2x.png": await resizeImage(baseBuffer, 58, 58, 'cover'),
-        "logo.png": await resizeImage(baseBuffer, 160, 50, 'contain'),
-        "logo@2x.png": await resizeImage(baseBuffer, 320, 100, 'contain'),
-        "strip.png": await resizeImage(baseBuffer, 375, 123, 'contain'),
-        "strip@2x.png": await resizeImage(baseBuffer, 750, 246, 'contain')
+        "icon.png": await resizeImage(logoBuffer, 29, 29, 'cover'),
+        "icon@2x.png": await resizeImage(logoBuffer, 58, 58, 'cover'),
+        "logo.png": await resizeImage(logoBuffer, 160, 50, 'contain'),
+        "logo@2x.png": await resizeImage(logoBuffer, 320, 100, 'contain'),
+        "strip.png": await resizeImage(stripBuffer, 375, 123, 'cover'),
+        "strip@2x.png": stripBuffer
       }
 
-      // Crear tarjeta de estrellas con Unicode
-      const starsString = Array.from({ length: 10 })
-        .map((_, i) => i < (puntos || 0) ? '★' : '☆')
-        .join(' ')
+      const firstName = (nombre || 'SOCIO').split(' ')[0].toUpperCase()
 
       const modelObject: any = {
         formatVersion: 1,
@@ -641,26 +823,20 @@ export async function GET(req: Request) {
         teamIdentifier: TEAM_IDENTIFIER,
         organizationName: business ? `${business.nombre} Club` : 'La Burrería Club',
         description: business ? `Pase VIP de Fidelidad — ${business.nombre}` : 'Pase VIP de Fidelidad La Burrería',
-        logoText: business ? business.nombre : 'La Burrería',
-        foregroundColor: 'rgb(9, 9, 11)',
-        backgroundColor: 'rgb(255, 255, 255)',
-        labelColor: toRgb(business?.color_primario, 'rgb(220, 38, 38)'),
+        logoText: '',
+        foregroundColor: 'rgb(249, 246, 240)', // Alabastro / Blanco premium (Legible y lujoso)
+        backgroundColor: 'rgb(91, 25, 27)',     // Borgoña Premium Lujoso
+        labelColor: 'rgb(212, 175, 55)',        // Oro Metálico Antiguo
         storeCard: {
           headerFields: [
-            { key: 'sellos', label: 'SELLOS', value: String(puntos || 0), textAlignment: 'PKTextAlignmentRight' }
-          ],
-          primaryFields: [
-            { key: 'cliente', label: 'SOCIO VIP', value: nombre }
+            { key: 'socio', label: 'SOCIO', value: firstName, textAlignment: 'PKTextAlignmentRight' }
           ],
           secondaryFields: [
-            { key: 'id', label: 'ID DE SOCIO', value: clienteId.substring(0, 8) },
-            { key: 'negocio', label: 'NEGOCIO', value: business?.nombre || 'La Burrería' }
-          ],
-          auxiliaryFields: [
-            { key: 'estrellas', label: 'TARJETA DE SELLOS', value: starsString }
+            { key: 'totales', label: 'ESTAMPILLAS TOTALES', value: String(maxSellos), textAlignment: 'PKTextAlignmentLeft' },
+            { key: 'completadas', label: 'ESTAMPILLAS COMPLETADAS', value: String(puntos || 0), textAlignment: 'PKTextAlignmentRight' }
           ],
           backFields: [
-            { key: 'info', label: 'CÓMO ACUMULAR', value: 'Presenta tu código QR en cada visita para acumular sellos y ganar premios.' },
+            { key: 'info', label: 'CÓMO ACUMULAR', value: 'Presenta tu código QR en caja para acumular sellos y ganar premios.' },
             { key: 'contacto', label: 'CONTACTO', value: business?.telefono_whatsapp ? `+${business.telefono_whatsapp}` : 'Consulta al cajero' }
           ]
         },
