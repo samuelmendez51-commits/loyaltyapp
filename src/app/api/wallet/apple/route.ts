@@ -889,8 +889,8 @@ export async function GET(req: Request) {
 
     } catch (passError: any) {
       console.warn('[AppleWallet] Error generando .pkpass via GET (generando HTML de respaldo):', passError.message)
-
-      // Fallback: Pase Web Premium en HTML para el navegador
+      
+      const debugHeader = `${passError.message} | ${passError.stack || ''}`.replace(/[\r\n]+/g, ' ').substring(0, 1000);
       const logoText = business ? business.nombre : 'La Burrería'
       const starsHtml = Array.from({ length: 10 }).map((_, idx) =>
         idx < (puntos || 0)
@@ -946,7 +946,10 @@ export async function GET(req: Request) {
 
       return new NextResponse(htmlContent, {
         status: 200,
-        headers: { 'Content-Type': 'text/html' }
+        headers: { 
+          'Content-Type': 'text/html',
+          'x-apple-pass-error': debugHeader
+        }
       })
     }
 
