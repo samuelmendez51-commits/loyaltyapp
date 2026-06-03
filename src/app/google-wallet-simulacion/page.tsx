@@ -32,13 +32,15 @@ function SimulationContent() {
           {row1.map((filled, idx) => (
             <div key={idx} className="w-8 h-8 rounded-full flex items-center justify-center">
               {filled ? (
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#FFD700] via-[#FDB931] to-[#D4A017] flex items-center justify-center shadow-[0_0_12px_rgba(255,215,0,0.5)]">
-                  <span className="text-[#452000] text-xs font-black">★</span>
-                </div>
+                <svg viewBox="0 0 100 100" className="w-8 h-8" fill="#f59e0b" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="50" cy="50" r="42" fill="none" stroke="#f59e0b" strokeWidth="6" />
+                  <polygon points="50,18 59,38 81,40 64,55 70,77 50,65 30,77 36,55 19,40 41,38" />
+                </svg>
               ) : (
-                <div className="w-7 h-7 rounded-full border border-dashed border-[#e4e4e7] flex items-center justify-center">
-                  <span className="text-[#d4d4d8] text-[10px]">★</span>
-                </div>
+                <svg viewBox="0 0 100 100" className="w-8 h-8" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="50" cy="50" r="42" fill="none" stroke="#d1d5db" strokeWidth="6" />
+                  <polygon points="50,18 59,38 81,40 64,55 70,77 50,65 30,77 36,55 19,40 41,38" fill="none" stroke="#d1d5db" strokeWidth="6" strokeLinejoin="round" />
+                </svg>
               )}
             </div>
           ))}
@@ -48,13 +50,15 @@ function SimulationContent() {
           {row2.map((filled, idx) => (
             <div key={idx} className="w-8 h-8 rounded-full flex items-center justify-center">
               {filled ? (
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#FFD700] via-[#FDB931] to-[#D4A017] flex items-center justify-center shadow-[0_0_12px_rgba(255,215,0,0.5)]">
-                  <span className="text-[#452000] text-xs font-black">★</span>
-                </div>
+                <svg viewBox="0 0 100 100" className="w-8 h-8" fill="#f59e0b" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="50" cy="50" r="42" fill="none" stroke="#f59e0b" strokeWidth="6" />
+                  <polygon points="50,18 59,38 81,40 64,55 70,77 50,65 30,77 36,55 19,40 41,38" />
+                </svg>
               ) : (
-                <div className="w-7 h-7 rounded-full border border-dashed border-[#e4e4e7] flex items-center justify-center">
-                  <span className="text-[#d4d4d8] text-[10px]">★</span>
-                </div>
+                <svg viewBox="0 0 100 100" className="w-8 h-8" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="50" cy="50" r="42" fill="none" stroke="#d1d5db" strokeWidth="6" />
+                  <polygon points="50,18 59,38 81,40 64,55 70,77 50,65 30,77 36,55 19,40 41,38" fill="none" stroke="#d1d5db" strokeWidth="6" strokeLinejoin="round" />
+                </svg>
               )}
             </div>
           ))}

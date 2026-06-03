@@ -1032,13 +1032,15 @@ _Pedido procesado a través de LoyaltyApp VIP_`
                   return (
                     <div key={i} className="flex justify-center items-center w-full">
                       {marcado ? (
-                        <div className="w-11 h-11 rounded-full bg-gradient-to-br from-[#FFD700] via-[#FDB931] to-[#D4A017] flex items-center justify-center shadow-[0_2px_8px_rgba(255,193,7,0.4)] transition-transform hover:scale-105">
-                          <span className="text-[#452000] text-lg font-black">★</span>
-                        </div>
+                        <svg viewBox="0 0 100 100" className="w-11 h-11 transition-transform hover:scale-105" fill="#f59e0b" xmlns="http://www.w3.org/2000/svg">
+                          <circle cx="50" cy="50" r="42" fill="none" stroke="#f59e0b" strokeWidth="6" />
+                          <polygon points="50,18 59,38 81,40 64,55 70,77 50,65 30,77 36,55 19,40 41,38" />
+                        </svg>
                       ) : (
-                        <div className="w-10 h-10 rounded-full border-2 border-dashed border-[#d4d4d8] flex items-center justify-center">
-                          <span className="text-[#d4d4d8] text-sm">★</span>
-                        </div>
+                        <svg viewBox="0 0 100 100" className="w-10 h-10" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <circle cx="50" cy="50" r="42" fill="none" stroke="#d1d5db" strokeWidth="6" />
+                          <polygon points="50,18 59,38 81,40 64,55 70,77 50,65 30,77 36,55 19,40 41,38" fill="none" stroke="#d1d5db" strokeWidth="6" strokeLinejoin="round" />
+                        </svg>
                       )}
                     </div>
                   )

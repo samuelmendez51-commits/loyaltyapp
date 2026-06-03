@@ -231,8 +231,8 @@ async function generateStripImage(
   const rows = maxSellos > 5 ? 2 : 1
   const cols = rows === 2 ? Math.ceil(maxSellos / 2) : maxSellos
   const stampRadius = 24
-  const innerStarRadiusOuter = 14
-  const innerStarRadiusInner = 6
+  const innerStarRadiusOuter = 18
+  const innerStarRadiusInner = 8
 
   // Espaciado dinámico
   const gapX = cols > 5 ? 80 : 100
@@ -251,7 +251,10 @@ async function generateStripImage(
       const cy = startY + row * gapY
       const isCompleted = idx < puntos
 
-      // Dibujar círculo blanco de fondo
+      // Dibujar contorno del círculo (transparente por dentro)
+      const circleColor = isCompleted ? 0xF59E0BFF : 0xD1D5DBFF
+      const strokeWidth = 3
+
       for (let y = cy - stampRadius; y <= cy + stampRadius; y++) {
         for (let x = cx - stampRadius; x <= cx + stampRadius; x++) {
           if (x < 0 || x >= width || y < 0 || y >= height) continue
@@ -260,20 +263,16 @@ async function generateStripImage(
           const dy = y - cy
           const distSq = dx * dx + dy * dy
 
-          if (distSq <= stampRadius * stampRadius) {
-            if (distSq >= (stampRadius - 2) * (stampRadius - 2)) {
-              canvas.setPixelColor(0x000000FF, x, y) // Borde negro
-            } else {
-              canvas.setPixelColor(0xFFFFFFFF, x, y) // Círculo blanco
-            }
+          if (distSq <= stampRadius * stampRadius && distSq >= (stampRadius - strokeWidth) * (stampRadius - strokeWidth)) {
+            canvas.setPixelColor(circleColor, x, y)
           }
         }
       }
 
       // Dibujar estrella
       const starPoly = getStarPolygon(cx, cy, innerStarRadiusOuter, innerStarRadiusInner)
-      const starColor = isCompleted ? 0xF59E0BFF : 0xD1D5DBFF // Amarillo/Gris
-      const starBorderColor = isCompleted ? 0xD97706FF : 0x9CA3AFFF
+      const starColor = isCompleted ? 0xF59E0BFF : 0x00000000 // Transparente si está vacía
+      const starBorderColor = isCompleted ? 0xF59E0BFF : 0xD1D5DBFF // Mismo color si está llena, gris claro si está vacía
 
       for (let y = cy - innerStarRadiusOuter; y <= cy + innerStarRadiusOuter; y++) {
         for (let x = cx - innerStarRadiusOuter; x <= cx + innerStarRadiusOuter; x++) {
@@ -300,7 +299,7 @@ async function generateStripImage(
 
             if (isBorder) {
               canvas.setPixelColor(starBorderColor, x, y)
-            } else {
+            } else if (isCompleted) {
               canvas.setPixelColor(starColor, x, y)
             }
           }
@@ -636,8 +635,14 @@ export async function POST(req: Request) {
       const logoText = business ? business.nombre : 'La Burrería'
       const starsHtml = Array.from({ length: 10 }).map((_, idx) =>
         idx < (puntos || 0)
-          ? `<div style="width:32px;height:32px;background:linear-gradient(135deg,#FFD700,#FDB931);border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 0 12px rgba(255,215,0,0.5);"><span style="color:#452000;font-size:1.1rem;font-weight:900;">★</span></div>`
-          : `<div style="width:32px;height:32px;border:2px dashed #e4e4e7;border-radius:50%;display:flex;align-items:center;justify-content:center;"><span style="color:#d4d4d8;font-size:1rem;">★</span></div>`
+          ? `<svg viewBox="0 0 100 100" style="width:32px;height:32px;display:inline-block;" fill="#f59e0b" xmlns="http://www.w3.org/2000/svg">
+               <circle cx="50" cy="50" r="42" fill="none" stroke="#f59e0b" stroke-width="6" />
+               <polygon points="50,18 59,38 81,40 64,55 70,77 50,65 30,77 36,55 19,40 41,38" />
+             </svg>`
+          : `<svg viewBox="0 0 100 100" style="width:32px;height:32px;display:inline-block;" fill="none" xmlns="http://www.w3.org/2000/svg">
+               <circle cx="50" cy="50" r="42" fill="none" stroke="#d1d5db" stroke-width="6" />
+               <polygon points="50,18 59,38 81,40 64,55 70,77 50,65 30,77 36,55 19,40 41,38" fill="none" stroke="#d1d5db" stroke-width="6" stroke-linejoin="round" />
+             </svg>`
       ).join('')
 
       const htmlContent = `<!DOCTYPE html>
@@ -929,8 +934,14 @@ export async function GET(req: Request) {
       const logoText = business ? business.nombre : 'La Burrería'
       const starsHtml = Array.from({ length: 10 }).map((_, idx) =>
         idx < (puntos || 0)
-          ? `<div style="width:32px;height:32px;background:linear-gradient(135deg,#FFD700,#FDB931);border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 0 12px rgba(255,215,0,0.5);"><span style="color:#452000;font-size:1.1rem;font-weight:900;">★</span></div>`
-          : `<div style="width:32px;height:32px;border:2px dashed #e4e4e7;border-radius:50%;display:flex;align-items:center;justify-content:center;"><span style="color:#d4d4d8;font-size:1rem;">★</span></div>`
+          ? `<svg viewBox="0 0 100 100" style="width:32px;height:32px;display:inline-block;" fill="#f59e0b" xmlns="http://www.w3.org/2000/svg">
+               <circle cx="50" cy="50" r="42" fill="none" stroke="#f59e0b" stroke-width="6" />
+               <polygon points="50,18 59,38 81,40 64,55 70,77 50,65 30,77 36,55 19,40 41,38" />
+             </svg>`
+          : `<svg viewBox="0 0 100 100" style="width:32px;height:32px;display:inline-block;" fill="none" xmlns="http://www.w3.org/2000/svg">
+               <circle cx="50" cy="50" r="42" fill="none" stroke="#d1d5db" stroke-width="6" />
+               <polygon points="50,18 59,38 81,40 64,55 70,77 50,65 30,77 36,55 19,40 41,38" fill="none" stroke="#d1d5db" stroke-width="6" stroke-linejoin="round" />
+             </svg>`
       ).join('')
 
       const htmlContent = `<!DOCTYPE html>
