@@ -32,13 +32,17 @@ function SimulationContent() {
           {row1.map((filled, idx) => (
             <div key={idx} className="w-8 h-8 rounded-full flex items-center justify-center">
               {filled ? (
-                <svg viewBox="0 0 100 100" className="w-8 h-8" fill="#f59e0b" xmlns="http://www.w3.org/2000/svg">
+                <svg viewBox="0 0 100 100" className="w-8 h-8" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="50" cy="50" r="42" fill="none" stroke="#000000" strokeWidth="16" />
                   <circle cx="50" cy="50" r="42" fill="none" stroke="#f59e0b" strokeWidth="6" />
-                  <polygon points="50,18 59,38 81,40 64,55 70,77 50,65 30,77 36,55 19,40 41,38" />
+                  <polygon points="50,18 59,38 81,40 64,55 70,77 50,65 30,77 36,55 19,40 41,38" fill="#000000" stroke="#000000" strokeWidth="10" strokeLinejoin="round" />
+                  <polygon points="50,18 59,38 81,40 64,55 70,77 50,65 30,77 36,55 19,40 41,38" fill="#f59e0b" />
                 </svg>
               ) : (
                 <svg viewBox="0 0 100 100" className="w-8 h-8" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="50" cy="50" r="42" fill="none" stroke="#000000" strokeWidth="16" />
                   <circle cx="50" cy="50" r="42" fill="none" stroke="#d1d5db" strokeWidth="6" />
+                  <polygon points="50,18 59,38 81,40 64,55 70,77 50,65 30,77 36,55 19,40 41,38" fill="none" stroke="#000000" strokeWidth="16" strokeLinejoin="round" />
                   <polygon points="50,18 59,38 81,40 64,55 70,77 50,65 30,77 36,55 19,40 41,38" fill="none" stroke="#d1d5db" strokeWidth="6" strokeLinejoin="round" />
                 </svg>
               )}
@@ -50,13 +54,17 @@ function SimulationContent() {
           {row2.map((filled, idx) => (
             <div key={idx} className="w-8 h-8 rounded-full flex items-center justify-center">
               {filled ? (
-                <svg viewBox="0 0 100 100" className="w-8 h-8" fill="#f59e0b" xmlns="http://www.w3.org/2000/svg">
+                <svg viewBox="0 0 100 100" className="w-8 h-8" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="50" cy="50" r="42" fill="none" stroke="#000000" strokeWidth="16" />
                   <circle cx="50" cy="50" r="42" fill="none" stroke="#f59e0b" strokeWidth="6" />
-                  <polygon points="50,18 59,38 81,40 64,55 70,77 50,65 30,77 36,55 19,40 41,38" />
+                  <polygon points="50,18 59,38 81,40 64,55 70,77 50,65 30,77 36,55 19,40 41,38" fill="#000000" stroke="#000000" strokeWidth="10" strokeLinejoin="round" />
+                  <polygon points="50,18 59,38 81,40 64,55 70,77 50,65 30,77 36,55 19,40 41,38" fill="#f59e0b" />
                 </svg>
               ) : (
                 <svg viewBox="0 0 100 100" className="w-8 h-8" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="50" cy="50" r="42" fill="none" stroke="#000000" strokeWidth="16" />
                   <circle cx="50" cy="50" r="42" fill="none" stroke="#d1d5db" strokeWidth="6" />
+                  <polygon points="50,18 59,38 81,40 64,55 70,77 50,65 30,77 36,55 19,40 41,38" fill="none" stroke="#000000" strokeWidth="16" strokeLinejoin="round" />
                   <polygon points="50,18 59,38 81,40 64,55 70,77 50,65 30,77 36,55 19,40 41,38" fill="none" stroke="#d1d5db" strokeWidth="6" strokeLinejoin="round" />
                 </svg>
               )}
