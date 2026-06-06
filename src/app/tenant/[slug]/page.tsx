@@ -168,7 +168,9 @@ export default function TenantLandingPage() {
           {/* Botones de acción del portal */}
           <div className="space-y-4 pt-2">
             <button
-              onClick={() => router.push('/menu')}
+              onClick={() => {
+                window.location.href = '/menu';
+              }}
               className="w-full text-white py-4 rounded-2xl text-xs font-bold uppercase tracking-wider shadow-sm transition-all hover:brightness-110 active:scale-[0.99] flex items-center justify-center gap-2.5"
               style={{ backgroundColor: colorActivo, boxShadow: `0 4px 14px ${colorActivo}33` }}
             >
@@ -177,7 +179,9 @@ export default function TenantLandingPage() {
             </button>
 
             <button
-              onClick={() => router.push('/registro')}
+              onClick={() => {
+                window.location.href = '/registro';
+              }}
               className="w-full bg-[#09090b] text-white hover:bg-zinc-800 py-4 rounded-2xl text-xs font-bold uppercase tracking-wider shadow-sm transition-all active:scale-[0.99] flex items-center justify-center gap-2.5"
             >
               <Award size={16} style={{ color: colorActivo }} />
@@ -197,7 +201,9 @@ export default function TenantLandingPage() {
           </p>
           <div className="pt-2">
             <button 
-              onClick={() => router.push('/login')} 
+              onClick={() => {
+                window.location.href = '/login';
+              }} 
               className="text-[9px] text-zinc-400 hover:text-zinc-600 transition-colors font-medium underline"
             >
               Acceso de Personal / Administración

@@ -1,399 +1,257 @@
-# 🧠 PROJECT SOUL — LoyaltyClub
-> **Este archivo es la fuente de verdad del proyecto.**
-> Antes de hacer cualquier cambio, el agente DEBE leer este archivo y verificar que no viola ninguna de las reglas aquí definidas.
+# PROJECT SOUL — LoyaltyClub / Urban Delivery Platform
+> **Fuente de Verdad Técnica y Arquitectónica.** Este documento define la lógica de negocio,
+> la arquitectura del sistema y las decisiones de diseño clave para prevenir regresiones y alucinaciones.
+> Última actualización: Junio 2026.
 
 ---
 
-## 1. ¿Qué es este proyecto?
+## 1. Propósito del Producto
 
-**LoyaltyClub** es una plataforma SaaS multi-tenant de programas de fidelidad para restaurantes y negocios de alimentos. Cada negocio tiene su propio subdominio (`laburreria.loyaltyclub.mx`) con branding dinámico, portal de clientes, panel de administración y sistema de sellos/puntos.
+**LoyaltyClub** es una plataforma multi-tenant SaaS que ofrece dos módulos principales:
 
-- **Dominio de producción:** `loyaltyclub.mx`
-- **Dominio de desarrollo:** `*.localhost:3000`
-- **Tenant demo:** `laburreria` (La Burrería)
-- **Deploy:** Vercel
+1. **Fidelización** — Tarjetas de sellos digitales VIP, ruleta de premios gamificada y gestión de clientes para negocios locales.
+2. **Urban Delivery** — Sistema logístico de reparto en tiempo real con dashboard para restaurantes, portal para bikers y panel para el modulador (operador central).
 
 ---
 
-## 2. Stack Tecnológico — REGLAS ABSOLUTAS
+## 2. Stack Tecnológico
 
-| Capa | Tecnología | Versión | Notas |
-|------|-----------|---------|-------|
-| Framework | **Next.js** | `16.2.6` | App Router — NO Pages Router |
-| Runtime | **React** | `19.2.4` | Server Components por defecto |
-| Lenguaje | **TypeScript** | `^5` | Strict mode. `ignoreBuildErrors: true` solo en prod |
-| Estilos | **TailwindCSS v4** | `^4` | Con `@tailwindcss/postcss` |
-| Base de datos | **Supabase** | `^2.106.0` | PostgreSQL. NO Prisma, NO Drizzle |
-| Auth | **Cookies de sesión custom** | — | NO Supabase Auth, NO NextAuth |
-| Fuente | **Inter** | Google Fonts | Variable `--font-inter`. Única fuente permitida |
-| Iconos | **lucide-react** | `^1.16.0` | NO heroicons, NO FontAwesome |
-| Charts | **recharts** | `^3.8.1` | Para métricas del dashboard |
-| QR | **html5-qrcode** + **qrcode.react** | — | Escáner y generación de QR |
-
-> ⚠️ **NUNCA** instalar nuevas dependencias sin autorización explícita del dueño del proyecto.
+| Capa | Tecnología |
+|------|-----------|
+| Framework | Next.js (App Router) — leer `node_modules/next/dist/docs/` antes de usar APIs |
+| Base de datos | Supabase (PostgreSQL + Realtime + RLS) |
+| Auth | Supabase Auth para clientes finales; cookies propias para bikers y modulador |
+| Estilos | Tailwind CSS + `globals.css` con tokens custom |
+| Iconos | `lucide-react` exclusivamente |
+| Canvas | Web API nativa para el demo de ruleta |
+| GPS | `navigator.geolocation.watchPosition` + Supabase Realtime Broadcast (sin writes a DB) |
 
 ---
 
 ## 3. Arquitectura Multi-Tenant
 
-### Modelo de Subdominio
-
+### Mapeo de Subdominios
 ```
-loyaltyclub.mx          → Dominio raíz (superadmin + login global)
-www.loyaltyclub.mx      → Igual que raíz
-laburreria.loyaltyclub.mx → Portal del tenant "laburreria"
-otronegocio.loyaltyclub.mx → Portal del tenant "otronegocio"
+[slug].loyaltyclub.mx            → Dashboard del restaurante (tenant)
+[slug].loyaltyclub.mx/biker      → Portal móvil del repartidor
+[slug].loyaltyclub.mx/modulador  → Panel del modulador / operador central
+[slug].loyaltyclub.mx/registro   → Alta pública de aspirantes a biker
+[slug].loyaltyclub.mx/cliente    → Tarjeta VIP del cliente final
 ```
 
-### Rutas Internas (Next.js App Router)
+### Slug especial: `bikers`
+- El slug `bikers` está reservado para la flota de Urban Delivery.
+- `bikers.loyaltyclub.mx/modulador` → Panel central del modulador.
+- `bikers.loyaltyclub.mx/registro` → Formulario público de alta de aspirantes.
 
-El middleware reescribe rutas externas a rutas internas del tenant:
-
-| URL Externa (usuario ve) | Ruta Interna (Next.js sirve) |
-|--------------------------|------------------------------|
-| `laburreria.loyaltyclub.mx/` | `/tenant/laburreria` |
-| `laburreria.loyaltyclub.mx/login` | `/tenant/laburreria/login` |
-| `laburreria.loyaltyclub.mx/dashboard` | `/tenant/laburreria/dashboard` |
-| `laburreria.loyaltyclub.mx/escaner` | `/tenant/laburreria/escaner` |
-| `laburreria.loyaltyclub.mx/ajustes` | `/tenant/laburreria/ajustes` |
-| `laburreria.loyaltyclub.mx/registro` | `/tenant/laburreria/registro` |
-| `laburreria.loyaltyclub.mx/cliente/[id]` | `/tenant/laburreria/cliente/[id]` |
-| `laburreria.loyaltyclub.mx/menu` | `/tenant/laburreria/menu` |
-| `loyaltyclub.mx/superadmin` | `/superadmin` (dominio raíz) |
-
-> ⚠️ **REGLA CRÍTICA:** NUNCA crear rutas en `/app/dashboard`, `/app/login`, `/app/escaner` directamente. Todas las páginas de tenant viven en `/app/tenant/[slug]/`. El middleware se encarga del mapeo.
+### Resolución de Tenant
+El middleware de Next.js lee el subdominio y lo pasa como `params.slug` al App Router.
+Cada página carga su `business` desde `supabase.from('businesses').eq('slug', slug)`.
 
 ---
 
-## 4. Sistema de Autenticación
+## 4. Módulo de Fidelización
 
-### Cookies de Sesión (NO JWT en frontend, NO Supabase Auth)
+### Flujo de Sellos
+1. Cliente escanea QR o ingresa su tarjeta VIP.
+2. El escáner del negocio valida el cliente y agrega un sello.
+3. Al alcanzar N sellos (configurable `max_stamps`) → se desbloquea la **Ruleta Final**.
+4. Al alcanzar M sellos intermedios (configurable por `ruleta_config`) → se desbloquea la **Ruleta Intermedia**.
 
-La sesión se maneja con cookies HTTP. Las cookies de sesión son:
+### Protección Anti-Fraude (Sellos)
+- No se pueden agregar más sellos de los configurados (`max_stamps`).
+- El monto mínimo de pedido (`monto_minimo_ruleta`) debe cumplirse para activar la ruleta.
+- Si no se cumple, se muestra un candado dorado explicativo en la UI del cliente.
 
-| Cookie | Descripción |
-|--------|-------------|
-| `session_rol` | Rol del usuario: `superadmin`, `admin_comercio`, `empleado`, `cajero` |
-| `session_user` | Nombre del usuario |
-| `session_user_id` | UUID del usuario en `business_users` |
-| `session_business_id` | UUID del negocio |
-| `session_business_slug` | Slug del negocio (ej: `laburreria`) |
-| `session_branch_id` | UUID de la sucursal (opcional) |
+### Sistema de Ruleta Variable (Estado Actual — Junio 2026)
 
-### Roles y Permisos
+#### Ruleta Principal
+- **Sectores**: De 1 a 10, configurables desde el Dashboard → Pestaña "Promociones (Ruleta)".
+- **Estado**: `premiosPrincipal: string[]` + `numSectoresPrincipal: number`.
+- **Helper `ajustarPremiosPrincipal(n)`**: Expande o trunca el array SIN perder valores ya escritos.
+- **Peso/Probabilidad**: Repetir el mismo texto en múltiples sectores aumenta su probabilidad. Se muestra un badge `Repetido ×N` junto al label del sector.
+- **Persistencia**: Columna `businesses.premios_ruleta` (tipo `text[]`, longitud variable).
 
-| Rol | Acceso | Descripción |
-|-----|--------|-------------|
-| `superadmin` | Panel `/superadmin` en dominio raíz | Dueño del SaaS. Gestiona todos los tenants |
-| `admin_comercio` | `/dashboard`, `/ajustes` del tenant | Dueño del negocio |
-| `empleado` / `cajero` | Solo `/escaner` | Terminal de escaneo QR |
+#### Ruletas Intermedias
+- Una por cada "rango de sellos" (ej: 3★, 5★, 7★).
+- Cada una tiene su propio número de sectores independiente (1-10).
+- **Estado**: `ruletaConfig: { [sello: string]: { activo: boolean, premios: string[] } }`.
+- **Persistencia**: Columna `businesses.ruleta_config` (tipo `jsonb`).
+- El formulario de nueva ruleta usa `numSectoresNuevo` + `nuevosPremios: string[]` con `ajustarNuevosPremios(n)`.
 
-### Flujo de Login
-1. El usuario ingresa **email + PIN** (NO contraseña clásica)
-2. Se valida contra `business_users` (para admin/empleado) o `superadmins` (para superadmin)
-3. Se setean las cookies de sesión
-4. El middleware redirige según el rol
+#### Demo Interactivo
+- Componente `RuletaDemo` en `dashboard/page.tsx` (antes del export principal).
+- Canvas 260×260px, animación `requestAnimationFrame`, easing quartic (`1 - (1-t)^4`).
+- Se re-dibuja automáticamente al cambiar `premiosPrincipal`.
 
-> ⚠️ **REGLA:** Los PINs son texto plano en la BD (sin hash). No cambiar este comportamiento sin autorización.
-
----
-
-## 5. Base de Datos (Supabase / PostgreSQL)
-
-### Tablas Principales
-
-| Tabla | Descripción |
-|-------|-------------|
-| `superadmins` | Administradores raíz del SaaS |
-| `businesses` | Tenants (negocios). El slug es la clave de multi-tenancy |
-| `branches` | Sucursales de un negocio |
-| `business_users` | Empleados y admins de cada negocio |
-| `clientes` | Socios VIP (clientes finales del negocio) |
-| `historial_puntos` | Auditoría de movimientos de puntos/sellos |
-| `loyalty_rewards` | Premios del programa clásico de sellos |
-| `reward_milestones` | Hitos de la ruleta gamificada |
-| `milestone_prizes` | Pool de premios por hito de ruleta |
-| `roulette_spins` | Log de giros de ruleta + cupones generados |
-| `credit_transactions` | Ledger de créditos SaaS (facturación) |
-| `menu_groups` | Categorías del menú digital |
-| `menu_products` | Productos del menú |
-| `product_modifiers` | Modificadores de producto |
-| `modifier_options` | Opciones de modificadores |
-| `orders` | Pedidos + control de sellos |
-| `tracking_events` | Auditoría global de eventos |
-| `audit_logs` | Log de acciones críticas |
-| `business_schedules` | Horarios detallados por día |
-
-### Acceso a Supabase
-- **Cliente:** `src/lib/supabase.ts` → `import { supabase } from '@/lib/supabase'`
-- **Helper de Tenant:** `src/lib/tenant.ts` → `getTenantBySlug()`, `getTenantOrNull()`, `buildTenantUrl()`
-- **RLS:** Desactivado en desarrollo. En producción, verificar antes de activar.
-- **Schema actual:** `complete_schema_v12.sql` + `migration_v14_tabs_geopush.sql` + `migration_v15_previewer_min_ruleta.sql`
-
-### Reglas de la BD
-- ✅ Siempre filtrar por `business_id` en queries de tenant (aislamiento multi-tenant)
-- ✅ Usar `.maybeSingle()` en vez de `.single()` cuando el registro puede no existir
-- ✅ Usar `React.cache()` para deduplicar queries en Server Components
-- ❌ NUNCA hacer queries sin filtro de `business_id` en tablas de tenant
-- ❌ NUNCA modificar el schema sin crear un archivo de migración versionado
+### Sistema de Geopush y Geocercas Inteligente
+- **Frecuencia de Notificaciones**: Configurable en `configuracion_geopush.frecuencia_minutos` (0 para siempre, 60 para 1 hora, 240 para 4 horas, 720 para 12 horas, 1440 para 24 horas).
+- **Filtro Anti-Vecinos**: Si `configuracion_geopush.evitar_molestar_vecinos` está activo, durante la registración del cliente (`/registro`), se verifica vía GPS si el cliente se encuentra dentro del radio perimetral de la geocerca. Si es así, se marca `clientes.es_vecino = true`.
+- **Comportamiento en Apple Wallet**: Si el cliente es vecino y el filtro está activo, se omiten las coordenadas en el pass `.pkpass` para evitar que iOS lo notifique ininterrumpidamente en su domicilio. En caso contrario, se define `locations` con `latitude`, `longitude`, `relevantText` (mensaje push de la geocerca) y `maxDistance` igual al radio en metros de la geocerca.
 
 ---
 
-## 6. Estructura de Archivos
+## 5. Módulo Urban Delivery
+
+### Actores del Sistema
+
+| Actor | Portal | Auth |
+|-------|--------|------|
+| Restaurante | `[slug]/dashboard/` → pestaña "🛵 Solicitar Repartidor" | Supabase Auth (email) |
+| Modulador | `bikers/modulador` | Email + PIN en `business_users` |
+| Biker | `bikers/biker` | PIN de 4-6 dígitos en tabla `bikers` |
+| Aspirante | `bikers/registro` | Sin auth, formulario público |
+
+### Máquina de Estados: `delivery_requests.estado`
 
 ```
-loyaltyapp/
-├── src/
-│   ├── app/
-│   │   ├── layout.tsx              ← Root layout (Inter font, PWA meta)
-│   │   ├── globals.css             ← Design system tokens + clases globales
-│   │   ├── page.tsx                ← Landing pública (dominio raíz)
-│   │   ├── login/                  ← Login global (superadmin)
-│   │   ├── superadmin/             ← Panel super admin (dominio raíz)
-│   │   ├── dashboard/              ← Redirect helper (dominio raíz)
-│   │   ├── registro/               ← Registro global (redirect)
-│   │   ├── suspended/              ← Página de suspensión pública
-│   │   ├── google-wallet-simulacion/ ← Debug de wallet
-│   │   ├── api/
-│   │   │   ├── orders/route.ts     ← API de pedidos
-│   │   │   └── wallet/
-│   │   │       ├── apple/          ← Apple Wallet (.pkpass)
-│   │   │       └── google/         ← Google Wallet (JWT)
-│   │   └── tenant/[slug]/          ← ⭐ CORE: Todo el multi-tenant aquí
-│   │       ├── layout.tsx          ← Valida tenant, genera metadata SEO
-│   │       ├── page.tsx            ← Portal público del tenant
-│   │       ├── login/              ← Login con branding del tenant
-│   │       ├── registro/           ← Alta de clientes finales
-│   │       ├── cliente/[id]/       ← Tarjeta VIP del cliente
-│   │       ├── escaner/            ← Terminal QR (empleados)
-│   │       ├── dashboard/          ← Panel admin del tenant
-│   │       │   ├── page.tsx        ← Dashboard principal (monolítico ~164KB)
-│   │       │   ├── vip/            ← Gestión de clientes VIP
-│   │       │   ├── gamification/   ← Config de ruleta y premios
-│   │       │   ├── mapa/           ← Geocerca y mapa
-│   │       │   └── metrics/        ← Métricas y reportes
-│   │       ├── ajustes/            ← Configuración del negocio
-│   │       └── menu/               ← Menú digital público
-│   └── lib/
-│       ├── supabase.ts             ← Cliente Supabase
-│       ├── tenant.ts               ← Helpers de tenant
-│       └── auth.ts                 ← Helpers de autenticación
-├── middleware.ts                   ← 🔑 Routing multi-tenant (NO TOCAR sin entender bien)
-├── next.config.ts                  ← Config Next.js (ignoreBuildErrors, PWA headers)
-├── tailwind.config.ts              ← Config Tailwind v4
-└── public/                         ← Assets estáticos, service-worker, manifest
+pendiente
+    │
+    ├── aceptado_flota   ← El modulador asigna manualmente (estado intermedio)
+    │       │
+    │       └── aceptado ← Un biker reclamó el viaje (RPC atómica)
+    │               │
+    │               ├── en_camino  ← Biker confirmó que recogió el pedido
+    │               │       │
+    │               │       └── completado ← Biker confirmó entrega
+    │               │
+    │               └── cancelado_biker ← Biker liberó el viaje (vuelve a pendiente)
+    │
+    └── cancelado_restaurante ← Restaurante cancela en cualquier momento
 ```
+
+### RPC Atómica: `reclamar_viaje`
+- Previene condiciones de carrera cuando múltiples bikers intentan tomar el mismo viaje.
+- Recibe `p_request_id` y `p_biker_id`.
+- Retorna `boolean`: `true` si el biker lo obtuvo, `false` si otro llegó primero.
+- Implementada en PostgreSQL con `FOR UPDATE SKIP LOCKED`.
+
+### RPC: `cancelar_viaje_biker`
+- El biker libera el viaje con un motivo.
+- El estado vuelve a `pendiente` para que otros bikers puedan tomarlo.
+
+### GPS Broadcast (Efímero — Sin Writes)
+- Canal Supabase Realtime: `fleet:{fleetId}:bikers`
+- Evento: `biker_location` con payload `{ biker_id, lat, lng, accuracy, ts }`.
+- Throttle: 12 segundos entre broadcasts para no saturar Supabase.
+- **NO escribe en base de datos**. Solo el modulador (suscrito al canal) recibe los pings.
+
+### Candado Anti-Fraude de Sesión Única (`current_session_id`)
+1. Al hacer login el biker, se genera un `UUID` nuevo.
+2. Se guarda en `bikers.current_session_id` (DB) y en cookie `biker_session_id` (browser).
+3. Cada 20 segundos, `verificarBikerStatus()` compara la cookie con la DB.
+4. Si no coinciden → la cookie se destruye, el biker es expulsado con alerta.
+5. Garantiza que una cuenta no pueda estar activa en dos dispositivos simultáneamente.
+
+### Monetización por Tiempo
+- Campo `bikers.activo_hasta` (timestamp) — el biker puede operar hasta esta fecha.
+- Campo `delivery_fleets.precio_credito` — precio en MXN de una recarga.
+- Campo `delivery_fleets.tiempo_credito_dias` — días que otorga una recarga.
+- Campo `delivery_fleets.dias_regalo_nuevo` — días de cortesía para nuevos bikers aprobados.
+- Al aprobar un aspirante, se establece `activo_hasta = NOW() + dias_regalo_nuevo`.
+- Al recargar, se suma `tiempo_credito_dias` a `activo_hasta` desde hoy (no desde vencimiento).
+
+### Sistema de Alarmas del Modulador
+Cuando llega una nueva `delivery_request` con estado `pendiente`:
+1. **Audio** (Web Audio API): Se sintetiza un acorde D5 + A5 con `OscillatorNode` (sinusoidal, fade-out en 1.5s).
+2. **Parpadeo de Título**: `setInterval` alterna `document.title` entre `🚨 (N) ¡Nueva Petición!` y el título base.
+3. **Notificación HTML5**: `new Notification(...)` si el permiso fue concedido.
+4. El parpadeo se detiene cuando el modulador vuelve al foco de la pestaña (`document.visibilitychange`).
 
 ---
 
-## 7. Design System — REGLAS DE UI
+## 6. Esquema de Base de Datos (Tablas Clave)
 
-### Paleta de Colores (Clean Light)
-
-```css
---brand-red: #dc2626           /* Color primario de la plataforma */
---brand-red-dark: #b91c1c      /* Hover del primario */
---brand-accent: #ef4444        /* Acento */
---bg-canvas: #ffffff           /* Fondo principal */
---bg-muted: #fafafa            /* Fondo de secciones secundarias */
---bg-subtle: #f4f4f5           /* Fondo sutil */
---surface: #ffffff             /* Superficie de cards */
---border: #e4e4e7              /* Borde estándar */
---border-strong: #d4d4d8       /* Borde fuerte */
---text-primary: #09090b        /* Texto principal */
---text-secondary: #52525b      /* Texto secundario */
---text-muted: #a1a1aa          /* Texto atenuado */
+### `businesses`
+```sql
+premios_ruleta      text[]      -- Array variable de premios de ruleta (1-10 items)
+ruleta_config       jsonb       -- { [sello]: { activo: bool, premios: string[] } }
+monto_minimo_ruleta numeric     -- Mínimo de pedido para activar ruleta
+reiniciar_sellos_ruleta bool    -- Reset automático a 0 tras girar
+max_stamps          int         -- Máximo de sellos en la tarjeta
 ```
 
-> ⚠️ **CADA TENANT** tiene su propio `color_primario` y `color_secundario` en la BD.
-> El branding dinámico se aplica con `style={{ color: tenant.color_primario }}` o CSS variables inline.
-> El rojo `#dc2626` es el color base de la **plataforma**, no necesariamente del tenant.
-
-### Clases CSS Globales (usar siempre estas, NO inventar nuevas)
-
-| Clase | Uso |
-|-------|-----|
-| `.btn-primary` | Botón principal (rojo, con hover y shadow) |
-| `.card-clean` | Card con borde y sombra ligera |
-| `.card-glass` | Card con estilo glassmorphism (legacy) |
-| `.input-clean` | Input con focus ring rojo |
-| `.table-header` | Cabecera de tabla |
-| `.table-row` | Fila de tabla con hover |
-| `.badge` | Chip/tag de estado |
-| `.nav-tab` | Tab de navegación con underline animado |
-| `.animate-fadeIn` | Fade in desde abajo (0.2s) |
-| `.animate-slideUp` | Slide up (0.3s) |
-
-### Tipografía
-- **Fuente única:** `Inter` (Google Fonts)
-- **Variable CSS:** `--font-inter`
-- **Headings:** `font-weight: 700`, `letter-spacing: -0.02em`
-- **Body:** `font-size: 15px` (0.9375rem)
-
-### Border Radius
-```css
---radius-sm: 8px
---radius: 12px
---radius-lg: 16px
---radius-xl: 20px
---radius-2xl: 28px
+### `delivery_fleets`
+```sql
+business_id         uuid        -- FK a businesses (el negocio dueño de la flota)
+nombre              text        -- Nombre de la flota
+ciudad              text
+activo              bool
+precio_credito      numeric     -- MXN por recarga
+tiempo_credito_dias int         -- Días que otorga cada recarga
+dias_regalo_nuevo   int         -- Días gratis para nuevos bikers
 ```
 
-### Sombras
-```css
---shadow-sm: 0 1px 3px rgba(0,0,0,0.06)
---shadow-md: 0 4px 16px rgba(0,0,0,0.08)
---shadow-lg: 0 10px 40px rgba(0,0,0,0.10)
---shadow-xl: 0 20px 60px rgba(0,0,0,0.12)
+### `bikers`
+```sql
+fleet_id            uuid        -- FK a delivery_fleets
+nombre              text
+telefono            text
+pin                 text        -- 4-6 dígitos, sin hash (simplicidad operativa)
+foto_url            text
+rol                 text        -- 'biker' | 'admin_flota'
+conectado           bool
+estado_aprobacion   text        -- 'pendiente' | 'aprobado' | 'rechazado'
+activo              bool
+activo_hasta        timestamptz -- Monetización por tiempo
+bloqueado_hasta     timestamptz -- Suspensión temporal
+bloqueado_permanente bool
+current_session_id  uuid        -- Candado de sesión única
+ultimo_ping         timestamptz
+```
+
+### `delivery_requests`
+```sql
+fleet_id            uuid
+restaurante_id      uuid        -- FK a businesses
+biker_id            uuid        -- NULL hasta que alguien reclama el viaje
+descripcion         text
+direccion_entrega   text
+lat_entrega         float8
+lng_entrega         float8
+nota_biker          text
+estado              text        -- Ver máquina de estados arriba
+tarifa_base         numeric
+tarifa_extra        numeric
+total_cobrado       numeric
+aceptado_flota_at   timestamptz
+aceptado_at         timestamptz
+recogido_at         timestamptz
+entregado_at        timestamptz
+cancelado_at        timestamptz
+motivo_cancelacion  text
+```
+
+### `business_users`
+```sql
+business_id         uuid        -- FK a businesses
+email               text
+pin                 text
+rol                 text        -- 'admin_flota' | 'modulador'
 ```
 
 ---
 
-## 8. Funcionalidades del Sistema
+## 7. Reglas de Desarrollo
 
-### Motor 1: Programa de Sellos Clásico
-- `max_sellos` sellos por tarjeta (por defecto 10)
-- Monto mínimo para sello: `monto_minimo_sello` (por defecto $100 MXN)
-- Premios intermedios y finales en `loyalty_rewards`
-- Sellos se otorgan mediante escaneo QR en escáner
-
-### Motor 2: Ruleta Gamificada (V12)
-- Hitos configurables en `reward_milestones`
-- Pool de premios con probabilidades en `milestone_prizes` (tiers: `base`, `medio`, `grande`)
-- Log de giros y cupones únicos en `roulette_spins`
-- Animación CSS con `@keyframes spinRuleta`
-
-### Motor 3: Menú Digital
-- Grupos/categorías en `menu_groups`
-- Productos en `menu_products` con modificadores
-- Tipos de menú: `mesa`, `delivery`, `ambos`
-- Switch de upsell por producto (`es_upsell`)
-
-### Motor 4: Pedidos y Control de Sellos
-- Pedidos en `orders` (tipos: `mesa`, `delivery`, `mostrador`)
-- Flujo de aprobación de sellos: pendiente → aprobado/rechazado
-- Canal de origen: `whatsapp`, `qr`, `mostrador`
-
-### Motor 5: Anti-Churn
-- Función SQL `get_churn_candidates()` detecta inactivos (>21 días por defecto)
-- Mensaje de rescate configurable por WhatsApp
-
-### Motor 6: Anti-Fraude
-- Función SQL `detectar_fraude_velocidad()` detecta escaneos sospechosos
-- Campo `bandera_roja` en clientes
-- Auditoría completa en `audit_logs` y `tracking_events`
-
-### PWA + Wallets Digitales
-- **Apple Wallet:** `.pkpass` generado con `passkit-generator`
-- **Google Wallet:** JWT con `jose` + `google-auth-library`
-- **PWA:** Service Worker + manifest.json + offline support
-- Certificados Apple en raíz del proyecto (`*.pem`, `*.cer`, `*.key`)
-
-### SuperAdmin
-- Panel en `/superadmin` (solo dominio raíz)
-- Gestión de todos los tenants: crear, suspender, renovar, cargar créditos
-- Impersonación de tenant para soporte
-- Logs de auditoría global
+1. **Leer primero los docs de Next.js** en `node_modules/next/dist/docs/` antes de usar cualquier API de Next — la versión puede diferir del training data.
+2. **RLS activo en Supabase** — Todas las operaciones deben estar dentro del scope del tenant autenticado.
+3. **No polling** — Usar Supabase Realtime (`postgres_changes` o `broadcast`) para actualizaciones en vivo.
+4. **TypeScript estricto** — `npx tsc --noEmit` debe pasar sin errores ni warnings antes de cualquier commit.
+5. **Modo oscuro prohibido** — Ver STYLE_GUIDE.md.
+6. **Sin depuración en producción** — Eliminar `console.log` de depuración antes de merge (excepto `console.error`).
+7. **GPS sin writes** — El hook `useGPSBroadcast` NUNCA escribe pings en la base de datos. Solo usa Realtime Broadcast.
 
 ---
 
-## 9. Reglas de Desarrollo — OBLIGATORIO CUMPLIR
+## 8. Archivos Clave de Referencia
 
-### Código
-1. **TypeScript siempre.** No crear archivos `.js` en `src/`. Solo `.ts` o `.tsx`.
-2. **Server Components por defecto.** Solo usar `'use client'` cuando es estrictamente necesario (interactividad, hooks de estado/efecto, APIs del browser).
-3. **Params asíncronos.** En Next.js 16+, los `params` de page/layout son `Promise<{}>`. Siempre usar `await params`.
-   ```tsx
-   // ✅ CORRECTO
-   export default async function Page({ params }: { params: Promise<{ slug: string }> }) {
-     const { slug } = await params
-   }
-   // ❌ INCORRECTO
-   export default function Page({ params }: { params: { slug: string } }) {
-     const { slug } = params // Error en Next.js 16
-   }
-   ```
-4. **No hardcodear business_id.** Siempre obtenerlo desde las cookies de sesión o desde el slug del tenant.
-5. **Imports con alias `@/`** siempre. No usar rutas relativas `../../`.
-6. **No modificar `middleware.ts`** sin entender completamente el flujo de routing multi-tenant.
-
-### Base de Datos
-7. **Aislamiento multi-tenant:** Todo query a tablas de tenant DEBE incluir `WHERE business_id = ?`.
-8. **No borrar migraciones.** Solo agregar nuevas. El historial de `migration_v*.sql` es sagrado.
-9. **Nombres en español.** Los campos de la BD están en español (excepto `id`, `slug`, `email`, etc.). Respetar la convención.
-
-### Estilos
-10. **Tailwind v4.** No usar clases de Tailwind v3 que no existan en v4. En caso de duda, usar CSS inline o clases de `globals.css`.
-11. **Branding dinámico:** Usar `tenant.color_primario` para el color de acento de cada tenant. NO hardcodear `#dc2626` como color de tenant.
-12. **Modo oscuro:** El sistema es **light-only**. No implementar dark mode salvo autorización.
-13. **Mobile-first:** Todos los layouts deben funcionar en móvil (320px+). Los clientes finales usan el portal en su teléfono.
-
-### Seguridad
-14. **Verificar rol en cada API route** protegida. Leer la cookie `session_rol` en el servidor.
-15. **No exponer datos de otros tenants.** Validar siempre el `session_business_slug` vs el slug de la ruta.
-16. **Los certificados Apple** (`*.pem`, `*.cer`, `*.key`) son secretos. No commitear nuevos certificados.
-
----
-
-## 10. Variables de Entorno (.env.local)
-
-| Variable | Descripción |
-|----------|-------------|
-| `NEXT_PUBLIC_SUPABASE_URL` | URL del proyecto Supabase |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Clave anónima de Supabase |
-| `GOOGLE_SERVICE_ACCOUNT_*` | Credenciales para Google Wallet |
-| `APPLE_PASS_*` | Configuración de Apple Wallet |
-
-> ⚠️ NUNCA commitear `.env.local`. Está en `.gitignore`.
-
----
-
-## 11. Comandos de Desarrollo
-
-```bash
-# Desarrollo local
-npm run dev
-
-# Build de producción (solo cuando se solicite)
-npm run build
-
-# Lint
-npm run lint
-```
-
-> **Desarrollo local multi-tenant:** Para probar subdominos en local, editar el archivo `hosts`:
-> ```
-> 127.0.0.1  laburreria.localhost
-> ```
-> Luego acceder a `http://laburreria.localhost:3000`
-
----
-
-## 12. Notas Importantes del Proyecto
-
-- **La Burrería** (`laburreria`) es el negocio real del dueño del proyecto. Es el tenant principal de prueba/producción.
-- El proyecto está desplegado en **Vercel** con dominio personalizado `loyaltyclub.mx`.
-- El dashboard del tenant (`/tenant/[slug]/dashboard/page.tsx`) es un archivo monolítico de ~164KB. Se está planificando su refactor en componentes.
-- Los archivos de migración SQL en la raíz representan el historial de cambios de schema. El más reciente es `migration_v15_previewer_min_ruleta.sql`.
-- `typescript.ignoreBuildErrors: true` está activado en `next.config.ts` para no bloquear deploys. Aun así, escribir TypeScript correcto siempre.
-
----
-
-## 13. Checklist antes de cada cambio
-
-Antes de implementar cualquier modificación, verificar:
-
-- [ ] ¿El cambio viola alguna regla de esta sección 9?
-- [ ] ¿Estoy usando `await params` si es una page/layout con params dinámicos?
-- [ ] ¿Los queries de Supabase filtran por `business_id`?
-- [ ] ¿Las nuevas rutas de tenant van dentro de `/tenant/[slug]/`?
-- [ ] ¿El diseño es mobile-first?
-- [ ] ¿Estoy usando las clases CSS globales en vez de inventar nuevas?
-- [ ] ¿El branding usa `tenant.color_primario` para el color del tenant?
-- [ ] ¿Las APIs protegidas validan el rol de sesión?
-- [ ] ¿El TypeScript es correcto (tipos bien definidos, sin `any` innecesarios)?
-- [ ] ¿Los imports usan alias `@/` en vez de rutas relativas?
-
----
-
-*Última actualización: Mayo 2026 — LoyaltyClub v12 Enterprise*
+| Archivo | Propósito |
+|---------|-----------|
+| `src/app/tenant/[slug]/dashboard/page.tsx` | Dashboard principal del restaurante (~5300 líneas) |
+| `src/app/tenant/[slug]/dashboard/DeliveryPanel.tsx` | Widget Solicitar Moto con Realtime |
+| `src/app/tenant/[slug]/biker/page.tsx` | Portal móvil del repartidor |
+| `src/app/tenant/[slug]/modulador/page.tsx` | Panel del modulador con alarmas |
+| `src/lib/supabase.ts` | Cliente Supabase singleton |
+| `STYLE_GUIDE.md` | Paleta, tipografía, componentes UI |
+| `urban_delivery_schema.md` (artifacts) | Esquema detallado de BD para delivery |

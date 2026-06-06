@@ -1,8 +1,18 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
+
+// Burlar al analizador estático (NFT) de Next.js/Turbopack para evitar que trace el proyecto entero
+// @ts-ignore
+const fsModule = typeof window === 'undefined' ? require('fs') : null;
+// @ts-ignore
+const fsExistsSync = (filePath: string) => fsModule ? fsModule['existsSync'](filePath) : false;
+// @ts-ignore
+const fsReadFileSync = (filePath: string, options?: any) => {
+  if (!fsModule) throw new Error('fs module is not available');
+  return fsModule['readFileSync'](filePath, options);
+};
 
 // ── Certificado de Apple Wallet actualizado el 31 de Mayo de 2026 (C=MX) ────────
 // ── Importación CommonJS estricta para evitar conflictos ESM/CJS ──────────────
@@ -480,31 +490,31 @@ function leerCertificados(): { signerCert: string; signerKey: string; wwdrCert: 
     console.log('[AppleWallet] 🔍 Intentando cargar certificados desde archivos físicos del servidor...')
     try {
       const wwdrPath = path.resolve(process.cwd(), 'wwdr.pem')
-      if (fs.existsSync(wwdrPath) && !wwdrCert) {
-        wwdrCert = fs.readFileSync(wwdrPath, 'utf8')
+      if (fsExistsSync(wwdrPath) && !wwdrCert) {
+        wwdrCert = fsReadFileSync(wwdrPath, 'utf8')
         console.log('[AppleWallet] ✅ WWDR cargado desde wwdr.pem (filesystem)')
       }
     } catch (e: any) { console.warn('[AppleWallet] No se pudo leer wwdr.pem:', e.message) }
 
     try {
       const passPemPath = path.resolve(process.cwd(), 'pass.pem')
-      if (fs.existsSync(passPemPath) && !signerCert) {
-        signerCert = fs.readFileSync(passPemPath, 'utf8')
+      if (fsExistsSync(passPemPath) && !signerCert) {
+        signerCert = fsReadFileSync(passPemPath, 'utf8')
         console.log('[AppleWallet] ✅ Certificado cargado desde pass.pem (filesystem)')
       }
     } catch (e: any) { console.warn('[AppleWallet] No se pudo leer pass.pem:', e.message) }
 
     try {
       const llavePemPath = path.resolve(process.cwd(), 'llave.pem')
-      if (fs.existsSync(llavePemPath) && !signerKey) {
-        signerKey = fs.readFileSync(llavePemPath, 'utf8')
+      if (fsExistsSync(llavePemPath) && !signerKey) {
+        signerKey = fsReadFileSync(llavePemPath, 'utf8')
         console.log('[AppleWallet] ✅ Llave cargada desde llave.pem (filesystem)')
       } else if (!signerKey) {
         const alts = ['llave_maestra.key', 'LlaveBurreria.key', 'llave_clasica.pem', 'llave_burreria.key']
         for (const alt of alts) {
           const altPath = path.resolve(process.cwd(), alt)
-          if (fs.existsSync(altPath)) {
-            signerKey = fs.readFileSync(altPath, 'utf8')
+          if (fsExistsSync(altPath)) {
+            signerKey = fsReadFileSync(altPath, 'utf8')
             console.log(`[AppleWallet] ✅ Llave cargada desde ${alt}`)
             break
           }
@@ -553,6 +563,19 @@ export async function POST(req: Request) {
       }
     }
 
+    // Cargar datos del cliente para verificar si es vecino
+    let cliente: any = null
+    try {
+      const { data } = await supabase
+        .from('clientes')
+        .select('*')
+        .eq('id', clienteId)
+        .maybeSingle()
+      if (data) cliente = data
+    } catch (e: any) {
+      console.warn('[AppleWallet] No se pudo cargar cliente en POST:', e.message)
+    }
+
     // Leer certificados con lógica híbrida priorizando variables Base64
     const { signerCert, signerKey, wwdrCert } = leerCertificados()
 
@@ -561,7 +584,7 @@ export async function POST(req: Request) {
       const logoPngPath = path.resolve(process.cwd(), 'public/logo.png')
       let baseBuffer: Buffer
       try {
-        baseBuffer = fs.readFileSync(logoPngPath)
+        baseBuffer = fsReadFileSync(logoPngPath) as Buffer
       } catch {
         baseBuffer = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64')
       }
@@ -581,8 +604,8 @@ export async function POST(req: Request) {
             }
           } else {
             const localImgPath = path.join(process.cwd(), 'public', logoUrl)
-            if (fs.existsSync(localImgPath)) {
-              logoBuffer = fs.readFileSync(localImgPath)
+            if (fsExistsSync(localImgPath)) {
+              logoBuffer = fsReadFileSync(localImgPath) as Buffer
               console.log('[AppleWallet] ✅ Logo local cargado para POST')
             }
           }
@@ -602,8 +625,8 @@ export async function POST(req: Request) {
             }
           } else {
             const localImgPath = path.join(process.cwd(), 'public', bannerUrl)
-            if (fs.existsSync(localImgPath)) {
-              bannerBuffer = fs.readFileSync(localImgPath)
+            if (fsExistsSync(localImgPath)) {
+              bannerBuffer = fsReadFileSync(localImgPath) as Buffer
               console.log('[AppleWallet] ✅ Banner local cargado para POST')
             }
           }
@@ -660,19 +683,47 @@ export async function POST(req: Request) {
         ]
       }
 
-      // Agregar geolocalización si disponible
-      if (business?.latitude && business?.longitude) {
-        modelObject.locations = [{
-          latitude: Number(business.latitude),
-          longitude: Number(business.longitude),
-          relevantText: `¡Estás cerca! Visita ${business.nombre} y acumula sellos.`
-        }]
+      // Cargar configuración de geopush para el negocio
+      let geoConfig: any = null
+      if (businessId || business?.id) {
+        try {
+          const { data } = await supabase
+            .from('configuracion_geopush')
+            .select('*')
+            .eq('business_id', businessId || business.id)
+            .maybeSingle()
+          if (data) geoConfig = data
+        } catch (e: any) {
+          console.warn('[AppleWallet] Error cargando configuracion_geopush en POST:', e.message)
+        }
+      }
+
+      // Determinar si se debe omitir el geofence (si es vecino y evitar_molestar_vecinos está activo)
+      const omitirGeofence = geoConfig?.evitar_molestar_vecinos && cliente?.es_vecino
+
+      if (omitirGeofence) {
+        console.log(`[AppleWallet] 🚫 Geofence omitido para cliente ${clienteId} por ser vecino y evitar_molestar_vecinos=true`)
       } else {
-        modelObject.locations = [{
-          latitude: 19.421583,
-          longitude: -102.067222,
-          relevantText: '¡Estás cerca! Pasa por La Burrería.'
-        }]
+        if (geoConfig?.latitud && geoConfig?.longitud) {
+          modelObject.locations = [{
+            latitude: Number(geoConfig.latitud),
+            longitude: Number(geoConfig.longitud),
+            relevantText: geoConfig.mensaje_push || `¡Estás cerca de ${business?.nombre || 'tu premio'}! Pasa por tus sellos.`,
+            maxDistance: Number(geoConfig.radio_metros) || 500
+          }]
+        } else if (business?.latitude && business?.longitude) {
+          modelObject.locations = [{
+            latitude: Number(business.latitude),
+            longitude: Number(business.longitude),
+            relevantText: `¡Estás cerca! Visita ${business.nombre} y acumula sellos.`
+          }]
+        } else {
+          modelObject.locations = [{
+            latitude: 19.421583,
+            longitude: -102.067222,
+            relevantText: '¡Estás cerca! Pasa por La Burrería.'
+          }]
+        }
       }
 
       passBuffers["pass.json"] = Buffer.from(JSON.stringify(modelObject))
@@ -837,8 +888,8 @@ export async function GET(req: Request) {
             }
           } else {
             const localImgPath = path.join(process.cwd(), 'public', bannerUrl)
-            if (fs.existsSync(localImgPath)) {
-              bannerBuffer = fs.readFileSync(localImgPath)
+            if (fsExistsSync(localImgPath)) {
+              bannerBuffer = fsReadFileSync(localImgPath) as Buffer
             }
           }
         }
@@ -865,7 +916,7 @@ export async function GET(req: Request) {
       const logoPngPath = path.resolve(process.cwd(), 'public/logo.png')
       let baseBuffer: Buffer
       try {
-        baseBuffer = fs.readFileSync(logoPngPath)
+        baseBuffer = fsReadFileSync(logoPngPath) as Buffer
       } catch {
         baseBuffer = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64')
       }
@@ -885,8 +936,8 @@ export async function GET(req: Request) {
             }
           } else {
             const localImgPath = path.join(process.cwd(), 'public', logoUrl)
-            if (fs.existsSync(localImgPath)) {
-              logoBuffer = fs.readFileSync(localImgPath)
+            if (fsExistsSync(localImgPath)) {
+              logoBuffer = fsReadFileSync(localImgPath) as Buffer
               console.log('[AppleWallet] ✅ Logo local cargado para GET')
             }
           }
@@ -906,8 +957,8 @@ export async function GET(req: Request) {
             }
           } else {
             const localImgPath = path.join(process.cwd(), 'public', bannerUrl)
-            if (fs.existsSync(localImgPath)) {
-              bannerBuffer = fs.readFileSync(localImgPath)
+            if (fsExistsSync(localImgPath)) {
+              bannerBuffer = fsReadFileSync(localImgPath) as Buffer
               console.log('[AppleWallet] ✅ Banner local cargado para GET')
             }
           }
@@ -964,18 +1015,48 @@ export async function GET(req: Request) {
         ]
       }
 
-      if (business?.latitude && business?.longitude) {
-        modelObject.locations = [{
-          latitude: Number(business.latitude),
-          longitude: Number(business.longitude),
-          relevantText: `¡Estás cerca! Visita ${business.nombre} y acumula sellos.`
-        }]
+      // Cargar configuración de geopush para el negocio
+      let geoConfig: any = null
+      const resolvedBusinessId = businessId || cliente?.business_id
+      if (resolvedBusinessId) {
+        try {
+          const { data } = await supabase
+            .from('configuracion_geopush')
+            .select('*')
+            .eq('business_id', resolvedBusinessId)
+            .maybeSingle()
+          if (data) geoConfig = data
+        } catch (e: any) {
+          console.warn('[AppleWallet] Error cargando configuracion_geopush en GET:', e.message)
+        }
+      }
+
+      // Determinar si se debe omitir el geofence
+      const omitirGeofence = geoConfig?.evitar_molestar_vecinos && cliente?.es_vecino
+
+      if (omitirGeofence) {
+        console.log(`[AppleWallet] 🚫 Geofence omitido para cliente ${clienteId} en GET por ser vecino`)
       } else {
-        modelObject.locations = [{
-          latitude: 19.421583,
-          longitude: -102.067222,
-          relevantText: '¡Estás cerca! Pasa por La Burrería.'
-        }]
+        if (geoConfig?.latitud && geoConfig?.longitud) {
+          modelObject.locations = [{
+            latitude: Number(geoConfig.latitud),
+            longitude: Number(geoConfig.longitud),
+            relevantText: geoConfig.mensaje_push || `¡Estás cerca de ${business?.nombre || 'tu premio'}! Pasa por tus sellos.`,
+            maxDistance: Number(geoConfig.radio_metros) || 500
+          }]
+        } else if (business?.latitude && business?.longitude) {
+          modelObject.locations = [{
+            latitude: Number(business.latitude),
+            longitude: Number(business.longitude),
+            relevantText: `¡Estás cerca! Visita ${business.nombre} y acumula sellos.`
+          }]
+        } else {
+          modelObject.locations = [{
+            latitude: 19.421583,
+            longitude: -102.067222,
+            relevantText: '¡Estás cerca! Pasa por La Burrería.'
+          }]
+        }
       }
 
       passBuffers["pass.json"] = Buffer.from(JSON.stringify(modelObject))

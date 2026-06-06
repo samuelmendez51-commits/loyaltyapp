@@ -24,15 +24,37 @@ export default function EscanerTrabajadores() {
   const [business, setBusiness] = useState<any>(null)
   const [businessId, setBusinessId] = useState<string>('')
   const [coupon, setCoupon] = useState<any>(null)
+  const [programaActivo, setProgramaActivo] = useState<any>(null)
+  const [searchedPhone, setSearchedPhone] = useState('')
+  const [nuevoClienteNombre, setNuevoClienteNombre] = useState('')
+  const [registradoExito, setRegistradoExito] = useState<any>(null)
+  const [enviandoWhatsapp, setEnviandoWhatsapp] = useState(false)
+  const [envioExitoMsg, setEnvioExitoMsg] = useState('')
 
   // ── Tenant: slug extraído del subdominio vía rewrite del middleware ──────────
   const slug = (useParams().slug as string) || ''
 
+  const sellosTotales = programaActivo?.total_estampillas || business?.max_sellos || 10
+
   // Efecto 1: cargar negocio por slug del subdominio (inyectado por el middleware)
   useEffect(() => {
     if (!slug) return
-    supabase.from('businesses').select('*').eq('slug', slug).maybeSingle().then(({ data }) => {
-      if (data) { setBusinessId(data.id); setBusiness(data) }
+    supabase.from('businesses').select('*').eq('slug', slug).maybeSingle().then(async ({ data }) => {
+      if (data) {
+        setBusinessId(data.id)
+        setBusiness(data)
+        try {
+          const { data: prog } = await supabase
+            .from('programas_fidelidad')
+            .select('*')
+            .eq('business_id', data.id)
+            .eq('activo', true)
+            .maybeSingle()
+          if (prog) setProgramaActivo(prog)
+        } catch (e) {
+          console.warn('Error loading active program:', e)
+        }
+      }
     })
   }, [slug])
 
@@ -73,7 +95,7 @@ export default function EscanerTrabajadores() {
       const parsed = JSON.parse(decoded)
       if ((parsed.seguro === 'LOYALTYAPP-VIP-CANJE' || parsed.seguro === 'LOYALTYCLUB-VIP-CANJE') && parsed.cliente_id) {
         criterioLimpio = parsed.cliente_id
-        alert(`🏆 ¡Pase QR Cifrado VIP Validado!\nSocio: ${parsed.nombre}\nFidelidad: ${parsed.puntos}/10 sellos.\nListo para canjear premio mayor.`);
+        alert(`🏆 ¡Pase QR Cifrado VIP Validado!\nSocio: ${parsed.nombre}\nFidelidad: ${parsed.puntos}/${sellosTotales} sellos.\nListo para canjear premio mayor.`);
       }
     } catch (e) {
       // Continuar con el criterio original si no es base64
@@ -130,10 +152,19 @@ export default function EscanerTrabajadores() {
 
       if (error || !data) {
         setMensaje({ tipo: 'error', texto: 'CLIENTE NO ENCONTRADO EN TU NEGOCIO' })
+        const isPhone = /^\d{10}$/.test(criterioLimpio)
+        if (isPhone) {
+          setSearchedPhone(criterioLimpio)
+        } else {
+          setSearchedPhone('')
+        }
       } else {
         setCliente(data)
         setMensaje({ tipo: '', texto: '' })
         setInputManual('')
+        setSearchedPhone('')
+        setNuevoClienteNombre('')
+        setRegistradoExito(null)
       }
     } catch (err) {
       setMensaje({ tipo: 'error', texto: 'ERROR DE CONEXIÓN' })
@@ -155,6 +186,34 @@ export default function EscanerTrabajadores() {
     const criterioLimpio = valorSaneado.includes('/') ? valorSaneado.split('/').pop() : valorSaneado;
     if (criterioLimpio) buscarCliente(criterioLimpio.trim());
   };
+
+  const handleRegistroExpress = async () => {
+    if (!searchedPhone || !nuevoClienteNombre.trim()) return
+    setCargando(true)
+    try {
+      const activeBizId = businessId || business?.id || ''
+      const { data, error } = await supabase
+        .from('clientes')
+        .insert({
+          business_id: activeBizId,
+          nombre: nuevoClienteNombre.trim(),
+          telefono: searchedPhone,
+          puntos: 0,
+          visitas: 0,
+          bloqueado: false
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+      
+      setRegistradoExito(data)
+    } catch (err: any) {
+      alert('Error al registrar cliente: ' + err.message)
+    } finally {
+      setCargando(false)
+    }
+  }
 
   const manejarAccionVIP = async () => {
     if (!cliente) return
@@ -183,8 +242,7 @@ export default function EscanerTrabajadores() {
           .insert({
              cliente_id: cliente.id,
              cantidad: cliente.puntos, 
-             tipo_movimiento: 'resta',
-             descripcion: `CANJE DE REGALO (Cupón: ${coupon.codigo_cupon})`
+             motivo: 'resta'
           });
 
         if (activeBizId) {
@@ -221,7 +279,7 @@ export default function EscanerTrabajadores() {
       return
     }
 
-    const maxStamps = business?.max_sellos || 10
+    const maxStamps = sellosTotales
     const esCanjeDePremio = cliente.puntos >= maxStamps;
 
     try {
@@ -239,8 +297,7 @@ export default function EscanerTrabajadores() {
         .insert({
            cliente_id: cliente.id,
            cantidad: esCanjeDePremio ? maxStamps : 1, 
-           tipo_movimiento: esCanjeDePremio ? 'resta' : 'suma',
-           descripcion: esCanjeDePremio ? 'PREMIO CANJEADO EN SUCURSAL' : 'Sello registrado en mostrador'
+           motivo: esCanjeDePremio ? 'resta' : 'suma'
         });
 
       if (activeBizId) {
@@ -280,7 +337,7 @@ export default function EscanerTrabajadores() {
     setCargando(true)
 
     const activeBizId = businessId || business?.id || '' // resuelto por slug, sin cookie
-    const maxStamps = business?.max_sellos || 10
+    const maxStamps = sellosTotales
     const nuevosPuntos = Math.max(0, Math.min(maxStamps, cliente.puntos + delta))
 
     try {
@@ -296,8 +353,7 @@ export default function EscanerTrabajadores() {
         .insert({
            cliente_id: cliente.id,
            cantidad: Math.abs(delta), 
-           tipo_movimiento: delta > 0 ? 'suma' : 'resta',
-           descripcion: delta > 0 ? 'Sello registrado en mostrador' : 'Sello retirado por cajero'
+           motivo: delta > 0 ? 'suma' : 'resta'
         });
 
       if (activeBizId) {
@@ -419,29 +475,138 @@ export default function EscanerTrabajadores() {
 
         {/* ESTADO 2: MENSAJE DE ERROR */}
         {mensaje.texto && !cliente && (
-          <div className="card-glass p-10 text-center flex flex-col items-center min-h-[400px] justify-center w-full max-w-[420px] mx-auto border border-red-100/50 shadow-xl bg-white">
-            <div className="text-7xl mb-6 drop-shadow-[0_0_20px_rgba(239,68,68,0.15)] select-none">⚠️</div>
-            <p className="text-[10px] text-[#71717a] font-bold uppercase tracking-[0.3em] mb-1.5 font-mono">
-              {business?.nombre || "Comercio VIP"}
-            </p>
-            <h4 className="text-xs font-black text-red-500 uppercase tracking-widest mb-4">
-              Error de Búsqueda
-            </h4>
-            <p className="text-lg font-black uppercase text-[#09090b] mb-10 tracking-wider leading-relaxed px-2">
-              {mensaje.texto}
-            </p>
-            <button 
-              onClick={() => { setMensaje({ tipo: '', texto: '' }); setInputManual('') }} 
-              className="px-8 py-3.5 bg-transparent border-2 border-[var(--brand-red)] hover:bg-[var(--brand-red)]/5 text-[var(--brand-red)] rounded-2xl font-bold text-xs uppercase transition-all tracking-widest cursor-pointer shadow-sm active:scale-95 font-sans"
-            >
-              Reintentar
-            </button>
+          <div className="card-glass p-10 text-center flex flex-col items-center min-h-[400px] justify-center w-full max-w-[420px] mx-auto border border-zinc-200 shadow-xl bg-white">
+            {!registradoExito ? (
+              <>
+                <div className="text-7xl mb-6 drop-shadow-[0_0_20px_rgba(239,68,68,0.15)] select-none">⚠️</div>
+                <p className="text-[10px] text-[#71717a] font-bold uppercase tracking-[0.3em] mb-1.5 font-mono">
+                  {business?.nombre || "Comercio VIP"}
+                </p>
+                <h4 className="text-xs font-black text-red-500 uppercase tracking-widest mb-4">
+                  Error de Búsqueda
+                </h4>
+                <p className="text-lg font-black uppercase text-[#09090b] mb-4 tracking-wider leading-relaxed px-2">
+                  {mensaje.texto}
+                </p>
+                
+                {searchedPhone ? (
+                  <div className="w-full space-y-4 border-t border-zinc-100 pt-4 mt-2">
+                    <p className="text-sm font-bold text-zinc-700">
+                      Número detectado: <span className="font-mono text-zinc-900 bg-zinc-100 px-2 py-1 rounded">{searchedPhone}</span>
+                    </p>
+                    <div className="space-y-2 text-left">
+                      <label className="text-[10px] text-zinc-550 font-bold uppercase tracking-wider block">Nombre del Cliente</label>
+                      <input
+                        type="text"
+                        value={nuevoClienteNombre}
+                        onChange={(e) => setNuevoClienteNombre(e.target.value)}
+                        placeholder="Ej: Juan Pérez"
+                        className="w-full bg-slate-50 border border-zinc-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:bg-white text-sm text-[#09090b]"
+                      />
+                    </div>
+                    <button
+                      onClick={handleRegistroExpress}
+                      disabled={!nuevoClienteNombre.trim()}
+                      className="w-full bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-zinc-950 font-black text-xs py-3.5 rounded-xl uppercase tracking-wider shadow-md cursor-pointer transition-all"
+                    >
+                      ➕ Registrar y Crear Tarjeta VIP
+                    </button>
+                  </div>
+                ) : null}
+
+                <button 
+                  onClick={() => { setMensaje({ tipo: '', texto: '' }); setInputManual(''); setSearchedPhone(''); setNuevoClienteNombre('') }} 
+                  className="px-8 py-3.5 mt-6 bg-transparent border-2 border-amber-500 hover:bg-amber-500/5 text-amber-600 rounded-2xl font-bold text-xs uppercase transition-all tracking-widest cursor-pointer shadow-sm active:scale-95 font-sans"
+                >
+                  Reintentar
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-6 shadow-md shadow-emerald-100">
+                  <span className="text-4xl">✓</span>
+                </div>
+                <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-[0.3em] mb-1 font-mono">
+                  {business?.nombre || "Comercio VIP"}
+                </p>
+                <h4 className="text-sm font-black text-emerald-600 uppercase tracking-widest mb-4">
+                  Registro Exitoso
+                </h4>
+                <p className="text-sm text-zinc-650 mb-6 leading-relaxed">
+                  El socio <strong>{registradoExito.nombre}</strong> ha sido agregado con éxito.
+                </p>
+                
+                {envioExitoMsg && (
+                  <div className="mb-4 p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-semibold leading-relaxed text-center shadow-sm">
+                    {envioExitoMsg}
+                  </div>
+                )}
+
+                <button
+                  disabled={enviandoWhatsapp}
+                  onClick={async () => {
+                    setEnviandoWhatsapp(true)
+                    setEnvioExitoMsg('')
+                    try {
+                      const cleanTel = registradoExito.telefono
+                      const phoneParam = cleanTel.startsWith('52') ? cleanTel : '52' + cleanTel
+                      const domain = typeof window !== 'undefined' && window.location.hostname.includes('loyaltyclub.mx') 
+                        ? `${slug}.loyaltyclub.mx` 
+                        : `${slug}.localhost:3000`
+                      const cardUrl = `http://${domain}/card/${registradoExito.id}`
+                      
+                      const textParam = `¡Hola! Te saluda el equipo de ${business?.nombre || 'Loyalty App'}. Te compartimos tu nueva Tarjeta Digital VIP de Cliente Frecuente. Acumula tus sellos y consulta nuestro menú aquí: ${cardUrl}`
+                      
+                      const response = await fetch('/api/whatsapp/send', {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                          clientPhone: phoneParam,
+                          message: textParam,
+                          tenantSlug: slug
+                        })
+                      })
+                      
+                      if (response.ok) {
+                        setEnvioExitoMsg('✅ Tarjeta digital VIP enviada con éxito desde la línea oficial del negocio.')
+                      } else {
+                        const errData = await response.json().catch(() => ({}))
+                        alert(`Error al enviar mensaje: ${errData.error || 'Error desconocido'}`)
+                      }
+                    } catch (error) {
+                      console.error('Error al enviar WhatsApp:', error)
+                      alert('Error de red al intentar enviar WhatsApp.')
+                    } finally {
+                      setEnviandoWhatsapp(false)
+                    }
+                  }}
+                  className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:opacity-75 text-white font-black text-xs py-4 px-6 rounded-xl uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 active:scale-95 transition-all cursor-pointer"
+                >
+                  {enviandoWhatsapp ? 'Enviando desde el número del negocio...' : '💬 Enviar Tarjeta por WhatsApp'}
+                </button>
+
+                <button 
+                  onClick={() => { 
+                    setMensaje({ tipo: '', texto: '' })
+                    setInputManual('')
+                    setSearchedPhone('')
+                    setNuevoClienteNombre('')
+                    setRegistradoExito(null)
+                  }} 
+                  className="mt-6 text-zinc-500 hover:text-zinc-800 text-[10px] font-bold uppercase tracking-widest cursor-pointer hover:underline"
+                >
+                  Ir al Escáner
+                </button>
+              </>
+            )}
           </div>
         )}
 
         {/* ESTADO 3: TARJETA VIP (LA QUE VE EL STAFF) */}
         {cliente && (
-          <div className={`card-glass p-8 relative overflow-hidden transition-all duration-500 bg-white ${cliente.puntos >= 10 ? 'border-amber-400 shadow-[0_0_30px_rgba(245,158,11,0.1)]' : ''}`}>
+          <div className={`card-glass p-8 relative overflow-hidden transition-all duration-500 bg-white ${cliente.puntos >= sellosTotales ? 'border-amber-400 shadow-[0_0_30px_rgba(245,158,11,0.1)]' : ''}`}>
             
             {mensaje.texto && mensaje.tipo === 'exito' && (
               <div className="absolute inset-0 bg-white/95 backdrop-blur-md flex flex-col items-center justify-center z-50">
@@ -454,7 +619,7 @@ export default function EscanerTrabajadores() {
 
             {/* Cabecera de la tarjeta del cliente */}
             <div className="w-full bg-[#fafafa] border border-[#e4e4e7] rounded-2xl py-8 px-6 flex flex-col items-center text-center mb-8 shadow-inner relative">
-              <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent ${cliente.puntos >= 10 ? 'via-amber-500' : 'via-[var(--brand-red)]'} to-transparent opacity-70`}></div>
+              <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent ${cliente.puntos >= sellosTotales ? 'via-amber-500' : 'via-[var(--brand-red)]'} to-transparent opacity-70`}></div>
               <h2 className="text-[#09090b] text-3xl font-serif font-black italic tracking-wide mb-3 w-full truncate">
                 {cliente.nombre}
               </h2>
@@ -465,18 +630,18 @@ export default function EscanerTrabajadores() {
             
             <div className="flex flex-col items-center w-full mb-10">
               <div className="flex items-baseline gap-3 mb-5">
-                <span className={`text-6xl font-black leading-none ${cliente.puntos >= 10 ? 'text-green-600 drop-shadow-[0_0_20px_rgba(22,163,74,0.2)]' : 'text-amber-500 drop-shadow-[0_0_20px_rgba(245,158,11,0.2)]'}`}>
+                <span className={`text-6xl font-black leading-none ${cliente.puntos >= sellosTotales ? 'text-green-600 drop-shadow-[0_0_20px_rgba(22,163,74,0.2)]' : 'text-amber-500 drop-shadow-[0_0_20px_rgba(245,158,11,0.2)]'}`}>
                   {cliente.puntos}
                 </span>
-                <span className="text-3xl font-bold text-[#a1a1aa]">/ 10</span>
+                <span className="text-3xl font-bold text-[#a1a1aa]">/ {sellosTotales}</span>
               </div>
               <p className="text-[10px] text-[#a1a1aa] font-bold uppercase tracking-[0.4em] mb-8">
-                {cliente.puntos >= 10 ? '¡PREMIO DESBLOQUEADO!' : 'Sellos Acumulados'}
+                {cliente.puntos >= sellosTotales ? '¡PREMIO DESBLOQUEADO!' : 'Sellos Acumulados'}
               </p>
 
               {/* Matriz de Estrellas */}
               <div className="grid grid-cols-5 gap-y-6 gap-x-4 place-items-center w-full px-2">
-                {[...Array(10)].map((_, i) => (
+                {[...Array(sellosTotales)].map((_, i) => (
                   <div key={i} className="flex items-center justify-center">
                     {i < cliente.puntos ? <StarActive /> : <StarInactive />}
                   </div>
@@ -493,7 +658,7 @@ export default function EscanerTrabajadores() {
               >
                 🎁 CANJEAR CUPÓN: {coupon.codigo_cupon}
               </button>
-            ) : cliente.puntos >= 10 ? (
+            ) : cliente.puntos >= sellosTotales ? (
               <div className="space-y-4 w-full">
                 <button 
                   onClick={manejarAccionVIP}
@@ -512,7 +677,7 @@ export default function EscanerTrabajadores() {
                   </button>
                   <button 
                     onClick={() => manejarAjusteSello(1)}
-                    disabled={cargando || cliente.puntos >= 10}
+                    disabled={cargando || cliente.puntos >= sellosTotales}
                     className="flex-1 bg-zinc-900 border border-zinc-800 hover:bg-zinc-850 text-green-400 font-bold py-3.5 rounded-xl text-xs uppercase tracking-wider transition-all disabled:opacity-40"
                   >
                     ➕ Sumar Sello

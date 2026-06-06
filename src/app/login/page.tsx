@@ -398,7 +398,6 @@ export default function LoginPage() {
   const TABS = [
     { id: 'email', label: 'Email' },
     { id: 'pin', label: 'PIN Rápido' },
-    { id: 'registro', label: 'Registrarse' },
   ]
 
   return (

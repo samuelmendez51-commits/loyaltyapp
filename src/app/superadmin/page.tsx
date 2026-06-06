@@ -421,19 +421,27 @@ export default function SuperAdminPage() {
   }
 
   const impersonar = async (b: Business) => {
-    // Buscar la cuenta admin vinculada
     const adminUser = b.business_users?.find(u => u.rol === 'admin_comercio')
     const userId = adminUser?.id || 'root'
     const userNombre = adminUser?.nombre || b.owner_name || 'Administrador'
 
-    const base = `; path=/; SameSite=Strict`
+    const isProduction = window.location.hostname.includes('loyaltyclub.mx')
+    const sameSite = isProduction ? 'Lax' : 'Strict'
+    const domain = isProduction ? '; Domain=.loyaltyclub.mx' : ''
+    const base = `; path=/${domain}; SameSite=${sameSite}`
+
     document.cookie = `session_rol=admin_comercio${base}`
     document.cookie = `session_user=${userNombre}${base}`
     document.cookie = `session_business_id=${b.id}${base}`
+    document.cookie = `session_business_slug=${b.slug}${base}`
     document.cookie = `session_user_id=${userId}${base}`
 
-    alert(`🎭 Soporte Técnico - Impersonación Exitosa\nAccediendo al entorno de mostrador de: ${b.nombre}`)
-    window.location.href = '/dashboard'
+    // Redirigir al subdominio partners del negocio
+    const targetHost = isProduction
+      ? `partners.${b.slug}.loyaltyclub.mx`
+      : `partners.${b.slug}.localhost:3000`
+    const protocol = isProduction ? 'https' : 'http'
+    window.location.href = `${protocol}://${targetHost}/dashboard`
   }
 
   const cerrarSesion = async () => {

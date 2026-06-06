@@ -13,6 +13,10 @@ export default function RegistroCliente() {
   const [nombre, setNombre] = useState('')
   const [telefono, setTelefono] = useState('')
   const [email, setEmail] = useState('')
+  const [calle, setCalle] = useState('')
+  const [numero, setNumero] = useState('')
+  const [colonia, setColonia] = useState('')
+  const [referencia, setReferencia] = useState('')
 
   // Selector de fecha de nacimiento (3 selectores)
   const [dia, setDia] = useState('')
@@ -69,6 +73,10 @@ export default function RegistroCliente() {
           telefono: telefonoLimpio,
           email: email.trim() || null,
           fecha_nacimiento: fechaEnsamblada,
+          calle: calle.trim() || null,
+          numero: numero.trim() || null,
+          colonia: colonia.trim() || null,
+          referencia: referencia.trim() || null,
           puntos: 0,
           business_id: businessId,
           branch_id: branchId,
@@ -193,6 +201,67 @@ export default function RegistroCliente() {
                 className="input-clean"
                 placeholder="correo@ejemplo.com"
               />
+            </div>
+
+            {/* Dirección */}
+            <div className="space-y-3 pt-3 border-t border-[#f4f4f5] animate-fade-in">
+              <p className="text-xs font-black text-[#09090b] uppercase tracking-wider">Dirección de Entrega / Domicilio</p>
+              
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">
+                  Calle *
+                </label>
+                <input
+                  type="text"
+                  value={calle}
+                  onChange={(e) => setCalle(e.target.value)}
+                  required
+                  className="input-clean"
+                  placeholder="Ej. Avenida Juárez"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">
+                    Número *
+                  </label>
+                  <input
+                    type="text"
+                    value={numero}
+                    onChange={(e) => setNumero(e.target.value)}
+                    required
+                    className="input-clean"
+                    placeholder="Ej. 123 o S/N"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">
+                    Colonia *
+                  </label>
+                  <input
+                    type="text"
+                    value={colonia}
+                    onChange={(e) => setColonia(e.target.value)}
+                    required
+                    className="input-clean"
+                    placeholder="Ej. Centro"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">
+                  Referencia <span className="text-[#a1a1aa] normal-case font-normal">(Opcional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={referencia}
+                  onChange={(e) => setReferencia(e.target.value)}
+                  className="input-clean"
+                  placeholder="Ej. Portón negro frente a la escuela"
+                />
+              </div>
             </div>
 
             {/* Fecha de nacimiento */}

@@ -28,6 +28,7 @@ interface Cliente {
 interface Historial {
   id: string; cliente_id: string; tipo_movimiento: string; cantidad: number
   created_at: string; descripcion: string; clientes: { nombre: string }
+  motivo?: string
 }
 interface Business {
   id: string; nombre: string; slug: string; logo_url: string
@@ -196,7 +197,11 @@ export default function DashboardPage() {
   const [geoPushRadius, setGeoPushRadius] = useState(500)
   const [geoPushMsg, setGeoPushMsg] = useState('¡Estás cerca de tu premio VIP! Pasa por tus sellos.')
   const [geoPushId, setGeoPushId] = useState<string | null>(null)
+  const [geoPushFrecuencia, setGeoPushFrecuencia] = useState(60)
+  const [geoPushEvitarVecinos, setGeoPushEvitarVecinos] = useState(true)
   const [guardandoGeoPush, setGuardandoGeoPush] = useState(false)
+  const [alertaMasivaText, setAlertaMasivaText] = useState('')
+  const [enviandoAlertaMasiva, setEnviandoAlertaMasiva] = useState(false)
 
   // ── PROMEDIOS & GAMIFICACIÓN (Configuración de Ruleta) ──────────────────────
   const [premio1, setPremio1] = useState('Café Gratis')
@@ -299,6 +304,7 @@ export default function DashboardPage() {
 
       setLogoUrlNegocio(bizData.logo_url || '')
       setBannerUrlNegocio(bizData.banner_url || '')
+      setAlertaMasivaText((bizData as any).alerta_masiva || '')
       
       let cleanDir = bizData.direccion || ''
       if (cleanDir.includes('|')) {
@@ -352,13 +358,14 @@ export default function DashboardPage() {
     if (dataHistorial) {
       setHistorial(dataHistorial as any)
       const hoyStr = new Date().toISOString().split('T')[0]
-      setSellosHoy(dataHistorial.filter((h: any) => h.created_at.startsWith(hoyStr) && h.tipo_movimiento === 'suma').reduce((a: number, c: any) => a + c.cantidad, 0))
-      setPremiosCanjeados(dataHistorial.filter((h: any) => h.tipo_movimiento === 'canje' || h.descripcion?.includes('CANJEAD')).length)
+      setSellosHoy(dataHistorial.filter((h: any) => h.created_at.startsWith(hoyStr) && (h.motivo || h.tipo_movimiento) === 'suma').reduce((a: number, c: any) => a + c.cantidad, 0))
+      setPremiosCanjeados(dataHistorial.filter((h: any) => (h.motivo || h.tipo_movimiento) === 'canje' || h.descripcion?.includes('CANJEAD') || (!h.descripcion && h.motivo === 'resta')).length)
 
       const sospechosos: Record<string, boolean> = {}
       const sumasPorCliente: Record<string, number[]> = {}
       dataHistorial.forEach((h: any) => {
-        if (h.tipo_movimiento === 'suma' || h.tipo_movimiento === 'canje') {
+        const movType = h.motivo || h.tipo_movimiento
+        if (movType === 'suma' || movType === 'canje') {
           const cId = h.cliente_id
           const time = new Date(h.created_at).getTime()
           if (!sumasPorCliente[cId]) sumasPorCliente[cId] = []
@@ -459,6 +466,8 @@ export default function DashboardPage() {
       setGeoPushLng(Number(data.longitud))
       setGeoPushRadius(data.radio_metros)
       setGeoPushMsg(data.mensaje_push)
+      setGeoPushFrecuencia(data.frecuencia_minutos ?? 60)
+      setGeoPushEvitarVecinos(data.evitar_molestar_vecinos ?? true)
     }
   }
 
@@ -473,7 +482,9 @@ export default function DashboardPage() {
         latitud: geoPushLat,
         longitud: geoPushLng,
         radio_metros: geoPushRadius,
-        mensaje_push: geoPushMsg
+        mensaje_push: geoPushMsg,
+        frecuencia_minutos: geoPushFrecuencia,
+        evitar_molestar_vecinos: geoPushEvitarVecinos
       }
       let error
       if (geoPushId) {
@@ -498,6 +509,49 @@ export default function DashboardPage() {
       alert('Error al guardar Geopush: ' + e.message)
     } finally {
       setGuardandoGeoPush(false)
+    }
+  }
+
+  const enviarAlertaMasiva = async () => {
+    const businessId = getCookieVal('session_business_id') || business?.id
+    if (!businessId) return
+    if (!alertaMasivaText.trim()) {
+      alert('Por favor escribe un mensaje de alerta.')
+      return
+    }
+    setEnviandoAlertaMasiva(true)
+    try {
+      const { error } = await supabase
+        .from('businesses')
+        .update({ alerta_masiva: alertaMasivaText.trim() })
+        .eq('id', businessId)
+      if (error) throw error
+      alert('📢 ¡Alerta masiva enviada! Todos los socios verán este mensaje en su tarjeta de lealtad.')
+      cargarDatos()
+    } catch (e: any) {
+      alert('Error al enviar alerta: ' + e.message)
+    } finally {
+      setEnviandoAlertaMasiva(false)
+    }
+  }
+
+  const limpiarAlertaMasiva = async () => {
+    const businessId = getCookieVal('session_business_id') || business?.id
+    if (!businessId) return
+    setEnviandoAlertaMasiva(true)
+    try {
+      const { error } = await supabase
+        .from('businesses')
+        .update({ alerta_masiva: null })
+        .eq('id', businessId)
+      if (error) throw error
+      setAlertaMasivaText('')
+      alert('✅ Alerta masiva desactivada.')
+      cargarDatos()
+    } catch (e: any) {
+      alert('Error al limpiar alerta: ' + e.message)
+    } finally {
+      setEnviandoAlertaMasiva(false)
     }
   }
 
@@ -736,6 +790,64 @@ export default function DashboardPage() {
     window.open(`https://wa.me/${cleanTel}?text=${encodeURIComponent(msg)}`, '_blank')
   }
 
+  const compressImage = (file: File, maxW: number, maxH: number, quality: number): Promise<Blob | File> => {
+    return new Promise((resolve) => {
+      if (file.type === 'image/svg+xml') {
+        resolve(file)
+        return
+      }
+      const reader = new FileReader()
+      reader.readAsDataURL(file)
+      reader.onload = (event) => {
+        const img = new Image()
+        img.src = event.target?.result as string
+        img.onload = () => {
+          try {
+            const canvas = document.createElement('canvas')
+            let width = img.width
+            let height = img.height
+
+            if (width > height) {
+              if (width > maxW) {
+                height = Math.round((height * maxW) / width)
+                width = maxW
+              }
+            } else {
+              if (height > maxH) {
+                width = Math.round((width * maxH) / height)
+                height = maxH
+              }
+            }
+
+            canvas.width = width
+            canvas.height = height
+
+            const ctx = canvas.getContext('2d')
+            if (!ctx) {
+              resolve(file)
+              return
+            }
+
+            ctx.drawImage(img, 0, 0, width, height)
+
+            canvas.toBlob((blob) => {
+              if (blob) {
+                resolve(blob)
+              } else {
+                resolve(file)
+              }
+            }, 'image/jpeg', quality)
+          } catch (e) {
+            console.error('Error compressing image:', e)
+            resolve(file)
+          }
+        }
+        img.onerror = () => resolve(file)
+      }
+      reader.onerror = () => resolve(file)
+    })
+  }
+
   const subirBrandingImagen = async (file: File, tipo: 'logo' | 'banner') => {
     const businessId = getCookieVal('session_business_id') || business?.id
     if (!businessId) return
@@ -743,11 +855,22 @@ export default function DashboardPage() {
     else setSubiendoBanner(true)
 
     try {
-      const fileExt = file.name.split('.').pop()
+      const isSvg = file.type === 'image/svg+xml'
+      const maxW = tipo === 'logo' ? 400 : 1200
+      const maxH = tipo === 'logo' ? 400 : 600
+      const compressed = await compressImage(file, maxW, maxH, 0.8)
+      
+      const fileExt = isSvg ? 'svg' : 'jpg'
       const fileName = `${businessId}/branding-${tipo}-${Date.now()}.${fileExt}`
+      
       const { error: uploadErr } = await supabase.storage
         .from('menu-images')
-        .upload(fileName, file, { cacheControl: '3600', upsert: true, contentType: file.type || 'application/octet-stream' })
+        .upload(fileName, compressed, { 
+          cacheControl: '3600', 
+          upsert: true, 
+          contentType: isSvg ? 'image/svg+xml' : 'image/jpeg' 
+        })
+        
       if (uploadErr) {
         alert('Error al subir imagen: ' + uploadErr.message)
         return
@@ -898,7 +1021,7 @@ export default function DashboardPage() {
     const adminUser = getCookieVal('session_user') || 'Administrador'
     const descripcion = `Ajuste manual: ${motivoAjuste.trim()} (Firma: ${adminUser})`
     await supabase.from('clientes').update({ puntos: nuevosPuntos }).eq('id', id)
-    await supabase.from('historial_puntos').insert([{ cliente_id: id, tipo_movimiento: direccion, cantidad: 1, descripcion }])
+    await supabase.from('historial_puntos').insert([{ cliente_id: id, motivo: direccion, cantidad: 1 }])
     
     setMotivoAjuste('')
     setModalAjusteSocio(null)
@@ -917,7 +1040,9 @@ export default function DashboardPage() {
     if (historial.length === 0) return alert('No hay transacciones para exportar')
     let csv = 'data:text/csv;charset=utf-8,ID,Socio,Tipo,Cantidad,Descripción,Fecha\n'
     historial.forEach(h => {
-      csv += `"${h.id}","${h.clientes?.nombre || 'Socio'}","${h.tipo_movimiento}","${h.cantidad}","${h.descripcion}","${new Date(h.created_at).toLocaleString('es-MX')}"\n`
+      const mov = h.motivo || h.tipo_movimiento
+      const desc = h.descripcion || (mov === 'suma' ? 'Sello registrado' : 'Sello retirado/canjeado')
+      csv += `"${h.id}","${h.clientes?.nombre || 'Socio'}","${mov}","${h.cantidad}","${desc}","${new Date(h.created_at).toLocaleString('es-MX')}"\n`
     })
     const link = document.createElement('a')
     link.setAttribute('href', encodeURI(csv))
@@ -951,7 +1076,7 @@ export default function DashboardPage() {
     }
     historial.forEach(h => {
       const k = new Date(h.created_at).toLocaleDateString('es-MX', { weekday: 'short' })
-      if (dias[k] !== undefined && h.tipo_movimiento === 'suma') dias[k] += h.cantidad
+      if (dias[k] !== undefined && (h.motivo || h.tipo_movimiento) === 'suma') dias[k] += h.cantidad
     })
     return Object.entries(dias).map(([name, sellos]) => ({ name, Sellos: sellos, Estimado: sellos * 120 }))
   }
@@ -1242,12 +1367,12 @@ export default function DashboardPage() {
                         <tr key={h.id} className="hover:bg-[#fafafa] transition-colors">
                           <td className="px-5 py-3 font-medium text-[#09090b] whitespace-nowrap">{h.clientes?.nombre || 'Socio'}</td>
                           <td className="px-5 py-3 whitespace-nowrap">
-                            <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${h.tipo_movimiento === 'suma' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
-                              {h.tipo_movimiento}
+                            <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${(h.motivo || h.tipo_movimiento) === 'suma' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                              {h.motivo || h.tipo_movimiento || 'ajuste'}
                             </span>
                           </td>
                           <td className="px-5 py-3 font-mono font-bold text-amber-600 whitespace-nowrap">{h.cantidad} ★</td>
-                          <td className="px-5 py-3 text-[#71717a] max-w-xs truncate">{h.descripcion}</td>
+                          <td className="px-5 py-3 text-[#71717a] max-w-xs truncate">{h.descripcion || ((h.motivo || h.tipo_movimiento) === 'suma' ? 'Sello registrado' : 'Sello retirado/canjeado')}</td>
                           <td className="px-5 py-3 text-[#a1a1aa] font-mono text-xs whitespace-nowrap">{new Date(h.created_at).toLocaleString('es-MX')}</td>
                         </tr>
                       ))}
@@ -1731,10 +1856,84 @@ export default function DashboardPage() {
                   />
                 </div>
 
+                {/* Frecuencia de notificaciones & Filtro anti-vecinos */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-[#f4f4f5] pt-4">
+                  <div>
+                    <label className={LBL}>Frecuencia de Notificaciones Geocerca</label>
+                    <select
+                      value={geoPushFrecuencia}
+                      onChange={e => setGeoPushFrecuencia(Number(e.target.value))}
+                      className="w-full bg-[#fafafa] border-[1.5px] border-[#e4e4e7] rounded-xl px-4 py-3 text-sm text-[#09090b] focus:outline-none focus:border-[#dc2626] transition-all"
+                    >
+                      <option value={0}>Siempre (Cada que pase un cliente)</option>
+                      <option value={60}>Máximo una vez por hora</option>
+                      <option value={240}>Máximo una vez cada 4 horas</option>
+                      <option value={720}>Máximo una vez cada 12 horas</option>
+                      <option value={1440}>Máximo una vez al día (24 hrs)</option>
+                    </select>
+                    <p className="text-[10px] text-[#71717a] mt-1.5 leading-normal">
+                      Controla qué tan seguido puede alertarse al mismo dispositivo al entrar en el perímetro.
+                    </p>
+                  </div>
+                  <div className="flex flex-col justify-start">
+                    <label className={LBL}>Filtro de Privacidad (Anti-Vecinos)</label>
+                    <div className="flex items-center gap-3 mt-2 bg-[#fafafa] border border-[#e4e4e7] rounded-xl p-3">
+                      <input
+                        type="checkbox"
+                        id="evitar-vecinos-check"
+                        checked={geoPushEvitarVecinos}
+                        onChange={e => setGeoPushEvitarVecinos(e.target.checked)}
+                        className="w-4.5 h-4.5 text-[#dc2626] border-zinc-300 rounded-lg focus:ring-[#dc2626] cursor-pointer"
+                      />
+                      <label htmlFor="evitar-vecinos-check" className="text-xs font-bold text-[#27272a] cursor-pointer selection:bg-transparent select-none">
+                        Evitar molestar a vecinos cercanos
+                      </label>
+                    </div>
+                    <p className="text-[10px] text-[#71717a] mt-1.5 leading-normal">
+                      Si el cliente se registra/reside dentro de la geocerca, se desactivarán las alertas por cercanía para no perturbar su día a día.
+                    </p>
+                  </div>
+                </div>
+
                 <div className="pt-2">
                   <button onClick={guardarGeoPush} disabled={guardandoGeoPush} className="btn-primary py-3 px-6 text-sm">
                     {guardandoGeoPush ? 'Guardando Geopush...' : 'Guardar Configuración Geopush'}
                   </button>
+                </div>
+
+                {/* Alerta Masiva Section */}
+                <div className="border-t border-[#e4e4e7] pt-6 space-y-4">
+                  <div>
+                    <h4 className="font-bold text-[#09090b] text-sm mb-1">📢 Enviar Alerta Masiva a Socios</h4>
+                    <p className="text-[11px] text-[#71717a]">Escribe una notificación para todos tus socios registrados. Se mostrará de forma destacada en la parte superior de sus tarjetas de lealtad.</p>
+                  </div>
+                  <div>
+                    <textarea
+                      rows={3}
+                      value={alertaMasivaText}
+                      onChange={e => setAlertaMasivaText(e.target.value)}
+                      className="input-clean text-sm w-full bg-white border border-[#e4e4e7] rounded-xl px-4 py-2.5 text-[#09090b] focus:border-[#dc2626] transition-all resize-none"
+                      placeholder="Escribe el aviso importante (ej: ¡Hoy 2x1 en hamburguesas! Presenta tu tarjeta en caja.)..."
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={enviarAlertaMasiva}
+                      disabled={enviandoAlertaMasiva}
+                      className="bg-[#dc2626] hover:bg-[#b91c1c] text-white font-extrabold px-5 py-3 rounded-xl text-xs uppercase tracking-wider transition-all disabled:opacity-50"
+                    >
+                      {enviandoAlertaMasiva ? 'Enviando...' : 'Enviar Alerta Ahora'}
+                    </button>
+                    {(business as any)?.alerta_masiva && (
+                      <button
+                        onClick={limpiarAlertaMasiva}
+                        disabled={enviandoAlertaMasiva}
+                        className="border border-[#e4e4e7] hover:bg-[#fafafa] text-[#71717a] font-extrabold px-5 py-3 rounded-xl text-xs uppercase tracking-wider transition-all disabled:opacity-50"
+                      >
+                        Limpiar Alerta
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

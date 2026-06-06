@@ -178,7 +178,7 @@
     transition: transform 0.2s ease;
   }
   .nav-tab.active {
-    color: var(--text-primary);
+    color: #09090b;
     font-weight: 700;
   }
   .nav-tab.active::after {

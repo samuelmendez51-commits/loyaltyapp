@@ -23,18 +23,34 @@ export default function EscanerTrabajadores() {
   const [business, setBusiness] = useState<any>(null)
   const [businessId, setBusinessId] = useState<string>('')
   const [coupon, setCoupon] = useState<any>(null)
+  const [programaActivo, setProgramaActivo] = useState<any>(null)
 
   const getCookieVal = (name: string) => {
     if (typeof document === 'undefined') return ''
     return document.cookie.match(new RegExp(`${name}=([^;]+)`))?.[1] || ''
   }
 
+  const sellosTotales = programaActivo?.total_estampillas || business?.max_sellos || 10
+
   useEffect(() => {
     const bizId = getCookieVal('session_business_id')
     if (bizId) {
       setBusinessId(bizId)
-      supabase.from('businesses').select('*').eq('id', bizId).maybeSingle().then(({ data }) => {
-        if (data) setBusiness(data)
+      supabase.from('businesses').select('*').eq('id', bizId).maybeSingle().then(async ({ data }) => {
+        if (data) {
+          setBusiness(data)
+          try {
+            const { data: prog } = await supabase
+              .from('programas_fidelidad')
+              .select('*')
+              .eq('business_id', bizId)
+              .eq('activo', true)
+              .maybeSingle()
+            if (prog) setProgramaActivo(prog)
+          } catch (e) {
+            console.warn('Error loading active program:', e)
+          }
+        }
       })
     }
 
@@ -72,7 +88,7 @@ export default function EscanerTrabajadores() {
       const parsed = JSON.parse(decoded)
       if ((parsed.seguro === 'LOYALTYAPP-VIP-CANJE' || parsed.seguro === 'LOYALTYCLUB-VIP-CANJE') && parsed.cliente_id) {
         criterioLimpio = parsed.cliente_id
-        alert(`🏆 ¡Pase QR Cifrado VIP Validado!\nSocio: ${parsed.nombre}\nFidelidad: ${parsed.puntos}/10 sellos.\nListo para canjear premio mayor.`);
+        alert(`🏆 ¡Pase QR Cifrado VIP Validado!\nSocio: ${parsed.nombre}\nFidelidad: ${parsed.puntos}/${sellosTotales} sellos.\nListo para canjear premio mayor.`);
       }
     } catch (e) {
       // Continuar con el criterio original si no es base64
@@ -182,8 +198,7 @@ export default function EscanerTrabajadores() {
           .insert({
              cliente_id: cliente.id,
              cantidad: cliente.puntos, 
-             tipo_movimiento: 'resta',
-             descripcion: `CANJE DE REGALO (Cupón: ${coupon.codigo_cupon})`
+             motivo: 'resta'
           });
 
         if (activeBizId) {
@@ -220,7 +235,7 @@ export default function EscanerTrabajadores() {
       return
     }
 
-    const maxStamps = business?.max_sellos || 10
+    const maxStamps = sellosTotales
     const esCanjeDePremio = cliente.puntos >= maxStamps;
 
     try {
@@ -238,8 +253,7 @@ export default function EscanerTrabajadores() {
         .insert({
            cliente_id: cliente.id,
            cantidad: esCanjeDePremio ? maxStamps : 1, 
-           tipo_movimiento: esCanjeDePremio ? 'resta' : 'suma',
-           descripcion: esCanjeDePremio ? 'PREMIO CANJEADO EN SUCURSAL' : 'Sello registrado en mostrador'
+           motivo: esCanjeDePremio ? 'resta' : 'suma'
         });
 
       if (activeBizId) {
@@ -279,7 +293,7 @@ export default function EscanerTrabajadores() {
     setCargando(true)
 
     const activeBizId = businessId || getCookieVal('session_business_id')
-    const maxStamps = business?.max_sellos || 10
+    const maxStamps = sellosTotales
     const nuevosPuntos = Math.max(0, Math.min(maxStamps, cliente.puntos + delta))
 
     try {
@@ -295,8 +309,7 @@ export default function EscanerTrabajadores() {
         .insert({
            cliente_id: cliente.id,
            cantidad: Math.abs(delta), 
-           tipo_movimiento: delta > 0 ? 'suma' : 'resta',
-           descripcion: delta > 0 ? 'Sello registrado en mostrador' : 'Sello retirado por cajero'
+           motivo: delta > 0 ? 'suma' : 'resta'
         });
 
       if (activeBizId) {
@@ -398,7 +411,7 @@ export default function EscanerTrabajadores() {
 
         {/* ESTADO 3: TARJETA VIP (LA QUE VE EL STAFF) */}
         {cliente && (
-          <div className={`card-glass p-8 relative overflow-hidden transition-all duration-500 ${cliente.puntos >= 10 ? 'border-[var(--brand-gold)] shadow-[0_0_50px_rgba(212,175,55,0.15)]' : ''}`}>
+          <div className={`card-glass p-8 relative overflow-hidden transition-all duration-500 ${cliente.puntos >= sellosTotales ? 'border-[var(--brand-gold)] shadow-[0_0_50px_rgba(212,175,55,0.15)]' : ''}`}>
             
             {mensaje.texto && mensaje.tipo === 'exito' && (
               <div className="absolute inset-0 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center z-50">
@@ -411,7 +424,7 @@ export default function EscanerTrabajadores() {
 
             {/* Cabecera de la tarjeta del cliente */}
             <div className="w-full bg-black/60 border border-[var(--border-subtle)] rounded-2xl py-8 px-6 flex flex-col items-center text-center mb-8 shadow-inner relative">
-              <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent ${cliente.puntos >= 10 ? 'via-[var(--brand-gold)]' : 'via-[var(--brand-red)]'} to-transparent opacity-70`}></div>
+              <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent ${cliente.puntos >= sellosTotales ? 'via-[var(--brand-gold)]' : 'via-[var(--brand-red)]'} to-transparent opacity-70`}></div>
               <h2 className="text-white text-3xl font-serif font-black italic tracking-wide mb-3 drop-shadow-sm w-full truncate">
                 {cliente.nombre}
               </h2>
@@ -422,18 +435,18 @@ export default function EscanerTrabajadores() {
             
             <div className="flex flex-col items-center w-full mb-10">
               <div className="flex items-baseline gap-3 mb-5">
-                <span className={`text-6xl font-black leading-none ${cliente.puntos >= 10 ? 'text-green-500 drop-shadow-[0_0_20px_rgba(34,197,94,0.5)]' : 'text-[var(--brand-gold)] drop-shadow-[0_0_20px_rgba(212,175,55,0.4)]'}`}>
+                <span className={`text-6xl font-black leading-none ${cliente.puntos >= sellosTotales ? 'text-green-500 drop-shadow-[0_0_20px_rgba(34,197,94,0.5)]' : 'text-[var(--brand-gold)] drop-shadow-[0_0_20px_rgba(212,175,55,0.4)]'}`}>
                   {cliente.puntos}
                 </span>
-                <span className="text-3xl font-bold text-[#3f3f46]">/ 10</span>
+                <span className="text-3xl font-bold text-[#3f3f46]">/ {sellosTotales}</span>
               </div>
               <p className="text-[10px] text-[#a1a1aa] font-bold uppercase tracking-[0.4em] mb-8">
-                {cliente.puntos >= 10 ? '¡PREMIO DESBLOQUEADO!' : 'Sellos Acumulados'}
+                {cliente.puntos >= sellosTotales ? '¡PREMIO DESBLOQUEADO!' : 'Sellos Acumulados'}
               </p>
 
               {/* Matriz de Estrellas */}
               <div className="grid grid-cols-5 gap-y-6 gap-x-4 place-items-center w-full px-2">
-                {[...Array(10)].map((_, i) => (
+                {[...Array(sellosTotales)].map((_, i) => (
                   <div key={i} className="flex items-center justify-center">
                     {i < cliente.puntos ? <StarActive /> : <StarInactive />}
                   </div>
@@ -450,7 +463,7 @@ export default function EscanerTrabajadores() {
               >
                 🎁 CANJEAR CUPÓN: {coupon.codigo_cupon}
               </button>
-            ) : cliente.puntos >= 10 ? (
+            ) : cliente.puntos >= sellosTotales ? (
               <div className="space-y-4 w-full">
                 <button 
                   onClick={manejarAccionVIP}
@@ -469,7 +482,7 @@ export default function EscanerTrabajadores() {
                   </button>
                   <button 
                     onClick={() => manejarAjusteSello(1)}
-                    disabled={cargando || cliente.puntos >= 10}
+                    disabled={cargando || cliente.puntos >= sellosTotales}
                     className="flex-1 bg-zinc-900 border border-zinc-800 hover:bg-zinc-850 text-green-400 font-bold py-3.5 rounded-xl text-xs uppercase tracking-wider transition-all disabled:opacity-40"
                   >
                     ➕ Sumar Sello

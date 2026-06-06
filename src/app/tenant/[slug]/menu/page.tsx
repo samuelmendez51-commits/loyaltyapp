@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { QRCodeSVG } from 'qrcode.react'
 
@@ -67,7 +67,12 @@ export default function MenuPublico({ params }: { params: Promise<{ slug: string
   const [horaCierreHoy, setHoraCierreHoy] = useState('22:00')
 
   // Datos del checkout
-  const [form, setForm] = useState({ nombre: '', telefono: '', calle: '', numero: '', colonia: '' })
+  const [form, setForm] = useState({ nombre: '', telefono: '', calle: '', numero: '', colonia: '', referencia: '' })
+  const [mapaCargado, setMapaCargado] = useState(false)
+  const mapRef = useRef<any>(null)
+  const markerRef = useRef<any>(null)
+  const [coordenadasPin, setCoordenadasPin] = useState<{ lat: number; lng: number } | null>(null)
+  const [metodoPago, setMetodoPago] = useState<'efectivo' | 'transferencia'>('efectivo')
   const [telefonoAutocompletar, setTelefonoAutocompletar] = useState('')
   const [mostrandoAutocompletar, setMostrandoAutocompletar] = useState(false)
   const [buscandoAutocompletar, setBuscandoAutocompletar] = useState(false)
@@ -109,7 +114,8 @@ export default function MenuPublico({ params }: { params: Promise<{ slug: string
           telefono: telClean,
           calle: ultimaOrden?.calle || '',
           numero: ultimaOrden?.numero || '',
-          colonia: ultimaOrden?.colonia || ''
+          colonia: ultimaOrden?.colonia || '',
+          referencia: ''
         })
         alert('✅ ¡Datos autocompletados con éxito! Por favor revisa y confirma si son correctos.')
         setMostrandoAutocompletar(false)
@@ -206,6 +212,85 @@ export default function MenuPublico({ params }: { params: Promise<{ slug: string
       return tiempoActualMin < tiempoApMin && tiempoActualMin > tiempoCiMin
     }
   }
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if ((window as any).L) {
+      setMapaCargado(true)
+      return
+    }
+
+    const link = document.createElement('link')
+    link.rel = 'stylesheet'
+    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
+    document.head.appendChild(link)
+
+    const script = document.createElement('script')
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
+    script.async = true
+    script.onload = () => {
+      setMapaCargado(true)
+    }
+    document.head.appendChild(script)
+  }, [])
+
+  useEffect(() => {
+    if (!mapaCargado || typeof window === 'undefined') return
+    const L = (window as any).L
+    if (!L) return
+
+    const stepCheckout = (paso === 'checkout')
+    if (!stepCheckout || tipoMenu !== 'delivery') {
+      if (mapRef.current) {
+        mapRef.current.remove()
+        mapRef.current = null
+        markerRef.current = null
+      }
+      return
+    }
+
+    const container = document.getElementById('mapa-cliente-checkout')
+    if (!container) return
+
+    if (mapRef.current) return
+
+    const initialLat = business?.latitude || 19.421583
+    const initialLng = business?.longitude || -102.067222
+
+    const pinLat = coordenadasPin?.lat || initialLat
+    const pinLng = coordenadasPin?.lng || initialLng
+
+    if (!coordenadasPin) {
+      setCoordenadasPin({ lat: initialLat, lng: initialLng })
+    }
+
+    const map = L.map('mapa-cliente-checkout').setView([pinLat, pinLng], 14)
+    mapRef.current = map
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map)
+
+    const marker = L.marker([pinLat, pinLng], { draggable: true }).addTo(map)
+    markerRef.current = marker
+
+    marker.on('dragend', (event: any) => {
+      const position = event.target.getLatLng()
+      setCoordenadasPin({ lat: position.lat, lng: position.lng })
+    })
+
+    setTimeout(() => {
+      map.invalidateSize()
+    }, 250)
+
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.remove()
+        mapRef.current = null
+        markerRef.current = null
+      }
+    }
+  }, [mapaCargado, paso, tipoMenu, business])
 
   // Cargar Google Maps en B2C
   useEffect(() => {
@@ -542,16 +627,18 @@ export default function MenuPublico({ params }: { params: Promise<{ slug: string
     }).join('\n')
     
     let tipoText = tipoMenu === 'delivery' ? '🛵 A Domicilio (Delivery)' : '🍽️ Comer en Restaurante (Mesa)'
+    let pagoText = `\n*Método de Pago:* ${metodoPago === 'efectivo' ? '💵 Efectivo' : '🏦 Transferencia (Pendiente de verificación)'}`
     
     let direccionText = tipoMenu === 'delivery' 
-      ? `\n*Dirección:* ${form.calle} #${form.numero}, ${form.colonia}`
+      ? `\n*Dirección:* ${form.calle} #${form.numero}, ${form.colonia}${form.referencia ? ` (Ref: ${form.referencia})` : ''}` +
+        (coordenadasPin ? `\n*Ubicación GPS:* https://www.google.com/maps?q=${coordenadasPin.lat},${coordenadasPin.lng}` : '')
       : ''
 
     const msg = `*NUEVO PEDIDO - ${business.nombre.toUpperCase()}* 🛍️✨
 -----------------------------------
 *Cliente:* ${form.nombre}
 *Teléfono:* ${form.telefono}
-*Tipo:* ${tipoText}${direccionText}
+*Tipo:* ${tipoText}${pagoText}${direccionText}
 
 *Resumen de Compra:*
 ${itemsText}
@@ -585,56 +672,64 @@ _Pedido procesado a través de LoyaltyApp VIP_`
     if (!business) return
     setEnviando(true)
 
-    const superaMinimo = totalCarrito >= (business.monto_minimo_sello || 0)
-    const otorgarSello = superaMinimo && (clienteId !== null)
+    const coloniaCombinada = form.referencia ? `${form.colonia} (Ref: ${form.referencia})` : form.colonia
 
-    const { data: order, error } = await supabase.from('orders').insert({
-      business_id: business.id,
-      cliente_id: clienteId,
-      nombre_cliente: form.nombre,
-      telefono_cliente: form.telefono,
-      calle: form.calle,
-      numero: form.numero,
-      colonia: form.colonia,
-      tipo: tipoMenu,
-      items: cart.map(i => ({
-        id: i.product.id,
-        nombre: i.product.nombre,
-        cantidad: i.cantidad,
-        precio_unitario: i.product.precio,
-        subtotal: i.subtotal,
-      })),
-      total: totalCarrito,
-      sello_otorgado: otorgarSello,
-      sello_aprobado: false,
-      sello_rechazado: false,
-      estado: 'pendiente',
-    }).select().single()
-
-    if (error || !order) { setEnviando(false); alert('Error al procesar el pedido'); return }
-
-    setOrderId(order.id)
-
-    if (clienteId && otorgarSello) {
-      await supabase.from('tracking_events').insert({
-        business_id: business.id,
-        cliente_id: clienteId,
-        order_id: order.id,
-        event_type: 'created_pending',
-        metadata: { total: totalCarrito, tipo: tipoMenu, es_nuevo: esNuevo },
+    let order = null
+    let logoSelloGranted = false
+    try {
+      const res = await fetch('/api/orders/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          business_id: business.id,
+          cliente_id: clienteId,
+          nombre_cliente: form.nombre,
+          telefono_cliente: form.telefono,
+          calle: form.calle,
+          numero: form.numero,
+          colonia: coloniaCombinada,
+          tipo: tipoMenu,
+          items: cart.map(i => ({
+            id: i.product.id,
+            nombre: i.product.nombre,
+            cantidad: i.cantidad,
+            precio_unitario: i.product.precio,
+            subtotal: i.subtotal,
+          })),
+          total: totalCarrito,
+          lat_entrega: tipoMenu === 'delivery' ? coordenadasPin?.lat || null : null,
+          lng_entrega: tipoMenu === 'delivery' ? coordenadasPin?.lng || null : null,
+          metodo_pago: metodoPago,
+          pago_verificado: metodoPago === 'efectivo'
+        })
       })
 
-      await supabase.from('clientes')
-        .update({ puntos: (clienteExistente?.puntos || 0) + 1 })
-        .eq('id', clienteId)
+      if (!res.ok) throw new Error(await res.text())
+      const data = await res.json()
+      order = data.order
+      logoSelloGranted = data.sello_otorgado
+    } catch (err) {
+      console.error('Error creating order via API:', err)
+      setEnviando(false)
+      alert('Error al procesar el pedido')
+      return
     }
 
+    if (!order) {
+      setEnviando(false)
+      alert('Error al procesar el pedido')
+      return
+    }
+
+    setOrderId(order.id)
     setEnviando(false)
 
-    const puntosNuevos = (clienteExistente?.puntos || 0) + (otorgarSello ? 1 : 0)
+    const puntosNuevos = (clienteExistente?.puntos || 0) + (logoSelloGranted ? 1 : 0)
     if (puntosNuevos >= (business.max_sellos || 10)) setConfeti(true)
 
-    if (clienteId && otorgarSello) {
+    if (clienteId && logoSelloGranted) {
       try {
         const { data: milestonesData } = await supabase
           .from('reward_milestones')
@@ -809,7 +904,7 @@ _Pedido procesado a través de LoyaltyApp VIP_`
           </a>
         )}
         <button
-          onClick={() => { setCart([]); setPaso('menu'); setForm({ nombre: '', telefono: '', calle: '', numero: '', colonia: '' }) }}
+          onClick={() => { setCart([]); setPaso('menu'); setForm({ nombre: '', telefono: '', calle: '', numero: '', colonia: '', referencia: '' }) }}
           className="text-[#a1a1aa] hover:text-[#52525b] text-sm font-bold mt-2"
         >
           Hacer otro pedido
@@ -1028,9 +1123,6 @@ _Pedido procesado a través de LoyaltyApp VIP_`
           {[
             { key: 'nombre', label: 'Nombre completo', placeholder: 'Juan García', type: 'text' },
             { key: 'telefono', label: 'Número de teléfono', placeholder: '3221234567', type: 'tel' },
-            { key: 'calle', label: 'Calle', placeholder: 'Av. Principal', type: 'text' },
-            { key: 'numero', label: 'Número', placeholder: '123', type: 'text' },
-            { key: 'colonia', label: 'Colonia', placeholder: 'Centro', type: 'text' },
           ].map(field => (
             <div key={field.key}>
               <label className="text-xs text-[#52525b] uppercase tracking-widest font-semibold block mb-1.5">{field.label}</label>
@@ -1043,6 +1135,77 @@ _Pedido procesado a través de LoyaltyApp VIP_`
               />
             </div>
           ))}
+
+          {tipoMenu === 'delivery' && (
+            <div className="space-y-4 border-t border-[#e4e4e7] pt-4">
+              <h3 className="text-xs font-bold text-[#09090b] uppercase tracking-wider mb-2">📍 Dirección de Entrega</h3>
+              
+              {[
+                { key: 'calle', label: 'Calle', placeholder: 'Av. Principal', type: 'text' },
+                { key: 'numero', label: 'Número', placeholder: '123', type: 'text' },
+                { key: 'colonia', label: 'Colonia', placeholder: 'Centro', type: 'text' },
+                { key: 'referencia', label: 'Referencia / Entre calles (Opcional)', placeholder: 'Frente al parque, portón café', type: 'text' },
+              ].map(field => (
+                <div key={field.key}>
+                  <label className="text-xs text-[#52525b] uppercase tracking-widest font-semibold block mb-1.5">{field.label}</label>
+                  <input
+                    type={field.type}
+                    value={form[field.key as keyof typeof form]}
+                    onChange={e => setForm(prev => ({ ...prev, [field.key]: e.target.value }))}
+                    placeholder={field.placeholder}
+                    className="w-full bg-[#fafafa] border border-[#e4e4e7] rounded-xl px-4 py-3 text-[#09090b] text-sm focus:outline-none focus:border-[#dc2626] transition-colors"
+                  />
+                </div>
+              ))}
+
+              {/* Leaflet Map Selector */}
+              <div className="space-y-1.5">
+                <label className="text-xs text-[#52525b] uppercase tracking-widest font-semibold block">Ubicación GPS (Arrastra el Pin)</label>
+                <p className="text-[11px] text-[#71717a] font-medium leading-normal">
+                  Para asegurar que el repartidor llegue sin contratiempos, arrastra el marcador azul exactamente a donde está tu ubicación.
+                </p>
+                <div
+                  id="mapa-cliente-checkout"
+                  style={{ height: '240px' }}
+                  className="w-full rounded-2xl border border-[#e4e4e7] overflow-hidden bg-zinc-50 relative shadow-inner mt-2 z-0"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Método de Pago */}
+          <div className="border-t border-[#e4e4e7] pt-4 space-y-2">
+            <label className="text-xs text-[#52525b] uppercase tracking-widest font-semibold block">Método de Pago</label>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setMetodoPago('efectivo')}
+                className={`py-3 px-4 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 ${
+                  metodoPago === 'efectivo'
+                    ? 'bg-[#dc2626] border-[#dc2626] text-white shadow-sm'
+                    : 'bg-white border-[#e4e4e7] text-[#52525b] hover:bg-zinc-50'
+                }`}
+              >
+                💵 Efectivo
+              </button>
+              <button
+                type="button"
+                onClick={() => setMetodoPago('transferencia')}
+                className={`py-3 px-4 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 ${
+                  metodoPago === 'transferencia'
+                    ? 'bg-[#dc2626] border-[#dc2626] text-white shadow-sm'
+                    : 'bg-white border-[#e4e4e7] text-[#52525b] hover:bg-zinc-50'
+                }`}
+              >
+                🏦 Transferencia
+              </button>
+            </div>
+            {metodoPago === 'transferencia' && (
+              <p className="text-xs text-[#71717a] italic mt-1.5 font-medium leading-relaxed bg-[#f4f4f5] p-2.5 rounded-xl border border-[#e4e4e7]">
+                *Nota: Los pagos por transferencia deberán ser confirmados por el restaurante antes de proceder con el envío de tu pedido. Envía tu comprobante cuando seas redirigido a WhatsApp.
+              </p>
+            )}
+          </div>
         </div>
 
         <button

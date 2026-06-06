@@ -2,8 +2,9 @@
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useParams, useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { QRCodeSVG } from 'qrcode.react'
-import { UtensilsCrossed, Bell, CreditCard, X, Gift, RotateCcw, Send, Lock, MapPin, Clock, Share2 } from 'lucide-react'
+import { UtensilsCrossed, Bell, CreditCard, X, Gift, RotateCcw, Send, Lock, MapPin, Clock, Share2, Star, Truck, Check } from 'lucide-react'
 
 // ── Interfaces ────────────────────────────────────────────────────────────────
 interface Premio { id: string; nombre: string; estampillas_requeridas: number; imagen_url?: string }
@@ -18,6 +19,58 @@ interface MenuProduct {
 interface ModifierGroup { id: string; nombre: string; requerido: boolean; modifier_options: ModifierOption[] }
 interface ModifierOption { id: string; nombre: string; precio_extra: number }
 interface CartItem { product: MenuProduct; cantidad: number; selecciones: Record<string, any>; subtotal: number }
+
+// Helper para renderizar el icono de sello según la configuración
+function RenderIconoSello({ icono, size = 'w-8 h-8' }: { icono: string, size?: string }) {
+  if (icono === 'burrito') {
+    const svgSize = size.includes('w-5.5') ? 'w-5.5 h-5.5' : 'w-8 h-8';
+    return (
+      <svg className={svgSize} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="14" y="10" width="36" height="44" rx="18" fill="#FDE047" stroke="#CA8A04" strokeWidth="2.5" />
+        <path d="M15 24 C 20 28, 44 28, 49 24 C 47 18, 17 18, 15 24 Z" fill="#B45309" />
+        <path d="M20 20 C 25 24, 39 24, 44 20 C 42 16, 22 16, 20 20 Z" fill="#22C55E" />
+        <path d="M26 17 C 28 20, 36 20, 38 17 C 37 14, 27 14, 26 17 Z" fill="#EF4444" />
+        <path d="M15 32 C 22 36, 42 34, 49 32" stroke="#CA8A04" strokeWidth="2" strokeLinecap="round" />
+        <path d="M15 42 C 20 46, 44 44, 49 42" stroke="#CA8A04" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    )
+  }
+  if (icono === 'gift') {
+    return <Gift className={`${size} text-rose-500 fill-rose-100 animate-pulse`} />
+  }
+  return <Star className={`${size} text-amber-500 fill-amber-300`} />
+}
+
+function DeliveryCountdown({ scheduledTime, onExpire }: { scheduledTime: string; onExpire?: () => void }) {
+  const [timeLeft, setTimeLeft] = useState('')
+
+  useEffect(() => {
+    const calculateTime = () => {
+      const difference = new Date(scheduledTime).getTime() - Date.now()
+      if (difference <= 0) {
+        setTimeLeft('00:00')
+        if (onExpire) onExpire()
+        return
+      }
+      const totalSeconds = Math.floor(difference / 1000)
+      const minutes = Math.floor(totalSeconds / 60)
+      const seconds = totalSeconds % 60
+      const formattedMin = String(minutes).padStart(2, '0')
+      const formattedSec = String(seconds).padStart(2, '0')
+      setTimeLeft(`${formattedMin}:${formattedSec}`)
+    }
+
+    calculateTime()
+    const timer = setInterval(calculateTime, 1000)
+    return () => clearInterval(timer)
+  }, [scheduledTime])
+
+  return (
+    <span className="font-mono font-extrabold text-sm text-[#09090b] tracking-wider bg-zinc-100 border border-zinc-200 px-2.5 py-1 rounded-lg shadow-sm">
+      {timeLeft}
+    </span>
+  )
+}
 
 // ── Ruleta VIP ────────────────────────────────────────────────────────────────
 function RuletaVIP({
@@ -295,6 +348,7 @@ export default function TarjetaLealtadFinal() {
   const { id, slug } = useParams()
   const router = useRouter()
   const [cliente, setCliente] = useState<any>(null)
+  const [activeOrder, setActiveOrder] = useState<any>(null)
   const [business, setBusiness] = useState<any>(null)
   const [premios, setPremios] = useState<Premio[]>([])
   const [cargando, setCargando] = useState(true)
@@ -337,6 +391,11 @@ export default function TarjetaLealtadFinal() {
 
   // Formulario Checkout
   const [form, setForm] = useState({ nombre: '', telefono: '', calle: '', numero: '', colonia: '', referencia: '' })
+  const [mapaCargado, setMapaCargado] = useState(false)
+  const mapRef = useRef<any>(null)
+  const markerRef = useRef<any>(null)
+  const [coordenadasPin, setCoordenadasPin] = useState<{ lat: number; lng: number } | null>(null)
+  const [metodoPago, setMetodoPago] = useState<'efectivo' | 'transferencia'>('efectivo')
   const [telefonoAutocompletar, setTelefonoAutocompletar] = useState('')
   const [mostrandoAutocompletar, setMostrandoAutocompletar] = useState(false)
   const [buscandoAutocompletar, setBuscandoAutocompletar] = useState(false)
@@ -398,6 +457,115 @@ export default function TarjetaLealtadFinal() {
   }, [])
 
   useEffect(() => {
+    if (typeof window === 'undefined') return
+    if ((window as any).L) {
+      setMapaCargado(true)
+      return
+    }
+
+    const link = document.createElement('link')
+    link.rel = 'stylesheet'
+    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
+    document.head.appendChild(link)
+
+    const script = document.createElement('script')
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
+    script.async = true
+    script.onload = () => {
+      setMapaCargado(true)
+    }
+    document.head.appendChild(script)
+  }, [])
+
+  useEffect(() => {
+    if (!mapaCargado || typeof window === 'undefined') return
+    const L = (window as any).L
+    if (!L) return
+
+    const stepCheckout = (pasoMenu === 'checkout')
+    if (!stepCheckout || tipoMenu !== 'delivery') {
+      if (mapRef.current) {
+        mapRef.current.remove()
+        mapRef.current = null
+        markerRef.current = null
+      }
+      return
+    }
+
+    const container = document.getElementById('mapa-cliente-checkout')
+    if (!container) return
+
+    if (mapRef.current) return
+
+    const initialLat = business?.latitude || 19.421583
+    const initialLng = business?.longitude || -102.067222
+
+    const pinLat = coordenadasPin?.lat || initialLat
+    const pinLng = coordenadasPin?.lng || initialLng
+
+    if (!coordenadasPin) {
+      setCoordenadasPin({ lat: initialLat, lng: initialLng })
+    }
+
+    const map = L.map('mapa-cliente-checkout').setView([pinLat, pinLng], 14)
+    mapRef.current = map
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map)
+
+    const marker = L.marker([pinLat, pinLng], { draggable: true }).addTo(map)
+    markerRef.current = marker
+
+    marker.on('dragend', (event: any) => {
+      const position = event.target.getLatLng()
+      setCoordenadasPin({ lat: position.lat, lng: position.lng })
+    })
+
+    setTimeout(() => {
+      map.invalidateSize()
+    }, 250)
+
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.remove()
+        mapRef.current = null
+        markerRef.current = null
+      }
+    }
+  }, [mapaCargado, pasoMenu, tipoMenu, business])
+
+  useEffect(() => {
+    if (!cliente?.id) return
+
+    const channel = supabase
+      .channel(`active-order-updates-${cliente.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'orders',
+          filter: `cliente_id=eq.${cliente.id}`
+        },
+        (payload) => {
+          const ord = payload.new as any
+          if (ord && ord.tipo === 'delivery' && ['SHIPPED_SCHEDULED', 'SHIPPED_IMMEDIATE', 'DELIVERED', 'CANCELLED'].includes(ord.delivery_status)) {
+            const dosHorasAtras = new Date(Date.now() - 2 * 60 * 60 * 1000)
+            if (new Date(ord.created_at) > dosHorasAtras) {
+              setActiveOrder(ord)
+            }
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [cliente?.id])
+
+  useEffect(() => {
     const cargarDatos = async () => {
       if (!id) return
       const { data: clienteData } = await supabase
@@ -408,6 +576,27 @@ export default function TarjetaLealtadFinal() {
 
       if (clienteData) {
         setCliente(clienteData)
+        
+        // Cargar pedido activo de delivery (creado en las últimas 2 horas con estado de pre-despacho)
+        try {
+          const dosHorasAtras = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
+          const { data: ord } = await supabase
+            .from('orders')
+            .select('*')
+            .eq('cliente_id', clienteData.id)
+            .eq('tipo', 'delivery')
+            .in('delivery_status', ['SHIPPED_SCHEDULED', 'SHIPPED_IMMEDIATE'])
+            .gt('created_at', dosHorasAtras)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+
+          if (ord) {
+            setActiveOrder(ord)
+          }
+        } catch (err) {
+          console.warn('Error al cargar pedido activo del cliente:', err)
+        }
         setForm(prev => ({
           ...prev,
           nombre: clienteData.nombre || '',
@@ -427,7 +616,7 @@ export default function TarjetaLealtadFinal() {
               setCargando(false)
               return // Tarjeta no pertenece a este negocio
             }
-            setBusiness(bizData)
+            setBusiness({ ...bizData, name: bizData.nombre })
 
             // Cargar redes sociales y horarios comerciales
             let linkFb = (bizData as any).link_facebook || ''
@@ -589,6 +778,15 @@ export default function TarjetaLealtadFinal() {
         } catch (e) {
           console.warn('Error al cargar el último pedido del cliente:', e)
         }
+      } else {
+        if (slug) {
+          const { data: bizData } = await supabase
+            .from('businesses')
+            .select('*')
+            .eq('slug', slug)
+            .maybeSingle()
+          if (bizData) setBusiness({ ...bizData, name: bizData.nombre })
+        }
       }
       setCargando(false)
     }
@@ -642,6 +840,24 @@ export default function TarjetaLealtadFinal() {
 
   // La ruleta solo se activa si tiene la estructura y cumple el monto mínimo de su última compra
   const tieneRuletaActiva = tieneEstructuraRuleta && cumpleMontoMinimoRuleta
+
+  // ── Textos Dinámicos Personalizables ──
+  const labels = {
+    card_title: business?.card_custom_labels?.card_title || "TARJETA VIP DIGITAL",
+    reward_instruction: business?.card_custom_labels?.reward_instruction || "¡ACUMULA {total_stamps} SELLOS Y OBTÉN TU PREMIO GRATIS!",
+    stamps_suffix: business?.card_custom_labels?.stamps_suffix || "SELLOS ACUMULADOS",
+    roulette_locked_title: business?.card_custom_labels?.roulette_locked_title || "Ruleta VIP Bloqueada",
+    roulette_locked_desc: business?.card_custom_labels?.roulette_locked_desc || "¡Felicidades! Alcanzaste los sellos necesarios. Esta ruleta requiere una compra mínima de ${min_amount} MXN para activarse.",
+    footer_instruction: business?.card_custom_labels?.footer_instruction || "Realiza un pedido desde el menú o en caja que iguale o supere este monto."
+  }
+
+  const formatLabel = (template: string) => {
+    if (!template) return ''
+    return template
+      .replace(/{total_stamps}/g, String(sellosTotales))
+      .replace(/{min_amount}/g, String(minRuletaTicket))
+      .replace(/\${min_amount}/g, `$${minRuletaTicket}`)
+  }
 
   // ── Funciones del Carrito e Interacción del Menú ──
   const ejecutarAutocompletado = async () => {
@@ -891,16 +1107,18 @@ export default function TarjetaLealtadFinal() {
     }).join('\n')
     
     let tipoText = tipoMenu === 'delivery' ? '🛵 A Domicilio (Delivery)' : '🍽️ Comer en Restaurante (Mesa)'
+    let pagoText = `\n*Método de Pago:* ${metodoPago === 'efectivo' ? '💵 Efectivo' : '🏦 Transferencia (Pendiente de verificación)'}`
     
     let direccionText = tipoMenu === 'delivery' 
-      ? `\n*Dirección:* ${form.calle} #${form.numero}, ${form.colonia}${form.referencia ? ` (Ref: ${form.referencia})` : ''}`
+      ? `\n*Dirección:* ${form.calle} #${form.numero}, ${form.colonia}${form.referencia ? ` (Ref: ${form.referencia})` : ''}` +
+        (coordenadasPin ? `\n*Ubicación GPS:* https://www.google.com/maps?q=${coordenadasPin.lat},${coordenadasPin.lng}` : '')
       : ''
 
     const msg = `*NUEVO PEDIDO DE CLIENTE VIP - ${business.nombre.toUpperCase()}* 🛍️✨
 -----------------------------------
 *Socio VIP:* ${form.nombre} (ID: ${cliente?.id?.substring(0, 8) || ''})
 *Teléfono:* ${form.telefono}
-*Tipo:* ${tipoText}${direccionText}
+*Tipo:* ${tipoText}${pagoText}${direccionText}
 
 *Resumen de Compra:*
 ${itemsText}
@@ -917,67 +1135,72 @@ _Pedido procesado a través de LoyaltyApp VIP_`
     if (!business || !cliente) return
     setEnviando(true)
 
-    const superaMinimo = totalCarrito >= (business.monto_minimo_sello || 0)
-    const otorgarSello = superaMinimo
-
     const coloniaCombinada = form.referencia ? `${form.colonia} (Ref: ${form.referencia})` : form.colonia
 
-    const { data: order, error } = await supabase.from('orders').insert({
-      business_id: business.id,
-      cliente_id: cliente.id,
-      nombre_cliente: form.nombre,
-      telefono_cliente: form.telefono,
-      calle: form.calle,
-      numero: form.numero,
-      colonia: coloniaCombinada,
-      tipo: tipoMenu,
-      items: cart.map(i => {
-        const adicionalesCombo = obtenerAdicionalesCombo(i.product.nombre)
-        const modTextList = Object.entries(i.selecciones).map(([key, o]: [string, any]) => {
-          if (key === 'salsa-aparte') return o ? ' (*Salsa Aparte*)' : ''
-          if (Array.isArray(o)) {
-            return o.map(subOpt => ` (+ ${subOpt.nombre})`).join('')
-          }
-          return o ? ` (+ ${o.nombre})` : ''
+    let order = null
+    let logoSelloGranted = false
+    try {
+      const res = await fetch('/api/orders/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          business_id: business.id,
+          cliente_id: cliente.id,
+          nombre_cliente: form.nombre,
+          telefono_cliente: form.telefono,
+          calle: form.calle,
+          numero: form.numero,
+          colonia: coloniaCombinada,
+          tipo: tipoMenu,
+          items: cart.map(i => {
+            const adicionalesCombo = obtenerAdicionalesCombo(i.product.nombre)
+            const modTextList = Object.entries(i.selecciones).map(([key, o]: [string, any]) => {
+              if (key === 'salsa-aparte') return o ? ' (*Salsa Aparte*)' : ''
+              if (Array.isArray(o)) {
+                return o.map(subOpt => ` (+ ${subOpt.nombre})`).join('')
+              }
+              return o ? ` (+ ${o.nombre})` : ''
+            })
+            const modText = modTextList.join('')
+            return {
+              id: i.product.id,
+              nombre: `${i.product.nombre}${adicionalesCombo}${modText}`,
+              cantidad: i.cantidad,
+              precio_unitario: i.product.precio,
+              subtotal: i.subtotal,
+            }
+          }),
+          total: totalCarrito,
+          lat_entrega: tipoMenu === 'delivery' ? coordenadasPin?.lat || null : null,
+          lng_entrega: tipoMenu === 'delivery' ? coordenadasPin?.lng || null : null,
+          metodo_pago: metodoPago,
+          pago_verificado: metodoPago === 'efectivo'
         })
-        const modText = modTextList.join('')
-        return {
-          id: i.product.id,
-          nombre: `${i.product.nombre}${adicionalesCombo}${modText}`,
-          cantidad: i.cantidad,
-          precio_unitario: i.product.precio,
-          subtotal: i.subtotal,
-        }
-      }),
-      total: totalCarrito,
-      sello_otorgado: otorgarSello,
-      sello_aprobado: false,
-      sello_rechazado: false,
-      estado: 'pendiente',
-    }).select().single()
+      })
 
-    if (error || !order) { 
+      if (!res.ok) throw new Error(await res.text())
+      const data = await res.json()
+      order = data.order
+      logoSelloGranted = data.sello_otorgado
+    } catch (err) {
+      console.error('Error creating order via API:', err)
       setEnviando(false)
       alert('Error al procesar el pedido')
-      return 
+      return
+    }
+
+    if (!order) {
+      setEnviando(false)
+      alert('Error al procesar el pedido')
+      return
     }
 
     setOrderId(order.id)
 
-    if (otorgarSello) {
-      await supabase.from('tracking_events').insert({
-        business_id: business.id,
-        cliente_id: cliente.id,
-        order_id: order.id,
-        event_type: 'created_pending',
-        metadata: { total: totalCarrito, tipo: tipoMenu, es_nuevo: false },
-      })
-
+    if (logoSelloGranted) {
       const nuevosPuntos = (cliente.puntos || 0) + 1
-      await supabase.from('clientes')
-        .update({ puntos: nuevosPuntos })
-        .eq('id', cliente.id)
-      
       setCliente((prev: any) => prev ? { ...prev, puntos: nuevosPuntos } : null)
       if (nuevosPuntos >= sellosTotales) {
         setConfeti(true)
@@ -1003,12 +1226,49 @@ _Pedido procesado a través de LoyaltyApp VIP_`
   )
 
   if (!cliente) return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-[#fafafa] p-4">
-      <div className="bg-white rounded-3xl w-full max-w-sm p-10 text-center shadow-lg border border-[#f0f0f0]">
-        <span className="text-5xl block mb-4">⚠️</span>
-        <h1 className="text-xl font-bold text-[#09090b] mb-2">Tarjeta No Encontrada</h1>
-        <p className="text-sm text-[#71717a]">Este pase VIP no existe o fue eliminado.</p>
+    <div className="min-h-screen bg-[#fafafa] flex flex-col items-center justify-center p-6 text-center font-sans">
+      {/* Icono de Alerta Animado */}
+      <div className="w-20 h-20 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center mb-6 animate-pulse border border-amber-200 shadow-sm">
+        <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
       </div>
+
+      {/* Mensaje Principal */}
+      <h1 className="text-2xl font-black text-[#09090b] mb-2 tracking-tight">
+        ¡Pase VIP no encontrado!
+      </h1>
+      <p className="text-sm text-[#71717a] font-medium max-w-sm mb-8 leading-relaxed">
+        Esta tarjeta de cliente ya no está activa, fue eliminada o estás usando un enlace antiguo. ¡No te preocupes, puedes volver a ingresar en un segundo!
+      </p>
+
+      {/* Contenedor de Botones de Recuperación */}
+      <div className="w-full max-w-xs space-y-3">
+        {/* Botón Principal: Registrarse / Crear Nueva */}
+        <Link 
+          href="/registro"
+          className="block w-full py-3.5 px-4 text-white font-extrabold rounded-2xl transition shadow-md text-xs uppercase tracking-wider text-center"
+          style={{ backgroundColor: business?.color_primario || '#dc2626' }}
+        >
+          Crear Nueva Tarjeta
+        </Link>
+
+        {/* Botón Secundario: Iniciar Sesión (Si ya tiene cuenta de usuario) */}
+        <Link 
+          href="/registro"
+          className="block w-full py-3.5 px-4 bg-white hover:bg-gray-50 text-[#52525b] hover:text-[#09090b] font-extrabold rounded-2xl border border-[#e4e4e7] transition text-xs uppercase tracking-wider text-center"
+        >
+          Ya tengo cuenta (Ingresar)
+        </Link>
+      </div>
+
+      {/* Enlace sutil al menú por si solo quiere ver la carta */}
+      <Link 
+        href="/menu" 
+        className="mt-8 text-xs text-[#a1a1aa] hover:text-[#52525b] font-bold underline"
+      >
+        Ver el menú de {business?.nombre || 'la marca'}
+      </Link>
     </div>
   )
 
@@ -1079,7 +1339,7 @@ _Pedido procesado a través de LoyaltyApp VIP_`
               {/* Previsualización del Icono */}
               <div className="flex flex-col items-center bg-[#fafafa] border border-[#f4f4f5] rounded-2xl p-4 text-center">
                 <p className="text-[10px] font-bold text-[#71717a] uppercase tracking-wider mb-3">Así se verá en tu celular</p>
-                <div className="relative w-16 h-16 bg-black rounded-3xl flex items-center justify-center border border-white/10 shadow-[0_0_20px_rgba(0,0,0,0.2)] mb-2.5">
+                <div className="relative w-16 h-16 bg-[#fef2f2] rounded-3xl flex items-center justify-center border border-[#fee2e2] shadow-[0_4px_16px_rgba(220,38,38,0.08)] mb-2.5">
                   <img
                     src={programaActivo?.logo_url || business?.logo_url || '/logo.png'}
                     alt="Logo"
@@ -1209,74 +1469,179 @@ _Pedido procesado a través de LoyaltyApp VIP_`
             </div>
           </div>
 
-          {/* Tarjeta Principal */}
-          <div className="bg-white rounded-3xl shadow-[0_4px_24px_rgba(0,0,0,0.08)] border border-[#f0f0f0] overflow-hidden">
-            {/* Portada / Banner superior */}
-            {programaActivo?.portada_url ? (
-              <div className="h-32 w-full overflow-hidden relative">
-                <img
-                  src={programaActivo.portada_url}
-                  alt="Portada Club"
-                  className="w-full h-full object-cover animate-fade-in"
-                  style={{
-                    objectPosition: `center ${
-                      programaActivo.portada_url.includes('#y=')
-                        ? programaActivo.portada_url.split('#y=')[1]
-                        : '50'
-                    }%`
-                  }}
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+          {/* Mass Alert Banner if present */}
+          {business?.alerta_masiva && (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 shadow-sm animate-fadeIn space-y-2">
+              <div className="flex items-start gap-2.5">
+                <span className="text-xl shrink-0">📢</span>
+                <div>
+                  <h4 className="font-extrabold text-amber-900 text-xs uppercase tracking-wider">Aviso Importante</h4>
+                  <p className="text-xs text-amber-800 font-semibold leading-relaxed mt-1 whitespace-pre-line">{business.alerta_masiva}</p>
+                </div>
               </div>
-            ) : (
-              /* Acento superior */
-              <div className="h-1.5 bg-gradient-to-r from-[#dc2626] via-[#ef4444] to-[#dc2626]" />
-            )}
+            </div>
+          )}
 
-            {/* Nombre del cliente */}
-            <div className="px-6 pt-5 pb-3">
-              <p className="text-[10px] font-semibold text-[#a1a1aa] uppercase tracking-widest">Socio VIP</p>
-              <h2 className="text-2xl font-bold text-[#09090b] tracking-tight mt-0.5">{cliente.nombre}</h2>
-              <p className="text-xs text-[#a1a1aa] font-mono">ID: {cliente.id.substring(0, 8)}</p>
+          {/* Tracking de Pedido Activo */}
+          {activeOrder && (
+            <div className="bg-white border border-[#e4e4e7] rounded-3xl p-5 shadow-lg animate-fadeIn space-y-3.5 text-[#09090b]">
+              <div className="flex items-center justify-between border-b border-[#f4f4f5] pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">🛵</span>
+                  <h4 className="font-extrabold text-sm tracking-tight text-[#09090b]">Siga su Envío en Tiempo Real</h4>
+                </div>
+                {['DELIVERED', 'CANCELLED'].includes(activeOrder.delivery_status) && (
+                  <button 
+                    onClick={() => setActiveOrder(null)} 
+                    className="text-[#a1a1aa] hover:text-[#52525b] text-xs font-bold"
+                  >
+                    Cerrar
+                  </button>
+                )}
+              </div>
+
+              {activeOrder.delivery_status === 'SHIPPED_SCHEDULED' ? (
+                <div className="space-y-2.5">
+                  <div className="flex items-start gap-2.5">
+                    <Clock className="w-5 h-5 text-amber-500 shrink-0 mt-0.5 animate-pulse" />
+                    <div>
+                      <p className="text-xs font-extrabold text-amber-950">Despacho Programado</p>
+                      <p className="text-[11px] text-amber-700 font-medium leading-relaxed mt-0.5">
+                        Tu pedido ha sido recibido. El repartidor está programado para salir en:
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex justify-center py-1">
+                    <DeliveryCountdown scheduledTime={activeOrder.scheduled_pickup_time} />
+                  </div>
+                </div>
+              ) : activeOrder.delivery_status === 'SHIPPED_IMMEDIATE' ? (
+                <div className="space-y-2.5">
+                  <style>{`
+                    @keyframes motorSlide {
+                      0% { transform: translateX(-150%); }
+                      100% { transform: translateX(350%); }
+                    }
+                    .animate-motor-slide {
+                      animation: motorSlide 2.5s ease-in-out infinite;
+                    }
+                  `}</style>
+                  <div className="flex items-start gap-2.5">
+                    <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center border border-emerald-200 animate-bounce shrink-0">
+                      <Truck className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-extrabold text-emerald-950">¡Rider en Camino!</p>
+                      <p className="text-[11px] text-emerald-700 font-semibold leading-relaxed mt-0.5">
+                        ¡Buenas noticias! Tu pedido va en camino antes de lo previsto. El repartidor ya va en ruta inmediata.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="w-full h-2 bg-emerald-100 rounded-full overflow-hidden relative border border-emerald-200">
+                    <div className="absolute top-0 bottom-0 w-12 bg-emerald-500 rounded-full animate-motor-slide"></div>
+                  </div>
+                </div>
+              ) : activeOrder.delivery_status === 'DELIVERED' ? (
+                <div className="flex items-start gap-2.5">
+                  <Check className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5 bg-emerald-50 border border-emerald-200 rounded-full p-0.5" />
+                  <div>
+                    <p className="text-xs font-extrabold text-emerald-950">¡Pedido Entregado!</p>
+                    <p className="text-[11px] text-emerald-700 font-medium leading-relaxed mt-0.5">
+                      Tu pedido ha llegado con éxito. ¡Que lo disfrutes!
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-start gap-2.5">
+                  <X className="w-5 h-5 text-red-600 shrink-0 mt-0.5 bg-red-50 border border-red-200 rounded-full p-0.5" />
+                  <div>
+                    <p className="text-xs font-extrabold text-red-950">Pedido Cancelado</p>
+                    <p className="text-[11px] text-red-700 font-medium leading-relaxed mt-0.5">
+                      Tu pedido de entrega a domicilio fue cancelado.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Tarjeta Principal */}
+          <div className="rounded-3xl shadow-[0_4px_24px_rgba(0,0,0,0.1)] border border-black/10 overflow-hidden p-6 space-y-6 text-[#09090b]" style={{ backgroundColor: business?.color_primario || '#dc2626' }}>
+            {/* Encabezado */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                {business?.logo_url ? (
+                  <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-white shadow-sm bg-white flex items-center justify-center">
+                    <img 
+                      src={business.logo_url} 
+                      alt={business.name} 
+                      className="w-full h-full object-cover" 
+                    />
+                  </div>
+                ) : (
+                  <div className="w-12 h-12 rounded-full bg-white text-[#dc2626] flex items-center justify-center font-black text-xl border-2 border-white shadow-sm">
+                    LB
+                  </div>
+                )}
+                <div>
+                  <h2 className="text-xl font-black tracking-tight leading-none uppercase">{business?.name}</h2>
+                  <p className="text-[10px] font-black text-black/60 uppercase tracking-widest mt-1">Socio VIP: {cliente.nombre}</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <span className="text-[9px] font-mono bg-black/10 px-2 py-0.5 rounded-md font-bold uppercase">ID: {cliente.id.substring(0, 8)}</span>
+              </div>
             </div>
 
-            {/* Grid de Sellos */}
-            <div className="px-6 py-4 bg-[#fafafa] border-y border-[#f0f0f0]">
-              <div className="grid grid-cols-5 gap-2.5 place-items-center">
+            {/* Subtítulo */}
+            <div className="space-y-0.5">
+              <p className="text-[11px] font-black tracking-wider uppercase text-black/70">{labels.card_title}</p>
+              <h3 className="text-base font-extrabold tracking-tight uppercase leading-snug">
+                {formatLabel(labels.reward_instruction)}
+              </h3>
+            </div>
+
+            {/* El Bloque Blanco de Sellos Dinámicos */}
+            <div className="bg-white rounded-2xl p-5 shadow-sm space-y-5 text-[#09090b]">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-black uppercase tracking-wider text-[#71717a]">
+                  {tieneRuletaActiva
+                    ? '🏆 ¡Ruleta de Premios Activa!'
+                    : `${sellosMarcados} / ${sellosTotales} ${labels.stamps_suffix}`}
+                </p>
+              </div>
+
+              {/* Grid de Sellos */}
+              <div className="grid grid-cols-5 gap-3.5 place-items-center">
                 {[...Array(sellosTotales)].map((_, i) => {
                   const marcado = i < sellosMarcados
                   return (
-                    <div key={i} className="flex justify-center items-center w-full">
+                    <div key={i} className="flex flex-col items-center gap-1 w-full">
                       {marcado ? (
-                        <div className="w-11 h-11 rounded-full bg-gradient-to-br from-[#FFD700] via-[#FDB931] to-[#D4A017] flex items-center justify-center shadow-[0_2px_8px_rgba(255,193,7,0.4)] transition-transform hover:scale-105">
-                          <span className="text-[#452000] text-lg font-black">★</span>
+                        <div className="w-12 h-12 rounded-full bg-[#fef9c3] flex items-center justify-center border border-yellow-200">
+                          <RenderIconoSello icono={business?.icono_sello || 'default'} />
                         </div>
                       ) : (
-                        <div className="w-10 h-10 rounded-full border-2 border-dashed border-[#d4d4d8] flex items-center justify-center">
-                          <span className="text-[#d4d4d8] text-sm">★</span>
+                        <div className="w-11 h-11 rounded-full border-2 border-dashed border-[#e4e4e7] flex items-center justify-center bg-[#fafafa]">
+                          <span className="text-[#a1a1aa] text-xs font-bold">{i + 1}</span>
                         </div>
                       )}
                     </div>
                   )
                 })}
               </div>
-            </div>
 
-            {/* Progreso */}
-            <div className="px-6 py-4">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold text-[#71717a]">
-                  {tieneRuletaActiva
-                    ? '🏆 ¡Ruleta de Premios Activa!'
-                    : `Faltan ${sellosTotales - sellosMarcados} sellos`}
-                </p>
-                <span className="text-sm font-bold text-[#09090b]">{sellosMarcados}/{sellosTotales}</span>
-              </div>
-              <div className="w-full h-2 bg-[#f4f4f5] rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-[#dc2626] to-[#ef4444] rounded-full transition-all duration-700"
-                  style={{ width: `${Math.min((sellosMarcados / sellosTotales) * 100, 100)}%` }}
-                />
+              {/* Barra de Porcentaje Dinámica */}
+              <div className="space-y-1">
+                <div className="w-full bg-gray-100 h-2.5 rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-700"
+                    style={{ 
+                      width: `${Math.min((sellosMarcados / sellosTotales) * 100, 100)}%`,
+                      backgroundColor: business?.color_primario || '#dc2626'
+                    }}
+                  />
+                </div>
               </div>
             </div>
 
@@ -1297,17 +1662,17 @@ _Pedido procesado a través de LoyaltyApp VIP_`
                   </div>
                   <div>
                     <p className="font-extrabold text-[#854d0e] text-sm flex items-center justify-center gap-1.5">
-                      <span>🔒 Ruleta VIP Bloqueada</span>
+                      <span>🔒 {labels.roulette_locked_title}</span>
                     </p>
                     <p className="text-[11px] text-[#a16207] mt-1.5 leading-relaxed">
-                      ¡Felicidades! Alcanzaste el rango de sellos necesario. Sin embargo, esta ruleta requiere una compra mínima de <span className="font-extrabold text-red-600">${minRuletaTicket} MXN</span>.
+                      {formatLabel(labels.roulette_locked_desc)}
                     </p>
                     <div className="mt-3 py-2 px-3 bg-white/70 border border-[#fef08a] rounded-xl text-[10px] inline-block">
                       <span className="text-[#854d0e]">Tu última compra registrada: </span>
                       <span className="font-bold text-red-600">${ultimoPedidoTotal} MXN</span>
                     </div>
                     <p className="text-[9px] text-[#b45309] mt-2 italic">
-                      Realiza un pedido desde el menú o en caja que iguale o supere este monto para activarla.
+                      {formatLabel(labels.footer_instruction)}
                     </p>
                   </div>
                 </div>
@@ -1385,25 +1750,24 @@ _Pedido procesado a través de LoyaltyApp VIP_`
           </div>
 
           {/* Card / Banner de Acceso Directo a Inicio (PWA) */}
-          <div className="bg-gradient-to-br from-[#09090b] via-[#1a1a1e] to-[#09090b] border border-white/10 rounded-3xl p-5 mt-5 shadow-[0_4px_20px_rgba(0,0,0,0.15)] flex gap-4 items-center animate-fadeIn">
-            <div className="relative w-14 h-14 bg-black rounded-2xl flex items-center justify-center border border-white/10 shadow-[0_0_15px_rgba(255,255,255,0.4)] animate-pulse shrink-0">
+          <div className="bg-white border border-[#e4e4e7] rounded-3xl p-5 mt-5 shadow-[0_2px_12px_rgba(0,0,0,0.06)] flex gap-4 items-center animate-fadeIn">
+            <div className="relative w-14 h-14 bg-[#fef2f2] rounded-2xl flex items-center justify-center border border-[#fee2e2] shadow-sm shrink-0">
               <img
                 src={programaActivo?.logo_url || business?.logo_url || '/logo.png'}
                 alt="Logo"
                 className="w-10 h-10 object-cover rounded-xl"
                 onError={(e) => { (e.target as HTMLImageElement).src = '/logo.png' }}
               />
-              <div className="absolute inset-0 rounded-2xl bg-gradient-to-tr from-white/15 to-transparent" />
             </div>
             
             <div className="flex-1 min-w-0">
-              <h4 className="text-xs font-black text-white tracking-wide">📲 Acceso Directo VIP</h4>
-              <p className="text-[10px] text-[#a1a1aa] mt-1 font-medium leading-relaxed">
+              <h4 className="text-xs font-black text-[#09090b] tracking-wide">📲 Acceso Directo VIP</h4>
+              <p className="text-[10px] text-[#71717a] mt-1 font-medium leading-relaxed">
                 Guarda esta aplicación en tu inicio para ver tus sellos y pedir sin loguearte.
               </p>
               <button
                 onClick={() => setMostrarGuiaInicio(true)}
-                className="mt-2.5 bg-white hover:bg-zinc-100 text-[#09090b] text-[10px] font-black uppercase tracking-wider py-1.5 px-3.5 rounded-xl transition-all active:scale-95 shadow-md shadow-white/5"
+                className="mt-2.5 bg-[#dc2626] hover:bg-[#b91c1c] text-white text-[10px] font-black uppercase tracking-wider py-1.5 px-3.5 rounded-xl transition-all active:scale-95 shadow-sm"
               >
                 Instalar / Guardar ⚡
               </button>
@@ -1624,10 +1988,6 @@ _Pedido procesado a través de LoyaltyApp VIP_`
                 {[
                   { key: 'nombre', label: 'Nombre completo', placeholder: 'Juan García', type: 'text' },
                   { key: 'telefono', label: 'Número de teléfono', placeholder: '3221234567', type: 'tel' },
-                  { key: 'calle', label: 'Calle', placeholder: 'Av. Principal', type: 'text' },
-                  { key: 'numero', label: 'Número', placeholder: '123', type: 'text' },
-                  { key: 'colonia', label: 'Colonia', placeholder: 'Centro', type: 'text' },
-                  { key: 'referencia', label: 'Referencia / Entre calles (Opcional)', placeholder: 'Frente al parque, portón café', type: 'text' },
                 ].map(field => (
                   <div key={field.key}>
                     <label className="text-[10px] text-[#52525b] uppercase tracking-widest font-bold block mb-1">{field.label}</label>
@@ -1640,6 +2000,77 @@ _Pedido procesado a través de LoyaltyApp VIP_`
                     />
                   </div>
                 ))}
+
+                {tipoMenu === 'delivery' && (
+                  <div className="space-y-4 border-t border-[#e4e4e7] pt-4">
+                    <h3 className="text-xs font-bold text-[#09090b] uppercase tracking-wider mb-2">📍 Dirección de Entrega</h3>
+                    
+                    {[
+                      { key: 'calle', label: 'Calle', placeholder: 'Av. Principal', type: 'text' },
+                      { key: 'numero', label: 'Número', placeholder: '123', type: 'text' },
+                      { key: 'colonia', label: 'Colonia', placeholder: 'Centro', type: 'text' },
+                      { key: 'referencia', label: 'Referencia / Entre calles (Opcional)', placeholder: 'Frente al parque, portón café', type: 'text' },
+                    ].map(field => (
+                      <div key={field.key}>
+                        <label className="text-[10px] text-[#52525b] uppercase tracking-widest font-bold block mb-1">{field.label}</label>
+                        <input
+                          type={field.type}
+                          value={form[field.key as keyof typeof form]}
+                          onChange={e => setForm(prev => ({ ...prev, [field.key]: e.target.value }))}
+                          placeholder={field.placeholder}
+                          className="w-full bg-[#fafafa] border border-[#e4e4e7] rounded-xl px-3.5 py-2.5 text-[#09090b] text-xs focus:outline-none focus:border-[#dc2626] transition-colors font-medium"
+                        />
+                      </div>
+                    ))}
+
+                    {/* Leaflet Map Selector */}
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] text-[#52525b] uppercase tracking-widest font-bold block">Ubicación GPS (Arrastra el Pin)</label>
+                      <p className="text-[10px] text-[#71717a] font-medium leading-normal">
+                        Para asegurar que el repartidor llegue sin contratiempos, arrastra el marcador azul exactamente a donde está tu ubicación.
+                      </p>
+                      <div
+                        id="mapa-cliente-checkout"
+                        style={{ height: '240px' }}
+                        className="w-full rounded-2xl border border-[#e4e4e7] overflow-hidden bg-zinc-50 relative shadow-inner mt-2 z-0"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Método de Pago */}
+                <div className="border-t border-[#e4e4e7] pt-4 space-y-2">
+                  <label className="text-[10px] text-[#52525b] uppercase tracking-widest font-bold block">Método de Pago</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setMetodoPago('efectivo')}
+                      className={`py-3 px-4 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 ${
+                        metodoPago === 'efectivo'
+                          ? 'bg-[#dc2626] border-[#dc2626] text-white shadow-sm'
+                          : 'bg-white border-[#e4e4e7] text-[#52525b] hover:bg-zinc-50'
+                      }`}
+                    >
+                      💵 Efectivo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMetodoPago('transferencia')}
+                      className={`py-3 px-4 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 ${
+                        metodoPago === 'transferencia'
+                          ? 'bg-[#dc2626] border-[#dc2626] text-white shadow-sm'
+                          : 'bg-white border-[#e4e4e7] text-[#52525b] hover:bg-zinc-50'
+                      }`}
+                    >
+                      🏦 Transferencia
+                    </button>
+                  </div>
+                  {metodoPago === 'transferencia' && (
+                    <p className="text-[9px] text-[#71717a] italic mt-1.5 font-medium leading-relaxed bg-[#f4f4f5] p-2.5 rounded-xl border border-[#e4e4e7]">
+                      *Nota: Los pagos por transferencia deberán ser confirmados por el restaurante antes de proceder con el envío de tu pedido. Envía tu comprobante cuando seas redirigido a WhatsApp.
+                    </p>
+                  )}
+                </div>
               </div>
               
               <button
@@ -1948,8 +2379,8 @@ _Pedido procesado a través de LoyaltyApp VIP_`
         </div>
       )}
 
-      {/* ── Bottom Navigation Bar ── */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-[#e4e4e7] shadow-[0_-4px_20px_rgba(0,0,0,0.06)] z-40">
+      {/* ── Bottom Navigation Bar (solo móvil) ── */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-[#e4e4e7] shadow-[0_-4px_20px_rgba(0,0,0,0.06)] z-40">
         <div className="max-w-sm mx-auto flex justify-around px-1">
           {[
             {
@@ -2164,13 +2595,13 @@ _Pedido procesado a través de LoyaltyApp VIP_`
         </div>
       )}
 
-      {/* Floating Bottom Cart Bar (Rendered at Root Level to Prevent Parent Containing Block Clips) */}
+      {/* Floating Bottom Cart Bar */}
       {cantidadTotal > 0 && pasoMenu === 'menu' && vistaActiva === 'menu' && (
         <div className="fixed bottom-[76px] left-0 right-0 px-4 z-40 animate-slideUp">
-          <div className="max-w-sm mx-auto bg-[#09090b] text-white rounded-3xl p-4 shadow-[0_8px_30px_rgba(0,0,0,0.15)] border border-[#27272a] flex justify-between items-center gap-4">
+          <div className="max-w-sm mx-auto bg-white border border-[#e4e4e7] rounded-3xl p-4 shadow-[0_8px_30px_rgba(0,0,0,0.10)] flex justify-between items-center gap-4">
             <div className="min-w-0">
-              <p className="text-[9px] text-white/50 uppercase tracking-widest font-black">Mi Orden VIP</p>
-              <p className="font-extrabold text-sm">{cantidadTotal} {cantidadTotal === 1 ? 'producto' : 'productos'} · <span className="font-mono text-red-400">${totalCarrito.toLocaleString()} MXN</span></p>
+              <p className="text-[9px] text-[#a1a1aa] uppercase tracking-widest font-black">Mi Orden VIP</p>
+              <p className="font-extrabold text-sm text-[#09090b]">{cantidadTotal} {cantidadTotal === 1 ? 'producto' : 'productos'} · <span className="font-mono text-[#dc2626]">${totalCarrito.toLocaleString()} MXN</span></p>
             </div>
             <button
               onClick={() => setPasoMenu('checkout')}

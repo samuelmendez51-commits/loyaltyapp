@@ -92,9 +92,9 @@ export async function GET() {
 
     // 5. Poblar historial de puntos (simulados)
     await supabase.from('historial_puntos').insert([
-      { cliente_id: yareli.id, cantidad: 10, tipo_movimiento: 'suma', descripcion: 'Acumulación de sellos por consumos pasados' },
-      { cliente_id: juan.id, cantidad: 4, tipo_movimiento: 'suma', descripcion: 'Sello acumulado' },
-      { cliente_id: maria.id, cantidad: 8, tipo_movimiento: 'suma', descripcion: 'Sello acumulado' }
+      { cliente_id: yareli.id, business_id: bizId, cantidad: 10, motivo: 'suma' },
+      { cliente_id: juan.id, business_id: bizId, cantidad: 4, motivo: 'suma' },
+      { cliente_id: maria.id, business_id: bizId, cantidad: 8, motivo: 'suma' }
     ])
 
     // 6. Poblar pedidos (orders) simulados para las métricas del dashboard

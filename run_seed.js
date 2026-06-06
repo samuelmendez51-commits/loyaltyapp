@@ -107,9 +107,9 @@ async function seed() {
     // 5. Poblar historial de puntos (simulados)
     console.log("📊 Poblando historial de puntos...")
     const { error: histError } = await supabase.from('historial_puntos').insert([
-      { cliente_id: yareli.id, cantidad: 10, tipo_movimiento: 'suma' },
-      { cliente_id: juan.id, cantidad: 4, tipo_movimiento: 'suma' },
-      { cliente_id: maria.id, cantidad: 8, tipo_movimiento: 'suma' }
+      { cliente_id: yareli.id, business_id: bizId, cantidad: 10, motivo: 'suma' },
+      { cliente_id: juan.id, business_id: bizId, cantidad: 4, motivo: 'suma' },
+      { cliente_id: maria.id, business_id: bizId, cantidad: 8, motivo: 'suma' }
     ])
     if (histError) throw histError
 

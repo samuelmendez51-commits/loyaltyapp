@@ -109,11 +109,8 @@ export default function ClienteDetallePage({ params }: { params: Promise<{ id: s
     await supabase.from('historial_puntos').insert({
       cliente_id: clienteId,
       business_id: businessId,
-      tipo_movimiento: tipo === 'suma' ? 'suma' : 'resta',
-      cantidad: 1,
-      descripcion: `Ajuste manual: ${tipo === 'suma' ? 'Suma' : 'Resta'} de 1 sello`,
-      motivo_auditoria: motivoAuditoria.trim(),
-      aprobado_por: staffUserId || null
+      motivo: tipo === 'suma' ? 'suma' : 'resta',
+      cantidad: 1
     })
 
     // 3. Registrar evento de tracking
@@ -420,21 +417,21 @@ export default function ClienteDetallePage({ params }: { params: Promise<{ id: s
                     <div>
                       <div className="flex items-center gap-2 mb-1">
                         <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${
-                          hist.tipo_movimiento === 'suma' ? 'bg-green-950 text-green-400 border border-green-900/30' :
-                          hist.tipo_movimiento === 'resta' ? 'bg-red-950 text-red-400 border border-red-900/30' :
+                          (hist.motivo || hist.tipo_movimiento) === 'suma' ? 'bg-green-950 text-green-400 border border-green-900/30' :
+                          (hist.motivo || hist.tipo_movimiento) === 'resta' ? 'bg-red-950 text-red-400 border border-red-900/30' :
                           'bg-zinc-850 text-zinc-400 border border-zinc-800'
                         }`}>
-                          {hist.tipo_movimiento}
+                          {hist.motivo || hist.tipo_movimiento || 'ajuste'}
                         </span>
                         <span className="text-zinc-500 font-mono">
-                          {new Date(hist.created_at).toLocaleString('es-MX')}
+                          {new Date(hist.created_at || hist.creado_en).toLocaleString('es-MX')}
                         </span>
                       </div>
-                      <p className="text-zinc-300 font-bold">{hist.descripcion}</p>
+                      <p className="text-zinc-300 font-bold">{hist.descripcion || ((hist.motivo || hist.tipo_movimiento) === 'suma' ? 'Sello registrado' : 'Sello retirado/canjeado')}</p>
                       {hist.motivo_auditoria && <p className="text-zinc-500 mt-1 italic">Motivo: {hist.motivo_auditoria}</p>}
                     </div>
-                    <span className={`font-black text-sm ${hist.tipo_movimiento === 'suma' ? 'text-green-400' : 'text-red-400'}`}>
-                      {hist.tipo_movimiento === 'suma' ? '+' : '-'}{hist.cantidad}
+                    <span className={`font-black text-sm ${(hist.motivo || hist.tipo_movimiento) === 'suma' ? 'text-green-400' : 'text-red-400'}`}>
+                      {(hist.motivo || hist.tipo_movimiento) === 'suma' ? '+' : '-'}{hist.cantidad}
                     </span>
                   </div>
                 ))}

@@ -6,16 +6,17 @@ import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
+import { DeliveryPanel } from './DeliveryPanel'
 import {
   LayoutDashboard, Users, UtensilsCrossed, Map as MapIcon, Settings,
   UserCheck, TrendingUp, QrCode, UserPlus, MoreVertical,
   Menu as MenuIcon, ChevronLeft, ChevronRight, LogOut,
   RefreshCw, HelpCircle, Download, AlertTriangle, Clock, Loader2,
-  FileSpreadsheet, Check, Plus, Trash2, DollarSign, Lock,
+  FileSpreadsheet, Check, Plus, Minus, Trash2, DollarSign, Lock,
   PieChart as PieIcon, BarChart3 as BarIcon, PhoneCall,
   Smartphone, Radio, Pencil, Send,
   Star, Gift, CreditCard, ChevronDown, X, Check as CheckIcon,
-  AlertCircle, Coffee, Cake, IceCream2, Copy, ExternalLink
+  AlertCircle, Coffee, Cake, IceCream2, Copy, ExternalLink, Truck, Navigation, WifiOff
 } from 'lucide-react'
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
@@ -30,15 +31,18 @@ interface Cliente {
 interface Historial {
   id: string; cliente_id: string; tipo_movimiento: string; cantidad: number
   created_at: string; descripcion: string; clientes: { nombre: string }
+  motivo?: string
 }
 interface Business {
   id: string; nombre: string; slug: string; logo_url: string
+  name?: string
   telefono_whatsapp: string; max_sellos: number; monto_minimo_sello: number
   estado: string; fecha_vencimiento: string; latitude: number; longitude: number
   direccion?: string; hora_apertura?: string; hora_cierre?: string
   banner_url?: string; moneda?: string; color_primario?: string
   nombre_contacto?: string; apellido_contacto?: string; telefono_empresa?: string
   reiniciar_sellos_ruleta?: boolean; premios_ruleta?: string[]
+  demand_status?: 'NORMAL' | 'MODERADO' | 'SATURADO'
 }
 interface Recompensa {
   id?: string; nombre: string; estampillas_requeridas: number; estado: boolean
@@ -125,6 +129,234 @@ function ModalAjuste({ modal, motivo, setMotivo, guardando, requiereMotivo, onCo
   )
 }
 
+// ── RULETA DEMO COMPONENT ────────────────────────────────────────────────────
+function RuletaDemo({ sectors }: { sectors: string[] }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [spinning, setSpinning] = useState(false)
+  const [winner, setWinner] = useState<string | null>(null)
+  const rotationRef = useRef(0)
+  const rafRef = useRef<number | null>(null)
+
+  const COLORS = ['#dc2626', '#b91c1c', '#ef4444', '#991b1b', '#f87171', '#7f1d1d', '#fca5a5', '#450a0a']
+
+  const drawWheel = useCallback((angle: number) => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const cx = canvas.width / 2
+    const cy = canvas.height / 2
+    const r = cx - 6
+    const slice = (2 * Math.PI) / sectors.length
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+    // Outer glow ring
+    ctx.save()
+    ctx.beginPath()
+    ctx.arc(cx, cy, r + 4, 0, 2 * Math.PI)
+    ctx.strokeStyle = 'rgba(220,38,38,0.15)'
+    ctx.lineWidth = 8
+    ctx.stroke()
+    ctx.restore()
+
+    sectors.forEach((label, i) => {
+      const startAngle = angle + i * slice
+      const endAngle = startAngle + slice
+
+      // Sector fill
+      ctx.beginPath()
+      ctx.moveTo(cx, cy)
+      ctx.arc(cx, cy, r, startAngle, endAngle)
+      ctx.closePath()
+      ctx.fillStyle = COLORS[i % COLORS.length]
+      ctx.fill()
+
+      // Sector border
+      ctx.strokeStyle = 'rgba(255,255,255,0.25)'
+      ctx.lineWidth = 1.5
+      ctx.stroke()
+
+      // Label
+      ctx.save()
+      ctx.translate(cx, cy)
+      ctx.rotate(startAngle + slice / 2)
+      ctx.textAlign = 'right'
+      ctx.fillStyle = '#ffffff'
+      ctx.font = `bold ${sectors.length > 4 ? 11 : 13}px Inter, system-ui, sans-serif`
+      ctx.shadowColor = 'rgba(0,0,0,0.4)'
+      ctx.shadowBlur = 3
+      // Truncate long labels
+      const maxLen = 14
+      const text = label.length > maxLen ? label.slice(0, maxLen - 1) + '…' : label
+      ctx.fillText(text, r - 12, 5)
+      ctx.restore()
+    })
+
+    // Center cap
+    ctx.beginPath()
+    ctx.arc(cx, cy, 22, 0, 2 * Math.PI)
+    ctx.fillStyle = '#dc2626'
+    ctx.fill()
+    ctx.strokeStyle = '#ffffff'
+    ctx.lineWidth = 3
+    ctx.stroke()
+
+    ctx.fillStyle = '#ffffff'
+    ctx.font = 'bold 14px Inter, system-ui, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText('🎁', cx, cy)
+
+    // Pointer triangle (top center)
+    const pw = 14, ph = 22
+    ctx.beginPath()
+    ctx.moveTo(cx - pw / 2, 0)
+    ctx.lineTo(cx + pw / 2, 0)
+    ctx.lineTo(cx, ph)
+    ctx.closePath()
+    ctx.fillStyle = '#ffffff'
+    ctx.shadowColor = 'rgba(0,0,0,0.3)'
+    ctx.shadowBlur = 4
+    ctx.fill()
+    ctx.shadowBlur = 0
+  }, [sectors])
+
+  // Draw once on mount / when sectors change
+  useEffect(() => {
+    drawWheel(rotationRef.current)
+  }, [drawWheel])
+
+  const spin = () => {
+    if (spinning) return
+    setSpinning(true)
+    setWinner(null)
+
+    const extraRotations = 5 + Math.random() * 5  // 5-10 full rotations
+    const winnerIndex = Math.floor(Math.random() * sectors.length)
+    const slice = (2 * Math.PI) / sectors.length
+    // Calculate target so pointer lands exactly on winner sector
+    const targetOffset = -(winnerIndex * slice + slice / 2)
+    const target = rotationRef.current + 2 * Math.PI * extraRotations + targetOffset - (rotationRef.current % (2 * Math.PI))
+
+    const duration = 4000 + Math.random() * 1500
+    const startTime = performance.now()
+    const startAngle = rotationRef.current
+
+    const easeOut = (t: number) => 1 - Math.pow(1 - t, 4)
+
+    const animate = (now: number) => {
+      const elapsed = now - startTime
+      const progress = Math.min(elapsed / duration, 1)
+      const eased = easeOut(progress)
+      const currentAngle = startAngle + (target - startAngle) * eased
+
+      rotationRef.current = currentAngle
+      drawWheel(currentAngle)
+
+      if (progress < 1) {
+        rafRef.current = requestAnimationFrame(animate)
+      } else {
+        rotationRef.current = target
+        drawWheel(target)
+        setSpinning(false)
+        setWinner(sectors[winnerIndex])
+      }
+    }
+
+    rafRef.current = requestAnimationFrame(animate)
+  }
+
+  useEffect(() => {
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current) }
+  }, [])
+
+  return (
+    <div className="flex flex-col md:flex-row items-center gap-8">
+      {/* Canvas wheel */}
+      <div className="relative shrink-0">
+        <canvas
+          ref={canvasRef}
+          width={260}
+          height={260}
+          className="rounded-full drop-shadow-xl"
+          style={{ cursor: spinning ? 'not-allowed' : 'pointer' }}
+          onClick={spin}
+        />
+      </div>
+
+      {/* Controls + result */}
+      <div className="flex-1 space-y-4 min-w-0">
+        <div className="space-y-2">
+          <p className="text-xs font-semibold text-[#71717a] uppercase tracking-wider">Sectores configurados</p>
+          <div className="flex flex-wrap gap-2">
+            {sectors.map((s, i) => (
+              <span
+                key={i}
+                className="text-[11px] font-bold text-white px-2.5 py-1 rounded-full shadow-sm"
+                style={{ background: COLORS[i % COLORS.length] }}
+              >
+                {s}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {winner ? (
+          <div className="bg-[#fef2f2] border border-[#fecaca] rounded-2xl p-5 animate-fadeIn text-center space-y-1">
+            <p className="text-[10px] font-black uppercase tracking-widest text-[#dc2626]">¡Premio Ganado!</p>
+            <p className="text-2xl font-black text-[#09090b]">🎉 {winner}</p>
+            <p className="text-xs text-[#71717a]">El cliente recibiría este premio y podría reclamarlo por WhatsApp.</p>
+          </div>
+        ) : (
+          <div className="bg-[#fafafa] border border-dashed border-[#e4e4e7] rounded-2xl p-5 text-center text-[#a1a1aa] text-xs">
+            {spinning ? (
+              <span className="font-semibold text-[#dc2626] animate-pulse">Girando… 🎡</span>
+            ) : (
+              'Presiona el botón o haz clic en la ruleta para girar'
+            )}
+          </div>
+        )}
+
+        <button
+          onClick={spin}
+          disabled={spinning}
+          className="w-full bg-[#dc2626] hover:bg-[#b91c1c] disabled:bg-[#d4d4d8] text-white font-black py-3.5 rounded-2xl text-sm uppercase tracking-wider transition-all active:scale-95 shadow-md flex items-center justify-center gap-2"
+        >
+          <Gift className="w-4 h-4" />
+          {spinning ? 'Girando…' : winner ? '¡Girar de Nuevo!' : '🎰 Girar Ruleta (Demo)'}
+        </button>
+
+        <p className="text-[10px] text-[#a1a1aa] text-center">
+          Esto es solo una vista previa. Los clientes reales giran su ruleta al completar sellos en su tarjeta VIP.
+        </p>
+      </div>
+    </div>
+  )
+}
+
+// Helper para renderizar el icono de sello según la configuración
+function RenderIconoSello({ icono, size = 'w-8 h-8' }: { icono: string, size?: string }) {
+  if (icono === 'burrito') {
+    const svgSize = size.includes('w-5.5') ? 'w-5.5 h-5.5' : 'w-8 h-8';
+    return (
+      <svg className={svgSize} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="14" y="10" width="36" height="44" rx="18" fill="#FDE047" stroke="#CA8A04" strokeWidth="2.5" />
+        <path d="M15 24 C 20 28, 44 28, 49 24 C 47 18, 17 18, 15 24 Z" fill="#B45309" />
+        <path d="M20 20 C 25 24, 39 24, 44 20 C 42 16, 22 16, 20 20 Z" fill="#22C55E" />
+        <path d="M26 17 C 28 20, 36 20, 38 17 C 37 14, 27 14, 26 17 Z" fill="#EF4444" />
+        <path d="M15 32 C 22 36, 42 34, 49 32" stroke="#CA8A04" strokeWidth="2" strokeLinecap="round" />
+        <path d="M15 42 C 20 46, 44 44, 49 42" stroke="#CA8A04" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    )
+  }
+  if (icono === 'gift') {
+    return <Gift className={`${size} text-rose-500 fill-rose-100 animate-pulse`} />
+  }
+  return <Star className={`${size} text-amber-500 fill-amber-300`} />
+}
+
 // ── DASHBOARD PRINCIPAL ───────────────────────────────────────────────────────
 export default function DashboardPage() {
   // ── Tenant: slug extraído del subdominio vía rewrite del middleware ──────────
@@ -139,6 +371,23 @@ export default function DashboardPage() {
   const [historial, setHistorial] = useState<Historial[]>([])
   const [business, setBusiness] = useState<Business | null>(null)
   const activeBizId = business?.id
+
+  const actualizarDemandStatus = async (newStatus: 'NORMAL' | 'MODERADO' | 'SATURADO') => {
+    if (!business) return
+    const oldStatus = business.demand_status || 'NORMAL'
+    setBusiness(prev => prev ? { ...prev, demand_status: newStatus } : null)
+    try {
+      const { error } = await supabase
+        .from('businesses')
+        .update({ demand_status: newStatus })
+        .eq('id', business.id)
+      if (error) throw error
+    } catch (err) {
+      console.error('Error al actualizar el semáforo de demanda:', err)
+      setBusiness(prev => prev ? { ...prev, demand_status: oldStatus } : null)
+      alert('No se pudo actualizar el estado de demanda. Intenta de nuevo.')
+    }
+  }
   const [cargando, setCargando] = useState(true)
   const [sellosHoy, setSellosHoy] = useState(0)
   const [premiosCanjeados, setPremiosCanjeados] = useState(0)
@@ -293,24 +542,42 @@ export default function DashboardPage() {
   const [geoPushRadius, setGeoPushRadius] = useState(500)
   const [geoPushMsg, setGeoPushMsg] = useState('¡Estás cerca de tu premio VIP! Pasa por tus sellos.')
   const [geoPushId, setGeoPushId] = useState<string | null>(null)
+  const [geoPushFrecuencia, setGeoPushFrecuencia] = useState(60)
+  const [geoPushEvitarVecinos, setGeoPushEvitarVecinos] = useState(true)
   const [guardandoGeoPush, setGuardandoGeoPush] = useState(false)
+  const [alertaMasivaText, setAlertaMasivaText] = useState('')
+  const [enviandoAlertaMasiva, setEnviandoAlertaMasiva] = useState(false)
 
-  // ── PROMEDIOS & GAMIFICACIÓN (Configuración de Ruleta) ──────────────────────
-  const [premio1, setPremio1] = useState('Café Gratis')
-  const [premio2, setPremio2] = useState('Postre Sorpresa')
-  const [premio3, setPremio3] = useState('Bebida Grande')
-  const [premio4, setPremio4] = useState('20% Descuento')
+  // ── PROMEDIOS & GAMIFICACIÓN (Configuración de Ruleta — N sectores dinámicos) ─
+  const [numSectoresPrincipal, setNumSectoresPrincipal] = useState(4)
+  const [premiosPrincipal, setPremiosPrincipal] = useState<string[]>(['Café Gratis', 'Postre Sorpresa', 'Bebida Grande', '20% Descuento'])
   const [reiniciarSellosAuto, setReiniciarSellosAuto] = useState(true)
   const [guardandoPromociones, setGuardandoPromociones] = useState(false)
   const [montoMinimoRuleta, setMontoMinimoRuleta] = useState('0')
 
-  // ── RULETA INTERMEDIA (Gamificación por Rangos de Sellos) ───────────────────
+  // ── RULETA INTERMEDIA (Gamificación por Rangos de Sellos — N sectores dinámicos) ─
   const [ruletaConfig, setRuletaConfig] = useState<any>({})
   const [nuevoSelloAct, setNuevoSelloAct] = useState('3')
-  const [nuevoP1, setNuevoP1] = useState('')
-  const [nuevoP2, setNuevoP2] = useState('')
-  const [nuevoP3, setNuevoP3] = useState('')
-  const [nuevoP4, setNuevoP4] = useState('')
+  const [numSectoresNuevo, setNumSectoresNuevo] = useState(4)
+  const [nuevosPremios, setNuevosPremios] = useState<string[]>(['', '', '', ''])
+
+  // Helper: ajustar array de premios al nuevo tamaño (sin perder los ya escritos)
+  const ajustarPremiosPrincipal = (n: number) => {
+    setNumSectoresPrincipal(n)
+    setPremiosPrincipal(prev => {
+      const copy = [...prev]
+      while (copy.length < n) copy.push('')
+      return copy.slice(0, n)
+    })
+  }
+  const ajustarNuevosPremios = (n: number) => {
+    setNumSectoresNuevo(n)
+    setNuevosPremios(prev => {
+      const copy = [...prev]
+      while (copy.length < n) copy.push('')
+      return copy.slice(0, n)
+    })
+  }
 
   // ── EDICIÓN E IMÁGENES DE PROGRAMAS ──────────────────────────────────────────
   const [programaAEditar, setProgramaAEditar] = useState<any>(null)
@@ -519,6 +786,9 @@ export default function DashboardPage() {
   const [comportamiento, setComportamiento] = useState<'sin_limite' | 'limitado' | 'reiniciar'>('sin_limite')
   const [progPortadaY, setProgPortadaY] = useState(50)
   const [guardandoPrograma, setGuardandoPrograma] = useState(false)
+  const [nombrePremio, setNombrePremio] = useState('BURRITO')
+  const [colorPrimarioCard, setColorPrimarioCard] = useState('#facc15')
+  const [iconoSello, setIconoSello] = useState('burrito')
 
   // Recompensas Intermedias
   const [recompensas, setRecompensas] = useState<Recompensa[]>([])
@@ -580,6 +850,7 @@ export default function DashboardPage() {
   // ── Leaflet Interactive Map for Geopush ─────────────────────────────────────
   const mapRef = useRef<any>(null)
   const markerRef = useRef<any>(null)
+  const circleRef = useRef<any>(null)
 
   useEffect(() => {
     if (pestaña !== 'geopush') {
@@ -617,6 +888,17 @@ export default function DashboardPage() {
 
       const marker = L.marker([geoPushLat || 19.421583, geoPushLng || -102.067222], { draggable: true }).addTo(map)
 
+      // Aro visual de geocerca — radio sincronizado en tiempo real
+      const circle = L.circle([geoPushLat || 19.421583, geoPushLng || -102.067222], {
+        radius: geoPushRadius || 500,
+        color: '#dc2626',
+        weight: 2,
+        fillColor: '#fef2f2',
+        fillOpacity: 0.18,
+        dashArray: '6 4',
+      }).addTo(map)
+
+      circleRef.current = circle
       markerRef.current = marker
       mapRef.current = map
 
@@ -651,16 +933,18 @@ export default function DashboardPage() {
     }
   }, [pestaña])
 
-  // Sync map position when coordinate states change externally (e.g. from GPS or manual input)
+  // Sincronizar mapa cuando cambian coordenadas o radio (desde inputs o arrastre)
   useEffect(() => {
     if (pestaña === 'geopush' && mapRef.current && markerRef.current) {
-      const marker = markerRef.current
-      const map = mapRef.current
-      const latLng = [geoPushLat, geoPushLng]
-      marker.setLatLng(latLng)
-      map.setView(latLng)
+      const latLng: [number, number] = [geoPushLat, geoPushLng]
+      markerRef.current.setLatLng(latLng)
+      mapRef.current.setView(latLng)
+      if (circleRef.current) {
+        circleRef.current.setLatLng(latLng)
+        circleRef.current.setRadius(geoPushRadius || 500)
+      }
     }
-  }, [geoPushLat, geoPushLng])
+  }, [geoPushLat, geoPushLng, geoPushRadius])
 
   // ── useEffect ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -700,7 +984,7 @@ export default function DashboardPage() {
     if (biz) bizData = biz as Business
 
     if (bizData) {
-      setBusiness(bizData)
+      setBusiness({ ...bizData, name: bizData.nombre })
       setNombreNegocio(bizData.nombre || '')
       setNombreContacto(bizData.nombre_contacto || '')
       setApellidoContacto(bizData.apellido_contacto || '')
@@ -711,9 +995,14 @@ export default function DashboardPage() {
       setLinkInstagram((bizData as any).link_instagram || '')
       setLinkTiktok((bizData as any).link_tiktok || '')
       setLinkYoutube((bizData as any).link_youtube || '')
+      
+      setNombrePremio((bizData as any).nombre_premio || 'BURRITO')
+      setColorPrimarioCard(bizData.color_primario || '#facc15')
+      setIconoSello((bizData as any).icono_sello || 'burrito')
 
       setLogoUrlNegocio(bizData.logo_url || '')
       setBannerUrlNegocio(bizData.banner_url || '')
+      setAlertaMasivaText((bizData as any).alerta_masiva || '')
       
       let cleanDir = bizData.direccion || ''
       if (cleanDir.includes('|')) {
@@ -779,13 +1068,14 @@ export default function DashboardPage() {
     if (dataHistorial) {
       setHistorial(dataHistorial as any)
       const hoyStr = new Date().toISOString().split('T')[0]
-      setSellosHoy(dataHistorial.filter((h: any) => h.created_at.startsWith(hoyStr) && h.tipo_movimiento === 'suma').reduce((a: number, c: any) => a + c.cantidad, 0))
-      setPremiosCanjeados(dataHistorial.filter((h: any) => h.tipo_movimiento === 'canje' || h.descripcion?.includes('CANJEAD')).length)
+      setSellosHoy(dataHistorial.filter((h: any) => h.created_at.startsWith(hoyStr) && (h.motivo || h.tipo_movimiento) === 'suma').reduce((a: number, c: any) => a + c.cantidad, 0))
+      setPremiosCanjeados(dataHistorial.filter((h: any) => (h.motivo || h.tipo_movimiento) === 'canje' || h.descripcion?.includes('CANJEAD') || (!h.descripcion && h.motivo === 'resta')).length)
 
       const sospechosos: Record<string, boolean> = {}
       const sumasPorCliente: Record<string, number[]> = {}
       dataHistorial.forEach((h: any) => {
-        if (h.tipo_movimiento === 'suma' || h.tipo_movimiento === 'canje') {
+        const movType = h.motivo || h.tipo_movimiento
+        if (movType === 'suma' || movType === 'canje') {
           const cId = h.cliente_id
           const time = new Date(h.created_at).getTime()
           if (!sumasPorCliente[cId]) sumasPorCliente[cId] = []
@@ -913,6 +1203,8 @@ export default function DashboardPage() {
       setGeoPushLng(Number(data.longitud))
       setGeoPushRadius(data.radio_metros)
       setGeoPushMsg(data.mensaje_push)
+      setGeoPushFrecuencia(data.frecuencia_minutos ?? 60)
+      setGeoPushEvitarVecinos(data.evitar_molestar_vecinos ?? true)
     }
   }
 
@@ -927,7 +1219,9 @@ export default function DashboardPage() {
         latitud: geoPushLat,
         longitud: geoPushLng,
         radio_metros: geoPushRadius,
-        mensaje_push: geoPushMsg
+        mensaje_push: geoPushMsg,
+        frecuencia_minutos: geoPushFrecuencia,
+        evitar_molestar_vecinos: geoPushEvitarVecinos
       }
       let error
       if (geoPushId) {
@@ -955,6 +1249,49 @@ export default function DashboardPage() {
     }
   }
 
+  const enviarAlertaMasiva = async () => {
+    const businessId = getCookieVal('session_business_id') || business?.id
+    if (!businessId) return
+    if (!alertaMasivaText.trim()) {
+      alert('Por favor escribe un mensaje de alerta.')
+      return
+    }
+    setEnviandoAlertaMasiva(true)
+    try {
+      const { error } = await supabase
+        .from('businesses')
+        .update({ alerta_masiva: alertaMasivaText.trim() })
+        .eq('id', businessId)
+      if (error) throw error
+      alert('📢 ¡Alerta masiva enviada! Todos los socios verán este mensaje en su tarjeta de lealtad.')
+      cargarDatos()
+    } catch (e: any) {
+      alert('Error al enviar alerta: ' + e.message)
+    } finally {
+      setEnviandoAlertaMasiva(false)
+    }
+  }
+
+  const limpiarAlertaMasiva = async () => {
+    const businessId = getCookieVal('session_business_id') || business?.id
+    if (!businessId) return
+    setEnviandoAlertaMasiva(true)
+    try {
+      const { error } = await supabase
+        .from('businesses')
+        .update({ alerta_masiva: null })
+        .eq('id', businessId)
+      if (error) throw error
+      setAlertaMasivaText('')
+      alert('✅ Alerta masiva desactivada.')
+      cargarDatos()
+    } catch (e: any) {
+      alert('Error al limpiar alerta: ' + e.message)
+    } finally {
+      setEnviandoAlertaMasiva(false)
+    }
+  }
+
   // ── cargarPremiosRuleta ───────────────────────────────────────────────────────
   const cargarPremiosRuleta = async (bId: string) => {
     // 1. Cargar datos básicos de ruleta (que existen en todas las versiones)
@@ -965,11 +1302,10 @@ export default function DashboardPage() {
       .maybeSingle()
     
     if (data) {
-      if (data.premios_ruleta && Array.isArray(data.premios_ruleta) && data.premios_ruleta.length >= 4) {
-        setPremio1(data.premios_ruleta[0])
-        setPremio2(data.premios_ruleta[1])
-        setPremio3(data.premios_ruleta[2])
-        setPremio4(data.premios_ruleta[3])
+      if (data.premios_ruleta && Array.isArray(data.premios_ruleta) && data.premios_ruleta.length >= 1) {
+        const loaded = data.premios_ruleta as string[]
+        setNumSectoresPrincipal(loaded.length)
+        setPremiosPrincipal(loaded)
       }
       if (data.reiniciar_sellos_ruleta !== undefined && data.reiniciar_sellos_ruleta !== null) {
         setReiniciarSellosAuto(data.reiniciar_sellos_ruleta)
@@ -1013,8 +1349,13 @@ export default function DashboardPage() {
     if (!businessId) return
     setGuardandoPromociones(true)
     try {
-      const arrPremios = [premio1.trim(), premio2.trim(), premio3.trim(), premio4.trim()]
-      
+      const arrPremios = premiosPrincipal.map(p => p.trim()).filter(Boolean)
+      if (arrPremios.length === 0) {
+        alert('Por favor configura al menos 1 premio para la ruleta.')
+        setGuardandoPromociones(false)
+        return
+      }
+
       // Intentar actualizar todo incluyendo ruleta_config y monto_minimo_ruleta
       const { error } = await supabase
         .from('businesses')
@@ -1037,7 +1378,7 @@ export default function DashboardPage() {
           const { error: errRetry } = await supabase
             .from('businesses')
             .update({
-              premios_ruleta: [premio1.trim(), premio2.trim(), premio3.trim(), premio4.trim()],
+              premios_ruleta: premiosPrincipal.map(p => p.trim()).filter(Boolean),
               reiniciar_sellos_ruleta: reiniciarSellosAuto
             })
             .eq('id', businessId)
@@ -1059,27 +1400,24 @@ export default function DashboardPage() {
 
   // ── Acciones de Ruleta Intermedia ──────────────────────────────────────────
   const agregarOActualizarRuletaIntermedia = () => {
-    if (!nuevoP1.trim() || !nuevoP2.trim() || !nuevoP3.trim() || !nuevoP4.trim()) {
-      alert('Por favor ingresa los 4 premios para esta ruleta intermedia.')
+    const premiosValidos = nuevosPremios.map(p => p.trim()).filter(Boolean)
+    if (premiosValidos.length < 1) {
+      alert('Por favor ingresa al menos 1 premio para esta ruleta intermedia.')
       return
     }
     const sellos = String(nuevoSelloAct)
-    const premios = [nuevoP1.trim(), nuevoP2.trim(), nuevoP3.trim(), nuevoP4.trim()]
     
     setRuletaConfig((prev: any) => ({
       ...prev,
       [sellos]: {
         activo: true,
-        premios
+        premios: premiosValidos
       }
     }))
 
     // Limpiar campos
-    setNuevoP1('')
-    setNuevoP2('')
-    setNuevoP3('')
-    setNuevoP4('')
-    alert(`✅ Ruleta configurada temporalmente para ${sellos} sellos.\n\n⚠️ IMPORTANTE: Recuerda presionar el botón "Guardar Configuración de Ruleta" al final de la pestaña para salvar permanentemente los cambios en la base de datos.`)
+    setNuevosPremios(Array(numSectoresNuevo).fill(''))
+    alert(`✅ Ruleta de ${premiosValidos.length} sectores configurada para ${sellos} sellos.\n\n⚠️ IMPORTANTE: Recuerda presionar "Guardar Todo y Aplicar" para salvar permanentemente.`)
   }
 
   const eliminarRuletaIntermedia = (sello: string) => {
@@ -1507,6 +1845,64 @@ export default function DashboardPage() {
     }))
   }
 
+  const compressImage = (file: File, maxW: number, maxH: number, quality: number): Promise<Blob | File> => {
+    return new Promise((resolve) => {
+      if (file.type === 'image/svg+xml') {
+        resolve(file)
+        return
+      }
+      const reader = new FileReader()
+      reader.readAsDataURL(file)
+      reader.onload = (event) => {
+        const img = new Image()
+        img.src = event.target?.result as string
+        img.onload = () => {
+          try {
+            const canvas = document.createElement('canvas')
+            let width = img.width
+            let height = img.height
+
+            if (width > height) {
+              if (width > maxW) {
+                height = Math.round((height * maxW) / width)
+                width = maxW
+              }
+            } else {
+              if (height > maxH) {
+                width = Math.round((width * maxH) / height)
+                height = maxH
+              }
+            }
+
+            canvas.width = width
+            canvas.height = height
+
+            const ctx = canvas.getContext('2d')
+            if (!ctx) {
+              resolve(file)
+              return
+            }
+
+            ctx.drawImage(img, 0, 0, width, height)
+
+            canvas.toBlob((blob) => {
+              if (blob) {
+                resolve(blob)
+              } else {
+                resolve(file)
+              }
+            }, 'image/jpeg', quality)
+          } catch (e) {
+            console.error('Error compressing image:', e)
+            resolve(file)
+          }
+        }
+        img.onerror = () => resolve(file)
+      }
+      reader.onerror = () => resolve(file)
+    })
+  }
+
   const subirBrandingImagen = async (file: File, tipo: 'logo' | 'banner') => {
     const businessId = activeBizId || getCookieVal('session_business_id') || business?.id
     if (!businessId) return
@@ -1514,11 +1910,22 @@ export default function DashboardPage() {
     else setSubiendoBanner(true)
 
     try {
-      const fileExt = file.name.split('.').pop()
+      const isSvg = file.type === 'image/svg+xml'
+      const maxW = tipo === 'logo' ? 400 : 1200
+      const maxH = tipo === 'logo' ? 400 : 600
+      const compressed = await compressImage(file, maxW, maxH, 0.8)
+      
+      const fileExt = isSvg ? 'svg' : 'jpg'
       const fileName = businessId + '/branding-' + tipo + '-' + Date.now() + '.' + fileExt
+      
       const { error: uploadErr } = await supabase.storage
         .from('menu-images')
-        .upload(fileName, file, { cacheControl: '3600', upsert: true, contentType: file.type || 'application/octet-stream' })
+        .upload(fileName, compressed, { 
+          cacheControl: '3600', 
+          upsert: true, 
+          contentType: isSvg ? 'image/svg+xml' : 'image/jpeg' 
+        })
+        
       if (uploadErr) {
         alert('Error al subir imagen: ' + uploadErr.message)
         return
@@ -1579,11 +1986,19 @@ export default function DashboardPage() {
     setSubiendoImgProd(true)
 
     try {
-      const fileExt = file.name.split('.').pop()
+      const isSvg = file.type === 'image/svg+xml'
+      const compressed = await compressImage(file, 800, 800, 0.8)
+      const fileExt = isSvg ? 'svg' : 'jpg'
       const fileName = `${businessId}/prod-${Date.now()}.${fileExt}`
+      
       const { error: uploadErr } = await supabase.storage
         .from('menu-images')
-        .upload(fileName, file, { cacheControl: '3600', upsert: true, contentType: file.type || 'application/octet-stream' })
+        .upload(fileName, compressed, { 
+          cacheControl: '3600', 
+          upsert: true, 
+          contentType: isSvg ? 'image/svg+xml' : 'image/jpeg' 
+        })
+        
       if (uploadErr) {
         alert('Error al subir: ' + uploadErr.message)
         return
@@ -1784,6 +2199,20 @@ export default function DashboardPage() {
         portada_url: finalPortadaUrl || null
       }
 
+      // Guardar branding del negocio en la tabla businesses
+      try {
+        await supabase
+          .from('businesses')
+          .update({
+            color_primario: colorPrimarioCard,
+            nombre_premio: nombrePremio,
+            icono_sello: iconoSello
+          })
+          .eq('id', businessId)
+      } catch (err) {
+        console.warn('Error updating business branding columns:', err)
+      }
+
       if (programaAEditar) {
         // MODO EDICIÓN
         const { error } = await supabase
@@ -1901,7 +2330,7 @@ export default function DashboardPage() {
     const adminUser = getCookieVal('session_user') || 'Administrador'
     const descripcion = `Ajuste manual: ${motivoAjuste.trim()} (Firma: ${adminUser})`
     await supabase.from('clientes').update({ puntos: nuevosPuntos }).eq('id', id)
-    await supabase.from('historial_puntos').insert([{ cliente_id: id, tipo_movimiento: direccion, cantidad: 1, descripcion }])
+    await supabase.from('historial_puntos').insert([{ cliente_id: id, motivo: direccion, cantidad: 1 }])
     
     setMotivoAjuste('')
     setModalAjusteSocio(null)
@@ -1967,7 +2396,9 @@ export default function DashboardPage() {
     if (historial.length === 0) return alert('No hay transacciones para exportar')
     let csv = 'data:text/csv;charset=utf-8,ID,Socio,Tipo,Cantidad,Descripción,Fecha\n'
     historial.forEach(h => {
-      csv += `"${h.id}","${h.clientes?.nombre || 'Socio'}","${h.tipo_movimiento}","${h.cantidad}","${h.descripcion}","${new Date(h.created_at).toLocaleString('es-MX')}"\n`
+      const mov = h.motivo || h.tipo_movimiento
+      const desc = h.descripcion || (mov === 'suma' ? 'Sello registrado' : 'Sello retirado/canjeado')
+      csv += `"${h.id}","${h.clientes?.nombre || 'Socio'}","${mov}","${h.cantidad}","${desc}","${new Date(h.created_at).toLocaleString('es-MX')}"\n`
     })
     const link = document.createElement('a')
     link.setAttribute('href', encodeURI(csv))
@@ -2001,7 +2432,7 @@ export default function DashboardPage() {
     }
     historial.forEach(h => {
       const k = new Date(h.created_at).toLocaleDateString('es-MX', { weekday: 'short' })
-      if (dias[k] !== undefined && h.tipo_movimiento === 'suma') dias[k] += h.cantidad
+      if (dias[k] !== undefined && (h.motivo || h.tipo_movimiento) === 'suma') dias[k] += h.cantidad
     })
     return Object.entries(dias).map(([name, sellos]) => ({ name, Sellos: sellos, Estimado: sellos * 120 }))
   }
@@ -2010,18 +2441,20 @@ export default function DashboardPage() {
 
   // 10 Standalone Navigation Tabs (Including first-class Catalogo de Productos)
   const TABS_MAIN = [
-    { id: 'metricas', label: 'Métricas', icon: LayoutDashboard },
-    { id: 'configuracion', label: 'Configuración', icon: Settings },
-    { id: 'productos', label: '🍔 Catálogo de Productos', icon: UtensilsCrossed },
-    { id: 'clientes', label: '👥 Clientes', icon: UserCheck },
-    { id: 'redes', label: 'Redes y WhatsApp', icon: Smartphone },
-    { id: 'menus', label: 'Gestión de Menús y QR', icon: QrCode },
-    { id: 'geopush', label: 'Geopush', icon: MapIcon },
-    { id: 'lealtad', label: 'Tarjetas de Lealtad', icon: CreditCard },
-    { id: 'promociones', label: 'Promociones (Ruleta)', icon: Gift },
-    { id: 'premios', label: 'Premios (Canjes)', icon: Star },
-    { id: 'empleados', label: 'Empleados', icon: Users },
-  ]
+    { id: 'metricas',      label: 'Métricas',                  icon: LayoutDashboard },
+    { id: 'escaner',       label: 'Escáner / Registrar Sello', icon: QrCode,           href: '/escaner' },
+    { id: 'configuracion', label: 'Configuración',              icon: Settings },
+    { id: 'productos',     label: '🍔 Catálogo de Productos',   icon: UtensilsCrossed },
+    { id: 'clientes',      label: '👥 Clientes',                icon: UserCheck },
+    { id: 'redes',         label: 'Redes y WhatsApp',           icon: Smartphone },
+    { id: 'menus',         label: 'Gestión de Menús y QR',     icon: MenuIcon },
+    { id: 'geopush',       label: 'Geopush',                    icon: MapIcon },
+    { id: 'lealtad',       label: 'Tarjetas de Lealtad',        icon: CreditCard },
+    { id: 'promociones',   label: 'Promociones (Ruleta)',       icon: Gift },
+    { id: 'premios',       label: 'Premios (Canjes)',           icon: Star },
+    { id: 'empleados',     label: 'Empleados',                  icon: Users },
+    { id: 'delivery',      label: '🛵 Solicitar Repartidor',    icon: Truck },
+  ] as { id: string; label: string; icon: React.ElementType; href?: string }[]
 
   // Clientes VIP reales de la base de datos
   const clientesVIP = clientes
@@ -2066,18 +2499,28 @@ export default function DashboardPage() {
           <nav className="p-3 space-y-1 overflow-y-auto max-h-[calc(100vh-140px)]">
             {TABS_MAIN.map(tab => {
               const TabIcon = tab.icon
-              const isSelected = pestaña === tab.id
+              const isSelected = !tab.href && pestaña === tab.id
+              const baseClass = `w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-sm font-medium transition-all duration-150 ${
+                isSelected
+                  ? 'bg-[#fef2f2] text-[#dc2626]'
+                  : 'text-[#71717a] hover:bg-[#fafafa] hover:text-[#09090b]'
+              }`
+              const iconClass = `w-5 h-5 shrink-0 ${isSelected ? 'text-[#dc2626]' : 'text-[#a1a1aa]'}`
+              if (tab.href) {
+                return (
+                  <Link key={tab.id} href={tab.href} className={baseClass}>
+                    <TabIcon className={iconClass} />
+                    {sidebarExpanded && <span className="truncate">{tab.label}</span>}
+                  </Link>
+                )
+              }
               return (
                 <button
                   key={tab.id}
                   onClick={() => setPestaña(tab.id)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-sm font-medium transition-all duration-150 ${
-                    isSelected
-                      ? 'bg-[#fef2f2] text-[#dc2626]'
-                      : 'text-[#71717a] hover:bg-[#fafafa] hover:text-[#09090b]'
-                  }`}
+                  className={baseClass}
                 >
-                  <TabIcon className={`w-5 h-5 shrink-0 ${isSelected ? 'text-[#dc2626]' : 'text-[#a1a1aa]'}`} />
+                  <TabIcon className={iconClass} />
                   {sidebarExpanded && <span className="truncate">{tab.label}</span>}
                 </button>
               )
@@ -2108,11 +2551,38 @@ export default function DashboardPage() {
         {/* ── HEADER ── */}
         <header className="h-16 border-b border-[#e4e4e7] bg-white sticky top-0 z-20 px-6 flex items-center justify-between shadow-[0_1px_0_#e4e4e7]">
           <div className="min-w-0">
-            <h1 className="text-base font-bold text-[#09090b] truncate">
-              {business?.nombre || 'LoyaltyApp'}
-              <span className="ml-2 text-xs font-normal text-[#a1a1aa]">Panel de Control</span>
+            <h1 className="text-base font-bold text-[#09090b] truncate flex items-center gap-2">
+              <span>{business?.nombre || 'LoyaltyApp'}</span>
+              <span className="hidden sm:inline ml-2 text-xs font-normal text-[#a1a1aa]">Panel de Control</span>
             </h1>
           </div>
+
+          {/* Semáforo Global de Demanda */}
+          <div className="flex items-center gap-1 bg-[#fafafa] border border-[#e4e4e7] p-0.5 sm:p-1 rounded-xl shrink-0 mx-2">
+            {[
+              { value: 'NORMAL', label: 'Normal', desc: '30m', color: 'bg-emerald-500', text: 'text-emerald-700 border-emerald-200 bg-emerald-50' },
+              { value: 'MODERADO', label: 'Moderado', desc: '45m', color: 'bg-amber-500', text: 'text-amber-700 border-amber-200 bg-amber-50' },
+              { value: 'SATURADO', label: 'Saturado', desc: '60m', color: 'bg-rose-500', text: 'text-rose-700 border-rose-200 bg-rose-50' }
+            ].map(s => {
+              const isSelected = (business?.demand_status || 'NORMAL') === s.value
+              return (
+                <button
+                  key={s.value}
+                  onClick={() => actualizarDemandStatus(s.value as any)}
+                  className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[10px] sm:text-xs font-bold flex items-center gap-1 transition-all ${
+                    isSelected
+                      ? `${s.text} border shadow-sm`
+                      : 'text-[#71717a] hover:text-[#09090b] hover:bg-[#f4f4f5]'
+                  }`}
+                >
+                  <span className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full ${s.color} ${isSelected ? 'animate-pulse' : ''}`} />
+                  <span className="hidden md:inline">{s.label} ({s.desc})</span>
+                  <span className="inline md:hidden">{s.desc}</span>
+                </button>
+              )
+            })}
+          </div>
+
           <div className="flex items-center gap-2">
             <Link href="/escaner">
               <button className="border border-[#e4e4e7] text-[#52525b] hover:text-[#09090b] font-medium py-2 px-3 rounded-xl text-xs hover:bg-[#fafafa] transition-all flex items-center gap-1.5">
@@ -2233,7 +2703,14 @@ export default function DashboardPage() {
                     </div>
                   </div>
                   <button 
-                    onClick={() => window.open(window.location.origin + '/menu', '_blank')}
+                    onClick={() => {
+                      if (typeof window !== 'undefined') {
+                        const currentHost = window.location.host;
+                        const customerHost = currentHost.replace(/^partners\./i, '');
+                        const previewUrl = `${window.location.protocol}//${customerHost}/menu`;
+                        window.open(previewUrl, '_blank');
+                      }
+                    }}
                     className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold px-5 py-3 rounded-xl transition-all shadow-md shrink-0 flex items-center justify-center gap-1.5"
                   >
                     🔗 Previsualizar Portal de Clientes
@@ -2821,7 +3298,8 @@ export default function DashboardPage() {
                         <QRCodeSVG
                           value={(() => {
                             const origin = typeof window !== 'undefined' ? window.location.origin : 'https://laburreria.loyaltyclub.mx'
-                            return `${origin}/tenant/${slug}/menu?tipo=${tipoQR}`
+                            const cleanOrigin = origin.replace(/^partners\./i, '')
+                            return `${cleanOrigin}/menu?tipo=${tipoQR}`
                           })()}
                           size={120}
                           bgColor="#ffffff"
@@ -2838,7 +3316,8 @@ export default function DashboardPage() {
                           <button
                             onClick={() => {
                               const origin = typeof window !== 'undefined' ? window.location.origin : 'https://laburreria.loyaltyclub.mx'
-                              navigator.clipboard.writeText(`${origin}/tenant/${slug}/menu?tipo=${tipoQR}`)
+                              const cleanOrigin = origin.replace(/^partners\./i, '')
+                              navigator.clipboard.writeText(`${cleanOrigin}/menu?tipo=${tipoQR}`)
                               alert('📋 Enlace de menú copiado al portapapeles!')
                             }}
                             className="bg-white border border-[#e4e4e7] hover:bg-[#fafafa] text-[#09090b] text-[10px] font-bold px-3.5 py-2 rounded-lg transition-colors flex items-center gap-1.5"
@@ -2846,7 +3325,11 @@ export default function DashboardPage() {
                             <Copy className="w-3.5 h-3.5" /> Copiar Enlace
                           </button>
                           <a
-                            href={`/tenant/${slug}/menu?tipo=${tipoQR}`}
+                            href={(() => {
+                              const origin = typeof window !== 'undefined' ? window.location.origin : 'https://laburreria.loyaltyclub.mx'
+                              const cleanOrigin = origin.replace(/^partners\./i, '')
+                              return `${cleanOrigin}/menu?tipo=${tipoQR}`
+                            })()}
                             target="_blank"
                             className="bg-white border border-[#e4e4e7] hover:bg-[#fafafa] text-[#09090b] text-[10px] font-bold px-3.5 py-2 rounded-lg transition-colors flex items-center gap-1.5"
                           >
@@ -3692,10 +4175,84 @@ export default function DashboardPage() {
                   />
                 </div>
 
-                <div className="pt-2">
+                {/* Frecuencia de notificaciones & Filtro anti-vecinos */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-[#f4f4f5] pt-4">
+                  <div>
+                    <label className={LBL}>Frecuencia de Notificaciones Geocerca</label>
+                    <select
+                      value={geoPushFrecuencia}
+                      onChange={e => setGeoPushFrecuencia(Number(e.target.value))}
+                      className="w-full bg-[#fafafa] border-[1.5px] border-[#e4e4e7] rounded-xl px-4 py-3 text-sm text-[#09090b] focus:outline-none focus:border-[#dc2626] transition-all"
+                    >
+                      <option value={0}>Siempre (Cada que pase un cliente)</option>
+                      <option value={60}>Máximo una vez por hora</option>
+                      <option value={240}>Máximo una vez cada 4 horas</option>
+                      <option value={720}>Máximo una vez cada 12 horas</option>
+                      <option value={1440}>Máximo una vez al día (24 hrs)</option>
+                    </select>
+                    <p className="text-[10px] text-[#71717a] mt-1.5 leading-normal">
+                      Controla qué tan seguido puede alertarse al mismo dispositivo al entrar en el perímetro.
+                    </p>
+                  </div>
+                  <div className="flex flex-col justify-start">
+                    <label className={LBL}>Filtro de Privacidad (Anti-Vecinos)</label>
+                    <div className="flex items-center gap-3 mt-2 bg-[#fafafa] border border-[#e4e4e7] rounded-xl p-3">
+                      <input
+                        type="checkbox"
+                        id="evitar-vecinos-check"
+                        checked={geoPushEvitarVecinos}
+                        onChange={e => setGeoPushEvitarVecinos(e.target.checked)}
+                        className="w-4.5 h-4.5 text-[#dc2626] border-zinc-300 rounded-lg focus:ring-[#dc2626] cursor-pointer"
+                      />
+                      <label htmlFor="evitar-vecinos-check" className="text-xs font-bold text-[#27272a] cursor-pointer selection:bg-transparent select-none">
+                        Evitar molestar a vecinos cercanos
+                      </label>
+                    </div>
+                    <p className="text-[10px] text-[#71717a] mt-1.5 leading-normal">
+                      Si el cliente se registra/reside dentro de la geocerca, se desactivarán las alertas por cercanía para no perturbar su día a día.
+                    </p>
+                  </div>
+                </div>
+
+                 <div className="pt-2 flex justify-between items-center">
                   <button onClick={guardarGeoPush} disabled={guardandoGeoPush} className="btn-primary py-3 px-6 text-sm">
                     {guardandoGeoPush ? 'Guardando Geopush...' : 'Guardar Configuración Geopush'}
                   </button>
+                </div>
+
+                {/* Alerta Masiva Section */}
+                <div className="border-t border-[#e4e4e7] pt-6 space-y-4">
+                  <div>
+                    <h4 className="font-bold text-[#09090b] text-sm mb-1">📢 Enviar Alerta Masiva a Socios</h4>
+                    <p className="text-[11px] text-[#71717a]">Escribe una notificación para todos tus socios registrados. Se mostrará de forma destacada en la parte superior de sus tarjetas de lealtad.</p>
+                  </div>
+                  <div>
+                    <textarea
+                      rows={3}
+                      value={alertaMasivaText}
+                      onChange={e => setAlertaMasivaText(e.target.value)}
+                      className="input-clean text-sm w-full bg-white border border-[#e4e4e7] rounded-xl px-4 py-2.5 text-[#09090b] focus:border-[#dc2626] transition-all resize-none"
+                      placeholder="Escribe el aviso importante (ej: ¡Hoy 2x1 en hamburguesas! Presenta tu tarjeta en caja.)..."
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={enviarAlertaMasiva}
+                      disabled={enviandoAlertaMasiva}
+                      className="bg-[#dc2626] hover:bg-[#b91c1c] text-white font-extrabold px-5 py-3 rounded-xl text-xs uppercase tracking-wider transition-all disabled:opacity-50"
+                    >
+                      {enviandoAlertaMasiva ? 'Enviando...' : 'Enviar Alerta Ahora'}
+                    </button>
+                    {(business as any)?.alerta_masiva && (
+                      <button
+                        onClick={limpiarAlertaMasiva}
+                        disabled={enviandoAlertaMasiva}
+                        className="border border-[#e4e4e7] hover:bg-[#fafafa] text-[#71717a] font-extrabold px-5 py-3 rounded-xl text-xs uppercase tracking-wider transition-all disabled:opacity-50"
+                      >
+                        Limpiar Alerta
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -3836,6 +4393,50 @@ export default function DashboardPage() {
                             </select>
                           </div>
 
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                              <label className={LBL}>Nombre del Premio</label>
+                              <input
+                                type="text"
+                                value={nombrePremio}
+                                onChange={e => setNombrePremio(e.target.value)}
+                                className={IC}
+                                placeholder="Ej: Burrito"
+                              />
+                            </div>
+                            <div>
+                              <label className={LBL}>Color de la Tarjeta</label>
+                              <div className="flex gap-2">
+                                <input
+                                  type="color"
+                                  value={colorPrimarioCard}
+                                  onChange={e => setColorPrimarioCard(e.target.value)}
+                                  className="w-10 h-10 rounded-xl cursor-pointer border border-[#e4e4e7] bg-transparent shrink-0"
+                                />
+                                <input
+                                  type="text"
+                                  value={colorPrimarioCard}
+                                  onChange={e => setColorPrimarioCard(e.target.value)}
+                                  className={IC + " font-mono text-xs uppercase"}
+                                  placeholder="#facc15"
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className={LBL}>Icono del Sello</label>
+                            <select
+                              value={iconoSello}
+                              onChange={e => setIconoSello(e.target.value)}
+                              className={IC}
+                            >
+                              <option value="default">Estrella genérica (Fallback)</option>
+                              <option value="burrito">🌯 Burrito personalizado</option>
+                              <option value="gift">🎁 Regalo elegante</option>
+                            </select>
+                          </div>
+
                           {/* Exploradores de Archivos: Logo y Portada */}
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-[#f4f4f5]">
                             {/* Logo (Top Left) */}
@@ -3954,53 +4555,71 @@ export default function DashboardPage() {
                               </div>
 
                               {/* Tarjeta Principal */}
-                              <div className="bg-white rounded-2xl shadow-md border border-[#f0f0f0] overflow-hidden">
-                                {/* Portada / Banner superior */}
-                                {progPortadaFile || progPortadaUrl ? (
-                                  <div className="h-16 w-full overflow-hidden relative">
-                                    <img 
-                                      src={progPortadaFile ? URL.createObjectURL(progPortadaFile) : progPortadaUrl} style={{ objectPosition: `center ${progPortadaY}%` }} 
-                                      alt="" 
-                                      className="w-full h-full object-cover" 
-                                    />
-                                    <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
+                              <div className="rounded-3xl shadow-md border border-black/10 overflow-hidden p-3.5 space-y-3.5 text-[#09090b]" style={{ backgroundColor: colorPrimarioCard || '#facc15' }}>
+                                {/* Encabezado */}
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-8 h-8 rounded-full overflow-hidden border border-white bg-white flex items-center justify-center shrink-0">
+                                      <img
+                                        src={progLogoFile ? URL.createObjectURL(progLogoFile) : (progLogoUrl || business?.logo_url || '/logo.png')}
+                                        alt=""
+                                        className="w-full h-full object-cover"
+                                      />
+                                    </div>
+                                    <div className="min-w-0">
+                                      <h2 className="text-[11px] font-black tracking-tight leading-none uppercase">{business?.name}</h2>
+                                      <p className="text-[7px] font-bold text-black/60 uppercase mt-0.5 truncate">Socio VIP: Juan Pérez</p>
+                                    </div>
                                   </div>
-                                ) : (
-                                  <div className="h-1 bg-gradient-to-r from-[#dc2626] via-[#ef4444] to-[#dc2626]" />
-                                )}
-
-                                {/* Nombre del cliente */}
-                                <div className="px-4 pt-3 pb-2">
-                                  <p className="text-[8px] font-semibold text-[#a1a1aa] uppercase tracking-widest">Socio VIP</p>
-                                  <h2 className="text-xs font-bold text-[#09090b] tracking-tight mt-0.5 truncate">{nombreClub || 'Club VIP La Burrería'}</h2>
-                                  <p className="text-[9px] text-[#a1a1aa] font-mono leading-none">ID: SOCIO123</p>
+                                  <div className="text-right">
+                                    <span className="text-[7px] font-mono bg-black/10 px-1.5 py-0.5 rounded font-bold uppercase">ID: SOCIO123</span>
+                                  </div>
                                 </div>
 
-                                {/* Grid de Sellos */}
-                                <div className="px-3 py-2.5 bg-[#fafafa] border-y border-[#f0f0f0]">
+                                {/* Subtítulo */}
+                                <div className="space-y-0.5">
+                                  <p className="text-[8px] font-black tracking-wider uppercase text-black/70 leading-none">DIGITAL LOYALTY CARD</p>
+                                  <h3 className="text-[10px] font-extrabold tracking-tight uppercase leading-tight">
+                                    COLLECT {totalSellos === 'otro' ? Number(totalSellosOtro || 10) : Number(totalSellos || 10)} STAMPS & GET A FREE {nombrePremio || 'PREMIO'}!
+                                  </h3>
+                                </div>
+
+                                {/* El Bloque Blanco de Sellos Dinámicos */}
+                                <div className="bg-white rounded-2xl p-3 shadow-xs space-y-3">
+                                  <p className="text-[8px] font-black uppercase tracking-wider text-[#71717a] leading-none">
+                                    3 / {totalSellos === 'otro' ? Number(totalSellosOtro || 10) : Number(totalSellos || 10)} STAMPS ACCUMULATED
+                                  </p>
+
+                                  {/* Grid de Sellos */}
                                   <div className="grid grid-cols-5 gap-1.5 place-items-center">
                                     {[...Array(totalSellos === 'otro' ? Number(totalSellosOtro || 10) : Number(totalSellos || 10))].map((_, i) => {
                                       const marcado = i < 3 // Simular 3 sellos marcados
                                       return (
-                                        <div key={i} className="flex justify-center items-center w-full">
+                                        <div key={i} className="flex flex-col items-center gap-0.5 w-full">
                                           {marcado ? (
-                                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#FFD700] via-[#FDB931] to-[#D4A017] flex items-center justify-center shadow-sm">
-                                              <span className="text-[#452000] text-xs font-black">★</span>
+                                            <div className="w-8 h-8 rounded-full bg-[#fef9c3] flex items-center justify-center border border-yellow-200">
+                                              <RenderIconoSello icono={iconoSello || 'default'} size="w-5.5 h-5.5" />
                                             </div>
                                           ) : (
-                                            <div className="w-7 h-7 rounded-full border border-dashed border-[#d4d4d8] flex items-center justify-center">
-                                              <span className="text-[#d4d4d8] text-[10px]">★</span>
+                                            <div className="w-7 h-7 rounded-full border border-dashed border-[#e4e4e7] flex items-center justify-center bg-[#fafafa]">
+                                              <span className="text-[#a1a1aa] text-[9px] font-bold">{i + 1}</span>
                                             </div>
                                           )}
                                         </div>
                                       )
                                     })}
                                   </div>
-                                </div>
 
-                                {/* Progreso */}
-                                <div className="px-4 py-2 text-center text-[9px] font-semibold text-[#71717a]">
-                                  🏆 Simulación: 3/{totalSellos === 'otro' ? Number(totalSellosOtro || 10) : Number(totalSellos || 10)} sellos
+                                  {/* Barra de progreso */}
+                                  <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
+                                    <div
+                                      className="h-full rounded-full transition-all duration-700"
+                                      style={{ 
+                                        width: `${(3 / (totalSellos === 'otro' ? Number(totalSellosOtro || 10) : Number(totalSellos || 10))) * 100}%`,
+                                        backgroundColor: colorPrimarioCard || '#facc15'
+                                      }}
+                                    />
+                                  </div>
                                 </div>
                               </div>
                             </div>
@@ -4142,12 +4761,12 @@ export default function DashboardPage() {
                         <tr key={h.id} className="hover:bg-[#fafafa] transition-colors">
                           <td className="px-5 py-3 font-medium text-[#09090b] whitespace-nowrap">{h.clientes?.nombre || 'Socio'}</td>
                           <td className="px-5 py-3 whitespace-nowrap">
-                            <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${h.tipo_movimiento === 'suma' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
-                              {h.tipo_movimiento}
+                            <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${(h.motivo || h.tipo_movimiento) === 'suma' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                              {h.motivo || h.tipo_movimiento || 'ajuste'}
                             </span>
                           </td>
                           <td className="px-5 py-3 font-mono font-bold text-amber-600 whitespace-nowrap">{h.cantidad} ★</td>
-                          <td className="px-5 py-3 text-[#71717a] max-w-xs truncate">{h.descripcion}</td>
+                          <td className="px-5 py-3 text-[#71717a] max-w-xs truncate">{h.descripcion || ((h.motivo || h.tipo_movimiento) === 'suma' ? 'Sello registrado' : 'Sello retirado/canjeado')}</td>
                           <td className="px-5 py-3 text-[#a1a1aa] font-mono text-xs whitespace-nowrap">{new Date(h.created_at).toLocaleString('es-MX')}</td>
                         </tr>
                       ))}
@@ -4159,7 +4778,6 @@ export default function DashboardPage() {
           )}
 
           {/* ══════════════════════════════════════════
-              PESTAÑA 7: PROMOCIONES          {/* ══════════════════════════════════════════
               PESTAÑA 7: PROMOCIONES (CONFIGURACIÓN DE RULETA)
           ══════════════════════════════════════════ */}
           {pestaña === 'promociones' && (
@@ -4167,26 +4785,59 @@ export default function DashboardPage() {
               <div className="bg-white border border-[#e4e4e7] p-6 rounded-2xl shadow-sm space-y-6">
                 <div>
                   <h3 className="font-bold text-[#09090b] mb-1">Configuración de Ruleta (Gamificación)</h3>
-                  <p className="text-xs text-[#71717a]">Establece los 4 premios aleatorios visibles para los clientes VIP</p>
+                  <p className="text-xs text-[#71717a]">Define cuántos sectores tendrá tu ruleta (de 1 a 10) y el nombre del premio en cada sector. Puedes repetir premios para aumentar su probabilidad.</p>
                 </div>
 
+                {/* ── Stepper de número de sectores ── */}
+                <div className="flex items-center gap-4 bg-[#fafafa] border border-[#e4e4e7] rounded-2xl p-4">
+                  <div className="flex-1">
+                    <p className="text-xs font-bold text-[#09090b]">Número de Sectores / Premios</p>
+                    <p className="text-[11px] text-[#71717a] mt-0.5">Añade más sectores para repetir premios pequeños y darles mayor probabilidad.</p>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <button
+                      onClick={() => ajustarPremiosPrincipal(Math.max(1, numSectoresPrincipal - 1))}
+                      disabled={numSectoresPrincipal <= 1}
+                      className="w-9 h-9 rounded-xl bg-white border border-[#e4e4e7] text-[#09090b] font-bold flex items-center justify-center hover:bg-[#f4f4f5] disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95 shadow-sm"
+                    >
+                      <Minus className="w-4 h-4" />
+                    </button>
+                    <span className="w-16 text-center font-black text-xl text-[#09090b] select-none tabular-nums">
+                      {numSectoresPrincipal}
+                    </span>
+                    <button
+                      onClick={() => ajustarPremiosPrincipal(Math.min(10, numSectoresPrincipal + 1))}
+                      disabled={numSectoresPrincipal >= 10}
+                      className="w-9 h-9 rounded-xl bg-white border border-[#e4e4e7] text-[#09090b] font-bold flex items-center justify-center hover:bg-[#f4f4f5] disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95 shadow-sm"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* ── Grid dinámico de premios ── */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className={LBL}>Premios de Ruleta - Sector 1</label>
-                    <input type="text" value={premio1} onChange={e => setPremio1(e.target.value)} className={IC} required />
-                  </div>
-                  <div>
-                    <label className={LBL}>Premios de Ruleta - Sector 2</label>
-                    <input type="text" value={premio2} onChange={e => setPremio2(e.target.value)} className={IC} required />
-                  </div>
-                  <div>
-                    <label className={LBL}>Premios de Ruleta - Sector 3</label>
-                    <input type="text" value={premio3} onChange={e => setPremio3(e.target.value)} className={IC} required />
-                  </div>
-                  <div>
-                    <label className={LBL}>Premios de Ruleta - Sector 4</label>
-                    <input type="text" value={premio4} onChange={e => setPremio4(e.target.value)} className={IC} required />
-                  </div>
+                  {premiosPrincipal.map((p, i) => (
+                    <div key={i}>
+                      <label className={LBL}>
+                        Sector {i + 1}
+                        {premiosPrincipal.filter(x => x.trim() === p.trim() && p.trim() !== '').length > 1 && (
+                          <span className="ml-2 text-[#dc2626] text-[9px] font-black uppercase tracking-wider bg-[#fef2f2] border border-[#fecaca] px-1.5 py-0.5 rounded-full">Repetido ×{premiosPrincipal.filter(x => x.trim() === p.trim()).length}</span>
+                        )}
+                      </label>
+                      <input
+                        type="text"
+                        value={p}
+                        onChange={e => {
+                          const copy = [...premiosPrincipal]
+                          copy[i] = e.target.value
+                          setPremiosPrincipal(copy)
+                        }}
+                        className={IC}
+                        placeholder={`Ej: ${['Envío Gratis', 'Premio Grande', '10% Descuento', 'Bebida Gratis', 'Postre', 'Sorpresa', 'Puntos Extra', 'Café Gratis', 'Combo', '20% Off'][i] || 'Premio…'}`}
+                      />
+                    </div>
+                  ))}
                 </div>
 
                 <div className="border-t border-[#f4f4f5] pt-4">
@@ -4229,14 +4880,15 @@ export default function DashboardPage() {
               <div className="bg-white border border-[#e4e4e7] p-6 rounded-2xl shadow-sm space-y-6">
                 <div>
                   <h3 className="font-bold text-sm text-[#09090b] mb-1">Ruletas Intermedias (Gamificación por Rango de Sellos)</h3>
-                  <p className="text-xs text-[#71717a]">Configura ruletas adicionales que se activen cuando el cliente tenga un número específico de sellos acumulados (ej. a los 3 o 7 sellos) antes de completar la tarjeta entera.</p>
+                  <p className="text-xs text-[#71717a]">Configura ruletas adicionales con su propio número de sectores (1-10) que se activen cuando el cliente tenga un número específico de sellos acumulados.</p>
                 </div>
 
-                <div className="bg-[#fafafa] border border-[#e4e4e7] p-5 rounded-2xl space-y-4">
+                <div className="bg-[#fafafa] border border-[#e4e4e7] p-5 rounded-2xl space-y-5">
                   <h4 className="font-bold text-[10px] text-[#52525b] uppercase tracking-wider">Nueva Ruleta Intermedia</h4>
-                  
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 items-end">
-                    <div className="sm:col-span-2 md:col-span-1">
+
+                  {/* Fila de controles: sello + sectores */}
+                  <div className="flex flex-wrap items-end gap-4">
+                    <div className="min-w-[130px]">
                       <label className={LBL}>Sello de Activación</label>
                       <select value={nuevoSelloAct} onChange={e => setNuevoSelloAct(e.target.value)} className={IC}>
                         {[...Array(Number(maxStamps) || 10)].map((_, i) => (
@@ -4244,26 +4896,55 @@ export default function DashboardPage() {
                         ))}
                       </select>
                     </div>
-                    <div>
-                      <label className={LBL}>Sector 1</label>
-                      <input type="text" value={nuevoP1} onChange={e => setNuevoP1(e.target.value)} className={IC} placeholder="Ej. Galleta" />
-                    </div>
-                    <div>
-                      <label className={LBL}>Sector 2</label>
-                      <input type="text" value={nuevoP2} onChange={e => setNuevoP2(e.target.value)} className={IC} placeholder="Ej. Refresco" />
-                    </div>
-                    <div>
-                      <label className={LBL}>Sector 3</label>
-                      <input type="text" value={nuevoP3} onChange={e => setNuevoP3(e.target.value)} className={IC} placeholder="Ej. Papas" />
-                    </div>
-                    <div>
-                      <label className={LBL}>Sector 4</label>
-                      <input type="text" value={nuevoP4} onChange={e => setNuevoP4(e.target.value)} className={IC} placeholder="Ej. Descuento" />
+
+                    <div className="flex items-end gap-3">
+                      <div>
+                        <label className={LBL}>Sectores</label>
+                        <div className="flex items-center gap-2 bg-white border border-[#e4e4e7] rounded-xl px-3 py-2">
+                          <button
+                            type="button"
+                            onClick={() => ajustarNuevosPremios(Math.max(1, numSectoresNuevo - 1))}
+                            disabled={numSectoresNuevo <= 1}
+                            className="w-6 h-6 rounded-lg bg-[#fafafa] border border-[#e4e4e7] text-xs font-bold flex items-center justify-center hover:bg-[#f4f4f5] disabled:opacity-40 transition-all"
+                          >
+                            <Minus className="w-3 h-3" />
+                          </button>
+                          <span className="w-8 text-center font-black text-sm text-[#09090b] tabular-nums select-none">{numSectoresNuevo}</span>
+                          <button
+                            type="button"
+                            onClick={() => ajustarNuevosPremios(Math.min(10, numSectoresNuevo + 1))}
+                            disabled={numSectoresNuevo >= 10}
+                            className="w-6 h-6 rounded-lg bg-[#fafafa] border border-[#e4e4e7] text-xs font-bold flex items-center justify-center hover:bg-[#f4f4f5] disabled:opacity-40 transition-all"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
+                  {/* Grid dinámico de premios intermedios */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                    {nuevosPremios.map((p, i) => (
+                      <div key={i}>
+                        <label className={LBL}>Sector {i + 1}</label>
+                        <input
+                          type="text"
+                          value={p}
+                          onChange={e => {
+                            const copy = [...nuevosPremios]
+                            copy[i] = e.target.value
+                            setNuevosPremios(copy)
+                          }}
+                          className={IC}
+                          placeholder={`Ej. ${['Galleta', 'Refresco', 'Papas', 'Descuento', 'Envío Gratis', 'Postre', 'Café', '10% Off', 'Combo', 'Sorpresa'][i] || 'Premio…'}`}
+                        />
+                      </div>
+                    ))}
+                  </div>
+
                   <button onClick={agregarOActualizarRuletaIntermedia} className="btn-primary py-2.5 px-4 text-xs font-bold flex items-center justify-center gap-1.5 self-start">
-                    <Plus className="w-3.5 h-3.5" /> Configurar Esta Ruleta
+                    <Plus className="w-3.5 h-3.5" /> Configurar Esta Ruleta ({numSectoresNuevo} sectores)
                   </button>
                 </div>
 
@@ -4285,7 +4966,7 @@ export default function DashboardPage() {
                           </div>
                           
                           <div className="space-y-2">
-                            <h5 className="font-bold text-xs text-[#09090b]">Al alcanzar {sello} {Number(sello) === 1 ? 'sello' : 'sellos'}</h5>
+                            <h5 className="font-bold text-xs text-[#09090b]">Al alcanzar {sello} {Number(sello) === 1 ? 'sello' : 'sellos'} · <span className="text-[#dc2626]">{data.premios.length} sectores</span></h5>
                             <ul className="text-xs text-[#52525b] space-y-1 bg-[#fafafa] p-2.5 rounded-xl border border-[#f4f4f5]">
                               {data.premios.map((p: string, idx: number) => (
                                 <li key={idx} className="flex items-center gap-1.5 truncate">
@@ -4309,6 +4990,28 @@ export default function DashboardPage() {
                     {guardandoPromociones ? 'Guardando...' : '💾 Guardar Todo y Aplicar'}
                   </button>
                 </div>
+              </div>
+
+
+              {/* ── DEMO INTERACTIVO DE RULETA ── */}
+              <div className="bg-white border border-[#e4e4e7] p-6 rounded-2xl shadow-sm space-y-5">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 bg-[#fef2f2] rounded-xl flex items-center justify-center shrink-0">
+                    <Gift className="w-5 h-5 text-[#dc2626]" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm text-[#09090b]">Demo Interactivo de Ruleta</h3>
+                    <p className="text-xs text-[#71717a]">Así es como verán la ruleta tus clientes VIP al completar sus sellos. Haz clic en Girar para probarlo.</p>
+                  </div>
+                </div>
+
+                {(() => {
+                  const demoSectors = premiosPrincipal.filter(Boolean)
+                  if (demoSectors.length === 0) return (
+                    <p className="text-xs text-[#a1a1aa] text-center py-6">Configura al menos un premio para ver el demo.</p>
+                  )
+                  return <RuletaDemo sectors={demoSectors} />
+                })()}
               </div>
             </div>
           )}
@@ -4460,6 +5163,13 @@ export default function DashboardPage() {
                 )}
               </div>
             </div>
+          )}
+
+          {/* ═════════════════════════════════════════════════════════ */}
+          {/* PANEL: DELIVERY — SOLICITAR REPARTIDOR                            */}
+          {/* ═════════════════════════════════════════════════════════ */}
+          {pestaña === 'delivery' && (
+            <DeliveryPanel businessId={business?.id || ''} slug={slug} />
           )}
 
         </main>
@@ -4666,36 +5376,166 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* MODAL GESTOR DE MODIFICADORES RENDERED AT ROOT TO AVOID SCROLL BUG */}
+      {modificadorAEditar && productoAEditar && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white border border-[#e4e4e7] rounded-3xl p-6 w-full max-w-lg shadow-2xl relative max-h-[85vh] overflow-y-auto text-[#09090b] animate-slideUp">
+            <button 
+              onClick={() => { setModificadorAEditar(null); setProductoAEditar(null); }}
+              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-[#fafafa] hover:bg-[#f4f4f5] flex items-center justify-center text-[#71717a] transition-colors"
+            >
+              ✕
+            </button>
+            
+            <div className="mb-4">
+              <span className="text-[10px] bg-red-50 text-[#dc2626] font-black uppercase px-2.5 py-0.5 rounded-full">Modificadores</span>
+              <h3 className="text-lg font-bold text-[#09090b] tracking-tight mt-1">
+                Ajustes para: <span className="text-[#dc2626]">{productoAEditar.nombre}</span>
+              </h3>
+              <p className="text-xs text-[#71717a]">Crea grupos (ej: Salsas, Tamaño) y agrega opciones con precios adicionales.</p>
+            </div>
+
+            {/* Formulario nuevo modificador */}
+            <div className="bg-[#fafafa] border border-[#e4e4e7] p-5 rounded-2xl space-y-4 mb-6">
+              <h4 className="text-xs font-bold text-[#09090b] uppercase tracking-wider">➕ Crear Nuevo Grupo Modificador</h4>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className={LBL}>Nombre del Grupo (ej: Elige tu Salsa)</label>
+                  <input type="text" value={nombreMod} onChange={e => setNombreMod(e.target.value)} className={IC + ' bg-white'} placeholder="Sabor / Salsa / Tamaño" />
+                </div>
+                <div className="flex items-center pt-5">
+                  <label className="flex items-center gap-2 text-xs font-semibold text-[#3f3f46] cursor-pointer">
+                    <input type="checkbox" checked={requeridoMod} onChange={e => setRequeridoMod(e.target.checked)} className="rounded border-[#e4e4e7] text-[#dc2626] focus:ring-[#dc2626]" />
+                    ¿Es obligatorio seleccionar?
+                  </label>
+                </div>
+              </div>
+
+              {/* Opciones */}
+              <div className="border-t border-[#e4e4e7] pt-4 space-y-3">
+                <span className="text-[10px] font-bold text-[#71717a] uppercase tracking-wider">Opciones del Grupo</span>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
+                  <div className="sm:col-span-2">
+                    <label className="text-[9px] font-semibold text-[#71717a] uppercase mb-1 block">Nombre Opción</label>
+                    <input type="text" value={nuevaOpNombre} onChange={e => setNuevaOpNombre(e.target.value)} className={IC + ' bg-white'} placeholder="Fresa / Habanero / Grande" />
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-semibold text-[#71717a] uppercase mb-1 block">Precio Extra</label>
+                    <div className="flex gap-1.5 items-center">
+                      <input type="number" value={nuevaOpPrecio} onChange={e => setNuevaOpPrecio(e.target.value)} className={IC + ' bg-white text-center'} placeholder="0" />
+                      <button
+                        type="button"
+                        onClick={agregarOpcionMemoria}
+                        className="bg-[#09090b] text-white hover:bg-zinc-800 font-bold p-3 rounded-xl transition-all shadow-sm"
+                      >
+                        ➕
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {opcionesMod.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-2">
+                    {opcionesMod.map((opt, idx) => (
+                      <span key={idx} className="text-[10px] bg-white border border-[#e4e4e7] text-[#52525b] font-medium px-2 py-0.5 rounded-lg flex items-center gap-1 shadow-sm">
+                        {opt.nombre} (+${opt.precio_extra} MXN)
+                        <button type="button" onClick={() => quitarOpcionMemoria(idx)} className="text-[#dc2626] hover:text-red-700 font-bold ml-1">✕</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={guardarModificadorCompleto}
+                disabled={guardandoMod}
+                className="w-full bg-[#dc2626] hover:bg-[#b91c1c] text-white font-bold py-3 rounded-xl text-xs uppercase tracking-wider transition-all disabled:opacity-50"
+              >
+                {guardandoMod ? 'Guardando...' : '💾 Guardar Grupo Completo'}
+              </button>
+            </div>
+
+            {/* Grupos existentes */}
+            <div className="space-y-3">
+              <h4 className="text-xs font-bold text-[#09090b] uppercase tracking-wider">⚙️ Grupos Modificadores Configurados</h4>
+              {(!productoAEditar.product_modifiers || productoAEditar.product_modifiers.length === 0) ? (
+                <p className="text-xs text-[#a1a1aa] italic">Este producto no cuenta con modificadores aún.</p>
+              ) : (
+                <div className="space-y-3.5">
+                  {productoAEditar.product_modifiers.map((mod: any) => (
+                    <div key={mod.id} className="border border-[#e4e4e7] bg-[#fafafa] rounded-2xl p-4 flex justify-between items-start gap-4">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <h5 className="font-bold text-sm text-[#09090b]">{mod.nombre}</h5>
+                          <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${mod.requerido ? 'bg-red-50 text-[#dc2626]' : 'bg-[#e4e4e7] text-[#52525b]'}`}>
+                            {mod.requerido ? 'Requerido' : 'Opcional'}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          {mod.modifier_options?.map((opt: any) => (
+                            <span key={opt.id} className="text-[10px] bg-white border border-[#e4e4e7] text-[#52525b] font-medium px-2 py-0.5 rounded-lg">
+                              {opt.nombre} (+${opt.precio_extra} MXN)
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => borrarModificador(mod.id)}
+                        className="bg-red-50 border border-red-100 hover:bg-red-100 text-[#dc2626] font-bold p-2 rounded-xl transition-all shrink-0"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── BOTTOM APP BAR (Solo móvil < 768px) ── */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-[#e4e4e7] shadow-[0_-4px_24px_rgba(0,0,0,0.06)]">
         <div className="flex items-stretch justify-around h-16 safe-area-inset-bottom">
-          {[
-            { id: 'metricas',       label: 'Inicio',    icon: LayoutDashboard },
-            { id: 'lealtad',        label: 'Lealtad',   icon: CreditCard },
-            { id: 'empleados',      label: 'Personal',  icon: Users },
-            { id: 'configuracion',  label: 'Config',    icon: Settings },
-            { id: 'menus',          label: 'Menús',     icon: QrCode },
-          ].map(tab => {
+          {([
+            { id: 'metricas',      label: 'Inicio',  icon: LayoutDashboard },
+            { id: 'escaner',       label: 'Escáner', icon: QrCode,    href: '/escaner' },
+            { id: 'clientes',      label: 'Socios',  icon: UserCheck },
+            { id: 'empleados',     label: 'Personal',icon: Users },
+            { id: 'configuracion', label: 'Config',  icon: Settings },
+          ] as { id: string; label: string; icon: React.ElementType; href?: string }[]).map(tab => {
             const TabIcon = tab.icon
-            const isActive = pestaña === tab.id
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setPestaña(tab.id)}
-                className={`flex-1 flex flex-col items-center justify-center gap-1 transition-all duration-150 ${
-                  isActive ? 'text-[#dc2626]' : 'text-[#a1a1aa]'
-                }`}
-              >
-                <TabIcon className={`w-5 h-5 transition-transform duration-150 ${ isActive ? 'scale-110' : 'scale-100'}`} />
-                <span className={`text-[10px] font-semibold tracking-tight leading-none ${ isActive ? 'text-[#dc2626]' : 'text-[#a1a1aa]'}`}>
+            const isActive = !tab.href && pestaña === tab.id
+            const btnClass = `flex-1 flex flex-col items-center justify-center gap-1 transition-all duration-150 relative ${
+              isActive ? 'text-[#dc2626]' : 'text-[#a1a1aa]'
+            }`
+            const content = (
+              <>
+                <TabIcon className={`w-5 h-5 transition-transform duration-150 ${isActive ? 'scale-110' : 'scale-100'}`} />
+                <span className={`text-[10px] font-semibold tracking-tight leading-none ${isActive ? 'text-[#dc2626]' : 'text-[#a1a1aa]'}`}>
                   {tab.label}
                 </span>
                 {isActive && <span className="absolute bottom-0 w-8 h-0.5 bg-[#dc2626] rounded-full" />}
+              </>
+            )
+            if (tab.href) {
+              return (
+                <Link key={tab.id} href={tab.href} className={btnClass}>
+                  {content}
+                </Link>
+              )
+            }
+            return (
+              <button key={tab.id} onClick={() => setPestaña(tab.id)} className={btnClass}>
+                {content}
               </button>
             )
           })}
         </div>
       </nav>
+
 
     </div>
   )

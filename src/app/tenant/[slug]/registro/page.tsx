@@ -3,16 +3,41 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter, useParams } from 'next/navigation'
-import { Loader2, UserPlus, CheckCircle2, LogIn } from 'lucide-react'
+import Link from 'next/link'
+import { Loader2, UserPlus, CheckCircle2, LogIn, Phone, Key, ShieldAlert, Truck, Image, Clock } from 'lucide-react'
+
+// Haversine formula to compute distance in meters between two coordinates
+function calcularDistanciaMetros(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371e3 // Earth radius in meters
+  const phi1 = (lat1 * Math.PI) / 180
+  const phi2 = (lat2 * Math.PI) / 180
+  const deltaPhi = ((lat2 - lat1) * Math.PI) / 180
+  const deltaLambda = ((lon2 - lon1) * Math.PI) / 180
+
+  const a =
+    Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+    Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+
+  return R * c
+}
 
 export default function RegistroCliente() {
   const router = useRouter()
   // ── Tenant: slug extraído del subdominio vía rewrite del middleware ──
   const slug = (useParams().slug as string) || ''
 
+  if (slug === 'bikers') {
+    return <RegistroBiker />
+  }
+
   const [nombre, setNombre] = useState('')
   const [telefono, setTelefono] = useState('')
   const [email, setEmail] = useState('')
+  const [calle, setCalle] = useState('')
+  const [numero, setNumero] = useState('')
+  const [colonia, setColonia] = useState('')
+  const [referencia, setReferencia] = useState('')
 
   // Selector de fecha de nacimiento (3 selectores)
   const [dia, setDia] = useState('')
@@ -22,6 +47,7 @@ export default function RegistroCliente() {
   const [registrando, setRegistrando] = useState(false)
   const [mensaje, setMensaje] = useState({ texto: '', tipo: '' })
   const [business, setBusiness] = useState<any>(null)
+  const [geoConfig, setGeoConfig] = useState<any>(null)
   const [modo, setModo] = useState<'registro' | 'login'>('registro')
 
   useEffect(() => {
@@ -30,10 +56,19 @@ export default function RegistroCliente() {
     const cargarNegocio = async () => {
       const { data } = await supabase
         .from('businesses')
-        .select('id, nombre, logo_url, color_primario')
+        .select('id, nombre, logo_url, color_primario, latitude, longitude')
         .eq('slug', slug)
         .maybeSingle()
-      if (data) setBusiness(data)
+      if (data) {
+        setBusiness(data)
+        // Cargar también configuración de geopush si existe
+        const { data: geo } = await supabase
+          .from('configuracion_geopush')
+          .select('*')
+          .eq('business_id', data.id)
+          .maybeSingle()
+        if (geo) setGeoConfig(geo)
+      }
     }
     cargarNegocio()
   }, [slug])
@@ -108,6 +143,39 @@ export default function RegistroCliente() {
     // business_id resuelto desde el negocio cargado por slug — sin cookies, sin hardcodes
     const tenantId = business?.id ?? null
 
+    let latReg: number | null = null
+    let lngReg: number | null = null
+    let esVecino = false
+
+    if (typeof navigator !== 'undefined' && navigator.geolocation) {
+      try {
+        const pos = await new Promise<any>((resolve) => {
+          navigator.geolocation.getCurrentPosition(
+            (position) => resolve(position),
+            () => resolve(null),
+            { timeout: 3000 }
+          )
+        })
+        if (pos) {
+          latReg = pos.coords.latitude
+          lngReg = pos.coords.longitude
+
+          const targetLat = geoConfig?.latitud ?? business?.latitude
+          const targetLng = geoConfig?.longitud ?? business?.longitude
+          const targetRad = geoConfig?.radio_metros ?? 500
+
+          if (targetLat && targetLng) {
+            const distance = calcularDistanciaMetros(latReg!, lngReg!, Number(targetLat), Number(targetLng))
+            if (distance <= targetRad) {
+              esVecino = true
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Error al verificar GPS de registro:', e)
+      }
+    }
+
     try {
       const { data, error } = await supabase
         .from('clientes')
@@ -116,10 +184,17 @@ export default function RegistroCliente() {
           telefono: telefonoLimpio,
           email: email.trim() || null,
           fecha_nacimiento: fechaEnsamblada,
+          calle: calle.trim() || null,
+          numero: numero.trim() || null,
+          colonia: colonia.trim() || null,
+          referencia: referencia.trim() || null,
           puntos: 0,
           business_id: tenantId,          // ← ID del negocio resuelto por subdominio
           branch_id: null,                // ← sin sucursal específica en registro público
           sucursal_registro_id: null,     // ← origen en registro público: nulo para evitar error de FK en sucursales
+          lat_registro: latReg,
+          lng_registro: lngReg,
+          es_vecino: esVecino
         }])
         .select()
 
@@ -324,6 +399,67 @@ export default function RegistroCliente() {
                   />
                 </div>
 
+                {/* Dirección */}
+                <div className="space-y-3 pt-3 border-t border-[#f4f4f5] animate-fade-in">
+                  <p className="text-xs font-black text-[#09090b] uppercase tracking-wider">Dirección de Entrega / Domicilio</p>
+                  
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">
+                      Calle *
+                    </label>
+                    <input
+                      type="text"
+                      value={calle}
+                      onChange={(e) => setCalle(e.target.value)}
+                      required
+                      className="input-clean"
+                      placeholder="Ej. Avenida Juárez"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">
+                        Número *
+                      </label>
+                      <input
+                        type="text"
+                        value={numero}
+                        onChange={(e) => setNumero(e.target.value)}
+                        required
+                        className="input-clean"
+                        placeholder="Ej. 123 o S/N"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">
+                        Colonia *
+                      </label>
+                      <input
+                        type="text"
+                        value={colonia}
+                        onChange={(e) => setColonia(e.target.value)}
+                        required
+                        className="input-clean"
+                        placeholder="Ej. Centro"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">
+                      Referencia <span className="text-[#a1a1aa] normal-case font-normal">(Opcional)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={referencia}
+                      onChange={(e) => setReferencia(e.target.value)}
+                      className="input-clean"
+                      placeholder="Ej. Portón negro frente a la escuela"
+                    />
+                  </div>
+                </div>
+
                 {/* Fecha de nacimiento */}
                 <div className="space-y-1.5 animate-fade-in">
                   <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide">
@@ -399,6 +535,384 @@ export default function RegistroCliente() {
         {/* Footer */}
         <p className="text-center text-xs text-[#a1a1aa] mt-6">
           Tus datos son confidenciales y se usan solo para el programa de fidelización.
+        </p>
+      </div>
+    </main>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REGISTRO DE REPARTIDORES (BIKERS)
+// ─────────────────────────────────────────────────────────────────────────────
+function RegistroBiker() {
+  const [fleets, setFleets] = useState<any[]>([])
+  const [cargandoFleets, setCargandoFleets] = useState(true)
+
+  const [nombre, setNombre] = useState('')
+  const [telefono, setTelefono] = useState('')
+  const [direccionResidencial, setDireccionResidencial] = useState('')
+  const [numeroBiker, setNumeroBiker] = useState('')
+  const [motoMarca, setMotoMarca] = useState('')
+  const [motoCilindrada, setMotoCilindrada] = useState('')
+  const [motoColor, setMotoColor] = useState('')
+  const [pin, setPin] = useState('')
+  const [confirmarPin, setConfirmarPin] = useState('')
+  const [fleetId, setFleetId] = useState('')
+
+  const [registrando, setRegistrando] = useState(false)
+  const [mensaje, setMensaje] = useState({ texto: '', tipo: '' })
+  const [enviadoExito, setEnviadoExito] = useState(false)
+
+  useEffect(() => {
+    supabase
+      .from('delivery_fleets')
+      .select('id, nombre')
+      .eq('activo', true)
+      .then(({ data }) => {
+        setFleets(data || [])
+        if (data && data.length === 1) {
+          setFleetId(data[0].id)
+        }
+        setCargandoFleets(false)
+      })
+  }, [])
+
+  const registrarBiker = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (
+      !nombre.trim() ||
+      !telefono.trim() ||
+      !direccionResidencial.trim() ||
+      !numeroBiker.trim() ||
+      !motoMarca.trim() ||
+      !motoCilindrada.trim() ||
+      !motoColor.trim() ||
+      !pin.trim() ||
+      !confirmarPin.trim() ||
+      !fleetId
+    ) {
+      setMensaje({ texto: 'Por favor completa todos los campos obligatorios.', tipo: 'error' })
+      return
+    }
+
+    const telefonoLimpio = telefono.replace(/\D/g, '')
+    if (telefonoLimpio.length !== 10) {
+      setMensaje({ texto: 'El teléfono debe tener exactamente 10 dígitos.', tipo: 'error' })
+      return
+    }
+
+    if (pin.length !== 6 || !/^\d{6}$/.test(pin)) {
+      setMensaje({ texto: 'El PIN de acceso debe ser de exactamente 6 dígitos numéricos.', tipo: 'error' })
+      return
+    }
+
+    if (pin !== confirmarPin) {
+      setMensaje({ texto: 'Los PINs ingresados no coinciden.', tipo: 'error' })
+      return
+    }
+
+    setRegistrando(true)
+    setMensaje({ texto: '', tipo: '' })
+
+    try {
+      const { error } = await supabase
+        .from('bikers')
+        .insert({
+          fleet_id: fleetId,
+          nombre: nombre.trim(),
+          telefono: telefonoLimpio,
+          direccion_residencial: direccionResidencial.trim(),
+          numero_biker: numeroBiker.trim(),
+          moto_marca: motoMarca.trim(),
+          moto_cilindrada: motoCilindrada.trim(),
+          moto_color: motoColor.trim(),
+          pin: pin.trim(),
+          rol: 'biker',
+          estado_aprobacion: 'pendiente',
+          activo: false,
+          conectado: false
+        })
+
+      if (error) throw error
+
+      setEnviadoExito(true)
+    } catch (err: any) {
+      console.error('Error al registrar biker:', err)
+      setMensaje({ texto: 'Hubo un error al enviar tu solicitud. Intenta de nuevo.', tipo: 'error' })
+    } finally {
+      setRegistrando(false)
+    }
+  }
+
+  if (enviadoExito) {
+    return (
+      <main className="min-h-screen bg-[#fafafa] flex flex-col items-center justify-center p-4 font-sans">
+        <div className="w-full max-w-md bg-white border border-[#e4e4e7] rounded-3xl p-8 text-center space-y-6 shadow-xl animate-fadeIn">
+          <div className="w-16 h-16 bg-blue-50 text-[#2563eb] rounded-full flex items-center justify-center border border-blue-100 shadow-sm mx-auto animate-pulse">
+            <Clock className="w-8 h-8" />
+          </div>
+
+          <div className="space-y-2.5">
+            <h3 className="text-xl font-bold text-[#09090b]">¡Solicitud Recibida!</h3>
+            <p className="text-sm text-[#52525b] leading-relaxed">
+              Tu cuenta está en proceso de revisión por el modulador central. Te notificaremos vía telefónica una vez seas aprobado.
+            </p>
+          </div>
+
+          <div className="border-t border-[#f4f4f5] pt-5">
+            <Link
+              href="/"
+              className="inline-flex items-center justify-center w-full bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold text-sm rounded-xl py-3.5 transition-all shadow-xs"
+            >
+              Volver al Inicio
+            </Link>
+          </div>
+        </div>
+      </main>
+    )
+  }
+
+  return (
+    <main className="min-h-screen bg-[#fafafa] flex flex-col items-center justify-center p-4 font-sans">
+      <div className="w-full max-w-md animate-slideUp">
+        
+        {/* Header */}
+        <div className="text-center mb-8">
+          <img
+            src="/bikers.png"
+            alt="Bikers Logo"
+            className="w-16 h-16 mx-auto mb-4 object-contain rounded-2xl"
+          />
+          <h1 className="text-2xl font-bold text-[#09090b] tracking-tight">Únete a la Flota</h1>
+          <p className="text-sm text-[#71717a] mt-1.5">Envía tus datos para registrarte como repartidor</p>
+        </div>
+
+        {/* Card Formulario */}
+        <div className="bg-white rounded-2xl shadow-sm border border-[#e4e4e7] p-8 space-y-5">
+          <form onSubmit={registrarBiker} className="space-y-4">
+            
+            {/* Nombre Completo */}
+            <div className="space-y-1">
+              <label className="block text-[10px] font-bold text-[#71717a] uppercase tracking-wider mb-1.5">
+                Nombre Completo *
+              </label>
+              <input
+                type="text"
+                value={nombre}
+                onChange={e => setNombre(e.target.value)}
+                required
+                className="w-full bg-[#fafafa] border border-[#e4e4e7] rounded-xl px-4 py-2.5 text-[#09090b] text-sm focus:outline-none focus:border-[#2563eb] focus:bg-white focus:shadow-[0_0_0_3px_rgba(37,99,235,0.1)] transition-all"
+                placeholder="Ej. Carlos Martínez"
+              />
+            </div>
+
+            {/* Teléfono */}
+            <div className="space-y-1">
+              <label className="block text-[10px] font-bold text-[#71717a] uppercase tracking-wider mb-1.5">
+                Teléfono (10 dígitos) *
+              </label>
+              <div className="relative">
+                <input
+                  type="tel"
+                  maxLength={10}
+                  value={telefono}
+                  onChange={e => setTelefono(e.target.value.replace(/\D/g, ''))}
+                  required
+                  className="w-full bg-[#fafafa] border border-[#e4e4e7] rounded-xl pl-10 pr-4 py-2.5 text-[#09090b] text-sm focus:outline-none focus:border-[#2563eb] focus:bg-white focus:shadow-[0_0_0_3px_rgba(37,99,235,0.1)] transition-all font-semibold"
+                  placeholder="Ej. 4521234567"
+                />
+                <Phone size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#a1a1aa]" />
+              </div>
+            </div>
+
+            {/* Dirección Residencial */}
+            <div className="space-y-1">
+              <label className="block text-[10px] font-bold text-[#71717a] uppercase tracking-wider mb-1.5">
+                Dirección Residencial *
+              </label>
+              <input
+                type="text"
+                value={direccionResidencial}
+                onChange={e => setDireccionResidencial(e.target.value)}
+                required
+                className="w-full bg-[#fafafa] border border-[#e4e4e7] rounded-xl px-4 py-2.5 text-[#09090b] text-sm focus:outline-none focus:border-[#2563eb] focus:bg-white focus:shadow-[0_0_0_3px_rgba(37,99,235,0.1)] transition-all"
+                placeholder="Ej. Calle Juárez #42, Col. Centro"
+              />
+            </div>
+
+            {/* Número Biker */}
+            <div className="space-y-1">
+              <label className="block text-[10px] font-bold text-[#71717a] uppercase tracking-wider mb-1.5">
+                Número Biker (ID de control) *
+              </label>
+              <input
+                type="text"
+                value={numeroBiker}
+                onChange={e => setNumeroBiker(e.target.value)}
+                required
+                className="w-full bg-[#fafafa] border border-[#e4e4e7] rounded-xl px-4 py-2.5 text-[#09090b] text-sm focus:outline-none focus:border-[#2563eb] focus:bg-white focus:shadow-[0_0_0_3px_rgba(37,99,235,0.1)] transition-all font-mono font-bold"
+                placeholder="Ej. B-105"
+              />
+            </div>
+
+            {/* Datos de la Moto */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="block text-[10px] font-bold text-[#71717a] uppercase tracking-wider mb-1.5">
+                  Marca de la Moto *
+                </label>
+                <input
+                  type="text"
+                  value={motoMarca}
+                  onChange={e => setMotoMarca(e.target.value)}
+                  required
+                  className="w-full bg-[#fafafa] border border-[#e4e4e7] rounded-xl px-4 py-2.5 text-[#09090b] text-sm focus:outline-none focus:border-[#2563eb] focus:bg-white focus:shadow-[0_0_0_3px_rgba(37,99,235,0.1)] transition-all"
+                  placeholder="Ej. Honda"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="block text-[10px] font-bold text-[#71717a] uppercase tracking-wider mb-1.5">
+                  Cilindrada / CC *
+                </label>
+                <input
+                  type="text"
+                  value={motoCilindrada}
+                  onChange={e => setMotoCilindrada(e.target.value)}
+                  required
+                  className="w-full bg-[#fafafa] border border-[#e4e4e7] rounded-xl px-4 py-2.5 text-[#09090b] text-sm focus:outline-none focus:border-[#2563eb] focus:bg-white focus:shadow-[0_0_0_3px_rgba(37,99,235,0.1)] transition-all"
+                  placeholder="Ej. 150cc"
+                />
+              </div>
+            </div>
+
+            {/* Color de la Moto */}
+            <div className="space-y-1">
+              <label className="block text-[10px] font-bold text-[#71717a] uppercase tracking-wider mb-1.5">
+                Color de la Moto *
+              </label>
+              <input
+                type="text"
+                value={motoColor}
+                onChange={e => setMotoColor(e.target.value)}
+                required
+                className="w-full bg-[#fafafa] border border-[#e4e4e7] rounded-xl px-4 py-2.5 text-[#09090b] text-sm focus:outline-none focus:border-[#2563eb] focus:bg-white focus:shadow-[0_0_0_3px_rgba(37,99,235,0.1)] transition-all"
+                placeholder="Ej. Negro"
+              />
+            </div>
+
+            {/* PIN y Confirmar PIN */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="block text-[10px] font-bold text-[#71717a] uppercase tracking-wider mb-1.5">
+                  PIN (6 dígitos) *
+                </label>
+                <div className="relative">
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    maxLength={6}
+                    value={pin}
+                    onChange={e => setPin(e.target.value.replace(/\D/g, ''))}
+                    required
+                    className="w-full bg-[#fafafa] border border-[#e4e4e7] rounded-xl pl-9 pr-2 py-2.5 text-[#09090b] text-sm focus:outline-none focus:border-[#2563eb] focus:bg-white focus:shadow-[0_0_0_3px_rgba(37,99,235,0.1)] transition-all font-mono"
+                    placeholder="••••••"
+                  />
+                  <Key size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#a1a1aa]" />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="block text-[10px] font-bold text-[#71717a] uppercase tracking-wider mb-1.5">
+                  Confirmar PIN *
+                </label>
+                <div className="relative">
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    maxLength={6}
+                    value={confirmarPin}
+                    onChange={e => setConfirmarPin(e.target.value.replace(/\D/g, ''))}
+                    required
+                    className="w-full bg-[#fafafa] border border-[#e4e4e7] rounded-xl pl-9 pr-2 py-2.5 text-[#09090b] text-sm focus:outline-none focus:border-[#2563eb] focus:bg-white focus:shadow-[0_0_0_3px_rgba(37,99,235,0.1)] transition-all font-mono"
+                    placeholder="••••••"
+                  />
+                  <Key size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#a1a1aa]" />
+                </div>
+              </div>
+            </div>
+
+            {/* Selector de Flota */}
+            {cargandoFleets ? (
+              <div className="flex items-center gap-2 text-xs text-[#71717a]">
+                <Loader2 className="w-4 h-4 animate-spin text-[#2563eb]" />
+                Cargando flotas disponibles…
+              </div>
+            ) : fleets.length === 0 ? (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-center gap-2">
+                <ShieldAlert className="w-4 h-4 text-red-600 shrink-0" />
+                <p className="text-xs font-semibold text-red-600">No hay ninguna flota de reparto activa disponible.</p>
+              </div>
+            ) : fleets.length > 1 ? (
+              <div className="space-y-1">
+                <label className="block text-[10px] font-bold text-[#71717a] uppercase tracking-wider mb-1.5">
+                  Flota de Reparto *
+                </label>
+                <select
+                  value={fleetId}
+                  onChange={e => setFleetId(e.target.value)}
+                  required
+                  className="w-full bg-[#fafafa] border border-[#e4e4e7] rounded-xl px-4 py-2.5 text-sm text-[#09090b] focus:outline-none focus:border-[#2563eb] focus:bg-white focus:shadow-[0_0_0_3px_rgba(37,99,235,0.1)] transition-all"
+                >
+                  <option value="">Selecciona la empresa de reparto…</option>
+                  {fleets.map(f => (
+                    <option key={f.id} value={f.id}>
+                      {f.nombre === 'Flota Central' || f.nombre === 'flota central' ? 'Bikers Upn' : f.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div className="bg-[#fafafa] border border-[#e4e4e7] rounded-xl px-4 py-2.5 flex items-center gap-2">
+                <Truck className="w-4 h-4 text-[#2563eb]" />
+                <div>
+                  <p className="text-[10px] text-[#71717a] font-semibold">Postulación para:</p>
+                  <p className="text-sm font-bold text-[#09090b]">
+                    {fleets[0].nombre === 'Flota Central' || fleets[0].nombre === 'flota central' ? 'Bikers Upn' : fleets[0].nombre}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Mensajes de feedback */}
+            {mensaje.texto && (
+              <div className={`p-3.5 rounded-xl text-sm font-medium text-center border flex items-center gap-2 justify-center ${
+                mensaje.tipo === 'exito'
+                  ? 'bg-green-50 text-green-700 border-green-200'
+                  : 'bg-red-50 text-red-600 border-red-200'
+              }`}>
+                {mensaje.texto}
+              </div>
+            )}
+
+            {/* Botón de Enviar */}
+            <button
+              type="submit"
+              disabled={registrando || fleets.length === 0}
+              className="w-full bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold text-sm rounded-xl py-3.5 transition-all shadow-sm active:scale-95 disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-2 cursor-pointer"
+            >
+              {registrando ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Enviando solicitud…</span>
+                </>
+              ) : (
+                <span>Enviar Solicitud de Ingreso</span>
+              )}
+            </button>
+          </form>
+        </div>
+
+        <p className="text-center text-xs text-[#a1a1aa] mt-6">
+          Tu registro será evaluado por los administradores de la flota.
         </p>
       </div>
     </main>

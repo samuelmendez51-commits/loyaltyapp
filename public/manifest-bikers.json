@@ -1,0 +1,43 @@
+{
+  "name": "Urban Delivery — Repartidores",
+  "short_name": "Bikers",
+  "description": "Portal móvil para repartidores de la flota de Urban Delivery. Gestión de entregas y GPS en tiempo real.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#dc2626",
+  "orientation": "portrait",
+  "lang": "es",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "/bikers.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/bikers.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Mi Portal",
+      "short_name": "Portal",
+      "description": "Acceder al portal de entregas",
+      "url": "/",
+      "icons": [{ "src": "/bikers.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Postularse",
+      "short_name": "Registro",
+      "description": "Registrarse como repartidor",
+      "url": "/registro",
+      "icons": [{ "src": "/bikers.png", "sizes": "96x96" }]
+    }
+  ]
+}

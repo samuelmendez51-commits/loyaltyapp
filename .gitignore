@@ -43,3 +43,4 @@ next-env.d.ts
 .vercel
 /scratch/
 src/lib/google-key.json  
+mineral-*.json
