@@ -489,7 +489,7 @@ function leerCertificados(): { signerCert: string; signerKey: string; wwdrCert: 
   if (!wwdrCert || !signerCert || !signerKey) {
     console.log('[AppleWallet] 🔍 Intentando cargar certificados desde archivos físicos del servidor...')
     try {
-      const wwdrPath = path.resolve(process.cwd(), 'wwdr.pem')
+      const wwdrPath = path.resolve(/*turbopackIgnore: true*/ process.cwd(), 'wwdr.pem')
       if (fsExistsSync(wwdrPath) && !wwdrCert) {
         wwdrCert = fsReadFileSync(wwdrPath, 'utf8')
         console.log('[AppleWallet] ✅ WWDR cargado desde wwdr.pem (filesystem)')
@@ -497,7 +497,7 @@ function leerCertificados(): { signerCert: string; signerKey: string; wwdrCert: 
     } catch (e: any) { console.warn('[AppleWallet] No se pudo leer wwdr.pem:', e.message) }
 
     try {
-      const passPemPath = path.resolve(process.cwd(), 'pass.pem')
+      const passPemPath = path.resolve(/*turbopackIgnore: true*/ process.cwd(), 'pass.pem')
       if (fsExistsSync(passPemPath) && !signerCert) {
         signerCert = fsReadFileSync(passPemPath, 'utf8')
         console.log('[AppleWallet] ✅ Certificado cargado desde pass.pem (filesystem)')
@@ -505,14 +505,14 @@ function leerCertificados(): { signerCert: string; signerKey: string; wwdrCert: 
     } catch (e: any) { console.warn('[AppleWallet] No se pudo leer pass.pem:', e.message) }
 
     try {
-      const llavePemPath = path.resolve(process.cwd(), 'llave.pem')
+      const llavePemPath = path.resolve(/*turbopackIgnore: true*/ process.cwd(), 'llave.pem')
       if (fsExistsSync(llavePemPath) && !signerKey) {
         signerKey = fsReadFileSync(llavePemPath, 'utf8')
         console.log('[AppleWallet] ✅ Llave cargada desde llave.pem (filesystem)')
       } else if (!signerKey) {
         const alts = ['llave_maestra.key', 'LlaveBurreria.key', 'llave_clasica.pem', 'llave_burreria.key']
         for (const alt of alts) {
-          const altPath = path.resolve(process.cwd(), alt)
+          const altPath = path.resolve(/*turbopackIgnore: true*/ process.cwd(), alt)
           if (fsExistsSync(altPath)) {
             signerKey = fsReadFileSync(altPath, 'utf8')
             console.log(`[AppleWallet] ✅ Llave cargada desde ${alt}`)
@@ -581,7 +581,7 @@ export async function POST(req: Request) {
 
     // Construir el PKPass usando passkit-generator v3 API
     try {
-      const logoPngPath = path.resolve(process.cwd(), 'public/logo.png')
+      const logoPngPath = path.resolve(/*turbopackIgnore: true*/ process.cwd(), 'public/logo.png')
       let baseBuffer: Buffer
       try {
         baseBuffer = fsReadFileSync(logoPngPath) as Buffer
@@ -603,7 +603,7 @@ export async function POST(req: Request) {
               console.log('[AppleWallet] ✅ Logo remoto cargado para POST')
             }
           } else {
-            const localImgPath = path.join(process.cwd(), 'public', logoUrl)
+            const localImgPath = path.join(/*turbopackIgnore: true*/ process.cwd(), 'public', logoUrl)
             if (fsExistsSync(localImgPath)) {
               logoBuffer = fsReadFileSync(localImgPath) as Buffer
               console.log('[AppleWallet] ✅ Logo local cargado para POST')
@@ -624,7 +624,7 @@ export async function POST(req: Request) {
               console.log('[AppleWallet] ✅ Banner remoto cargado para POST')
             }
           } else {
-            const localImgPath = path.join(process.cwd(), 'public', bannerUrl)
+            const localImgPath = path.join(/*turbopackIgnore: true*/ process.cwd(), 'public', bannerUrl)
             if (fsExistsSync(localImgPath)) {
               bannerBuffer = fsReadFileSync(localImgPath) as Buffer
               console.log('[AppleWallet] ✅ Banner local cargado para POST')
@@ -887,7 +887,7 @@ export async function GET(req: Request) {
               bannerBuffer = Buffer.from(await bannerRes.arrayBuffer())
             }
           } else {
-            const localImgPath = path.join(process.cwd(), 'public', bannerUrl)
+            const localImgPath = path.join(/*turbopackIgnore: true*/ process.cwd(), 'public', bannerUrl)
             if (fsExistsSync(localImgPath)) {
               bannerBuffer = fsReadFileSync(localImgPath) as Buffer
             }
@@ -913,7 +913,7 @@ export async function GET(req: Request) {
 
     // Construir el PKPass usando passkit-generator
     try {
-      const logoPngPath = path.resolve(process.cwd(), 'public/logo.png')
+      const logoPngPath = path.resolve(/*turbopackIgnore: true*/ process.cwd(), 'public/logo.png')
       let baseBuffer: Buffer
       try {
         baseBuffer = fsReadFileSync(logoPngPath) as Buffer
@@ -935,7 +935,7 @@ export async function GET(req: Request) {
               console.log('[AppleWallet] ✅ Logo remoto cargado para GET')
             }
           } else {
-            const localImgPath = path.join(process.cwd(), 'public', logoUrl)
+            const localImgPath = path.join(/*turbopackIgnore: true*/ process.cwd(), 'public', logoUrl)
             if (fsExistsSync(localImgPath)) {
               logoBuffer = fsReadFileSync(localImgPath) as Buffer
               console.log('[AppleWallet] ✅ Logo local cargado para GET')
@@ -956,7 +956,7 @@ export async function GET(req: Request) {
               console.log('[AppleWallet] ✅ Banner remoto cargado para GET')
             }
           } else {
-            const localImgPath = path.join(process.cwd(), 'public', bannerUrl)
+            const localImgPath = path.join(/*turbopackIgnore: true*/ process.cwd(), 'public', bannerUrl)
             if (fsExistsSync(localImgPath)) {
               bannerBuffer = fsReadFileSync(localImgPath) as Buffer
               console.log('[AppleWallet] ✅ Banner local cargado para GET')
