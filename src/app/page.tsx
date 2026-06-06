@@ -81,7 +81,7 @@ export default function LandingPage() {
       return `${protocol}://admin.${domain}/superadmin`
     }
     if (session.rol === 'admin_comercio') {
-      return `${protocol}://partners.${session.slug}.${domain}/dashboard`
+      return `${protocol}://${session.slug}.partners.${domain}/dashboard`
     }
     return `${protocol}://${session.slug}.${domain}/cliente`
   }
@@ -95,7 +95,7 @@ export default function LandingPage() {
   const getDemoPartnerUrl = () => {
     const domain = isProduction ? 'loyaltyclub.mx' : 'localhost:3000'
     const protocol = isProduction ? 'https' : 'http'
-    return `${protocol}://partners.laburreria.${domain}/login`
+    return `${protocol}://laburreria.partners.${domain}/login`
   }
 
   const handleBookingSubmit = (e: React.FormEvent) => {

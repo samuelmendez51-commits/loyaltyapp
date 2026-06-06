@@ -438,8 +438,8 @@ export default function SuperAdminPage() {
 
     // Redirigir al subdominio partners del negocio
     const targetHost = isProduction
-      ? `partners.${b.slug}.loyaltyclub.mx`
-      : `partners.${b.slug}.localhost:3000`
+      ? `${b.slug}.partners.loyaltyclub.mx`
+      : `${b.slug}.partners.localhost:3000`
     const protocol = isProduction ? 'https' : 'http'
     window.location.href = `${protocol}://${targetHost}/dashboard`
   }

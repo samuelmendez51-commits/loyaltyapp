@@ -22,29 +22,35 @@ function parseHostname(hostname: string): ParsedDomain {
     return { slug: null, isPartner: false, isAdmin: true }
   }
 
+  // Producción: *.partners.loyaltyclub.mx
+  if (host.endsWith('.partners.loyaltyclub.mx')) {
+    const slug = host.slice(0, -'.partners.loyaltyclub.mx'.length)
+    if (slug) {
+      return { slug, isPartner: true, isAdmin: false }
+    }
+  }
+
   // Producción: *.loyaltyclub.mx
   if (host.endsWith('.loyaltyclub.mx')) {
-    const sub = host.slice(0, -'.loyaltyclub.mx'.length)
-    if (sub && sub !== 'www') {
-      // NIVEL 2: partners.[slug].loyaltyclub.mx
-      if (sub.startsWith('partners.')) {
-        return { slug: sub.slice('partners.'.length), isPartner: true, isAdmin: false }
-      }
-      // NIVEL 3: [slug].loyaltyclub.mx
-      return { slug: sub, isPartner: false, isAdmin: false }
+    const slug = host.slice(0, -'.loyaltyclub.mx'.length)
+    if (slug && slug !== 'www') {
+      return { slug, isPartner: false, isAdmin: false }
+    }
+  }
+
+  // Desarrollo local: *.partners.localhost
+  if (host.endsWith('.partners.localhost')) {
+    const slug = host.slice(0, -'.partners.localhost'.length)
+    if (slug) {
+      return { slug, isPartner: true, isAdmin: false }
     }
   }
 
   // Desarrollo local: *.localhost
   if (host.endsWith('.localhost')) {
-    const sub = host.slice(0, -'.localhost'.length)
-    if (sub && sub !== 'www') {
-      // NIVEL 2: partners.[slug].localhost
-      if (sub.startsWith('partners.')) {
-        return { slug: sub.slice('partners.'.length), isPartner: true, isAdmin: false }
-      }
-      // NIVEL 3: [slug].localhost
-      return { slug: sub, isPartner: false, isAdmin: false }
+    const slug = host.slice(0, -'.localhost'.length)
+    if (slug && slug !== 'www') {
+      return { slug, isPartner: false, isAdmin: false }
     }
   }
 
@@ -74,7 +80,7 @@ export default function proxy(request: NextRequest) {
 
   // Detección de subdominios de Bikers
   const hostLower = hostname.toLowerCase()
-  const isPartnersBikers = hostLower.startsWith('partners.bikers.')
+  const isPartnersBikers = hostLower.startsWith('bikers.partners.')
   const isBikersClean = hostLower.startsWith('bikers.') && !hostLower.includes('partners')
   const isBikerSubdomain = isPartnersBikers || isBikersClean
 
@@ -267,7 +273,7 @@ export default function proxy(request: NextRequest) {
   // ══════════════════════════════════════════════════════════════════════════
   if (slug && !isPartner && !isAdmin) {
 
-    // Bloquear intentos de acceso a rutas administrativas → redirigir a partners.*
+    // Bloquear intentos de acceso a rutas administrativas → redirigir a [slug].partners.*
     if (
       path === '/login' || path.startsWith('/login/') ||
       path === '/dashboard' || path.startsWith('/dashboard/') ||
@@ -276,7 +282,7 @@ export default function proxy(request: NextRequest) {
       path.startsWith('/ajustes')
     ) {
       const url = request.nextUrl.clone()
-      url.hostname = isProduction ? `partners.${slug}.loyaltyclub.mx` : `partners.${slug}.localhost`
+      url.hostname = isProduction ? `${slug}.partners.loyaltyclub.mx` : `${slug}.partners.localhost`
       return NextResponse.redirect(url)
     }
 
@@ -325,8 +331,8 @@ export default function proxy(request: NextRequest) {
     if (rol && rol !== 'superadmin' && bizSlug) {
       const domain = isProduction ? 'loyaltyclub.mx' : 'localhost'
       const redirectUrl = isProduction
-        ? `https://partners.${bizSlug}.${domain}${path}`
-        : `http://partners.${bizSlug}.${domain}:3000${path}`
+        ? `https://${bizSlug}.partners.${domain}${path}`
+        : `http://${bizSlug}.partners.${domain}:3000${path}`
       return NextResponse.redirect(redirectUrl)
     }
     if (!rol) {
@@ -353,8 +359,8 @@ export default function proxy(request: NextRequest) {
       const domain = isProduction ? 'loyaltyclub.mx' : 'localhost'
       const targetPath = rol === 'admin_comercio' ? '/dashboard' : '/escaner'
       const redirectUrl = isProduction
-        ? `https://partners.${bizSlug}.${domain}${targetPath}`
-        : `http://partners.${bizSlug}.${domain}:3000${targetPath}`
+        ? `https://${bizSlug}.partners.${domain}${targetPath}`
+        : `http://${bizSlug}.partners.${domain}:3000${targetPath}`
       return NextResponse.redirect(redirectUrl)
     }
     return NextResponse.next()

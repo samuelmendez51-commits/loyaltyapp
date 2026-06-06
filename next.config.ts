@@ -5,10 +5,10 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   allowedDevOrigins: [
-    'partners.bikers.localhost',
+    'bikers.partners.localhost',
     'bikers.localhost',
     'admin.localhost',
-    'partners.laburreria.localhost',
+    'laburreria.partners.localhost',
     'laburreria.localhost',
     'localhost:3000'
   ],
