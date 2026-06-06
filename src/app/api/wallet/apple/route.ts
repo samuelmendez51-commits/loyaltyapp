@@ -668,6 +668,9 @@ export async function POST(req: Request) {
             { key: 'totales', label: 'ESTAMPILLAS TOTALES', value: String(maxSellos), textAlignment: 'PKTextAlignmentLeft' },
             { key: 'completadas', label: 'ESTAMPILLAS COMPLETADAS', value: String(puntos || 0), textAlignment: 'PKTextAlignmentRight' }
           ],
+          auxiliaryFields: [
+            { key: 'instruccion', label: 'INSTRUCCIÓN', value: 'Presentar en caja para acumular sellos' }
+          ],
           backFields: [
             { key: 'info', label: 'CÓMO ACUMULAR', value: 'Presenta tu código QR en caja para acumular sellos y ganar premios.' },
             { key: 'contacto', label: 'CONTACTO', value: business?.telefono_whatsapp ? `+${business.telefono_whatsapp}` : 'Consulta al cajero' }
@@ -999,6 +1002,9 @@ export async function GET(req: Request) {
           secondaryFields: [
             { key: 'totales', label: 'ESTAMPILLAS TOTALES', value: String(maxSellos), textAlignment: 'PKTextAlignmentLeft' },
             { key: 'completadas', label: 'ESTAMPILLAS COMPLETADAS', value: String(puntos || 0), textAlignment: 'PKTextAlignmentRight' }
+          ],
+          auxiliaryFields: [
+            { key: 'instruccion', label: 'INSTRUCCIÓN', value: 'Presentar en caja para acumular sellos' }
           ],
           backFields: [
             { key: 'info', label: 'CÓMO ACUMULAR', value: 'Presenta tu código QR en caja para acumular sellos y ganar premios.' },
