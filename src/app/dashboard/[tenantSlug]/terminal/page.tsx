@@ -127,6 +127,138 @@ export default function TenantTerminalPage() {
   // Sound ref
   const audioContextRef = useRef<AudioContext | null>(null)
 
+  const printThermalTicket = (order: Order, size: '80mm' | '58mm') => {
+    let iframe = document.getElementById('thermal-print-iframe') as HTMLIFrameElement
+    if (!iframe) {
+      iframe = document.createElement('iframe')
+      iframe.id = 'thermal-print-iframe'
+      iframe.style.position = 'fixed'
+      iframe.style.right = '0'
+      iframe.style.bottom = '0'
+      iframe.style.width = '0'
+      iframe.style.height = '0'
+      iframe.style.border = 'none'
+      document.body.appendChild(iframe)
+    }
+
+    const tenantName = tenant?.tenant_name || 'LoyaltyApp'
+    const widthStyle = size === '80mm' ? '72mm' : '48mm'
+    const fontSize = size === '80mm' ? '12px' : '10px'
+    const borderChar = size === '80mm' ? '='.repeat(42) : '='.repeat(32)
+    const dashedChar = size === '80mm' ? '-'.repeat(42) : '-'.repeat(32)
+
+    const formattedItems = order.items.map((item: any) => {
+      const qtyStr = `${item.qty}x`
+      const priceStr = `$${item.price}`
+      return `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+        <div style="flex: 1; padding-right: 8px; font-weight: bold; overflow-wrap: break-word;">${item.name}</div>
+        <div style="width: 30px; text-align: right; flex-shrink: 0;">${qtyStr}</div>
+        <div style="width: 60px; text-align: right; flex-shrink: 0;">${priceStr}</div>
+      </div>`
+    }).join('')
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Ticket #${order.id.slice(-4).toUpperCase()}</title>
+        <style>
+          @page {
+            margin: 0;
+          }
+          body {
+            margin: 0;
+            padding: 8px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: ${fontSize};
+            width: ${widthStyle};
+            color: #000;
+            background: #fff;
+          }
+          .text-center { text-align: center; }
+          .text-right { text-align: right; }
+          .bold { font-weight: bold; }
+          .divider { margin: 8px 0; font-family: monospace; white-space: pre; }
+          .header-title { font-size: 14px; font-weight: bold; margin-bottom: 2px; }
+          .item-list { margin: 8px 0; }
+        </style>
+      </head>
+      <body>
+        <div class="text-center">
+          <div class="header-title">${tenantName.toUpperCase()}</div>
+          <div class="bold">TICKET DE ORDEN DE COCINA</div>
+          <div>${new Date(order.created_at).toLocaleString('es-MX')}</div>
+        </div>
+        
+        <div class="divider">${borderChar}</div>
+        
+        <div>
+          <span class="bold">ORDEN ID:</span> #${order.id.slice(-4).toUpperCase()}<br/>
+          <span class="bold">TIPO:</span> ${order.tipo.toUpperCase()}<br/>
+          <span class="bold">ESTADO:</span> ${order.estado.toUpperCase()}<br/>
+          ${order.scheduled_pickup_time ? `<span class="bold">ENTREGA:</span> ${new Date(order.scheduled_pickup_time).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}<br/>` : ''}
+          ${order.delivery_token ? `<span class="bold">TOKEN:</span> ${order.delivery_token}<br/>` : ''}
+        </div>
+        
+        <div class="divider">${borderChar}</div>
+        
+        <div class="bold" style="display: flex; justify-content: space-between;">
+          <span style="flex: 1;">PRODUCTO</span>
+          <span style="width: 30px; text-align: right;">CANT</span>
+          <span style="width: 60px; text-align: right;">PRECIO</span>
+        </div>
+        
+        <div class="divider">${dashedChar}</div>
+        
+        <div class="item-list">
+          ${formattedItems}
+        </div>
+        
+        <div class="divider">${dashedChar}</div>
+        
+        <div class="bold" style="display: flex; justify-content: space-between; font-size: 1.1em;">
+          <span>TOTAL:</span>
+          <span>$${order.total}</span>
+        </div>
+        
+        <div class="divider">${borderChar}</div>
+        
+        <div>
+          <span class="bold">CLIENTE:</span> ${order.nombre_cliente || 'Sin nombre'}<br/>
+          <span class="bold">TEL:</span> ${order.telefono_cliente || 'Sin tel'}<br/>
+          ${order.tipo === 'delivery' ? `
+            <span class="bold">DIRECCIÓN:</span><br/>
+            ${order.calle} #${order.numero}<br/>
+            Col. ${order.colonia}<br/>
+          ` : ''}
+          ${order.notas ? `<br/><span class="bold">NOTAS:</span><br/>${order.notas}<br/>` : ''}
+        </div>
+        
+        <div class="divider">${borderChar}</div>
+        
+        <div class="text-center" style="margin-top: 15px; font-size: 9px; color: #555;">
+          LoyaltyApp POS System
+        </div>
+        
+        <script>
+          window.onload = function() {
+            window.focus();
+            window.print();
+          }
+        </script>
+      </body>
+      </html>
+    `
+
+    const doc = iframe.contentWindow?.document || iframe.contentDocument
+    if (doc) {
+      doc.open()
+      doc.write(htmlContent)
+      doc.close()
+    }
+  }
+
   // ── Load Cookies / Local Storage configs ────────────────────────────────────
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -485,14 +617,21 @@ export default function TenantTerminalPage() {
     const mockToken = `MOCK_TRV_${Math.random().toString(36).substr(2, 6).toUpperCase()}`
 
     const acceptedOrder = orders.find(o => o.id === orderId)
-    if (acceptedOrder) {
-      setSimulatedTicket({
-        ...acceptedOrder,
-        estado: 'aprobado',
-        delivery_status: 'SHIPPED_SCHEDULED',
-        scheduled_pickup_time: scheduledPickupTime,
-        delivery_token: mockToken
-      })
+    const orderWithUpdatedState = acceptedOrder ? {
+      ...acceptedOrder,
+      estado: 'aprobado',
+      delivery_status: 'SHIPPED_SCHEDULED',
+      scheduled_pickup_time: scheduledPickupTime,
+      delivery_token: mockToken
+    } : null
+
+    if (orderWithUpdatedState) {
+      if (autoPrintOnAccept) {
+        const activeSize = printers.find(p => p.active)?.name.includes('80mm') ? '80mm' : '58mm'
+        printThermalTicket(orderWithUpdatedState, activeSize)
+      } else {
+        setSimulatedTicket(orderWithUpdatedState)
+      }
     }
 
     setOrders(prev => prev.map(o => {
@@ -882,7 +1021,19 @@ export default function TenantTerminalPage() {
                       <div key={order.id} className="bg-white border border-zinc-200/80 rounded-xl p-3.5 space-y-3 shadow-md">
                         <div className="flex justify-between items-start">
                           <div>
-                            <p className="font-black text-zinc-900 text-base">#{order.id.slice(-4).toUpperCase()}</p>
+                            <div className="flex items-center gap-2">
+                              <p className="font-black text-zinc-900 text-base">#{order.id.slice(-4).toUpperCase()}</p>
+                              <button
+                                onClick={() => {
+                                  const activeSize = printers.find(p => p.active)?.name.includes('80mm') ? '80mm' : '58mm'
+                                  printThermalTicket(order, activeSize)
+                                }}
+                                className="p-1 rounded bg-slate-105 hover:bg-slate-200 text-zinc-600 transition-colors border border-zinc-200 cursor-pointer"
+                                title="Imprimir ticket"
+                              >
+                                <Printer className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                             <p className="text-xs text-zinc-650 font-medium mt-0.5">{order.nombre_cliente}</p>
                           </div>
                           <div className="text-right">
@@ -936,7 +1087,19 @@ export default function TenantTerminalPage() {
                       <div key={order.id} className="bg-white border border-zinc-200/80 rounded-xl p-3.5 space-y-3 shadow-md">
                         <div className="flex justify-between items-start">
                           <div>
-                            <p className="font-black text-zinc-900 text-base">#{order.id.slice(-4).toUpperCase()}</p>
+                            <div className="flex items-center gap-2">
+                              <p className="font-black text-zinc-900 text-base">#{order.id.slice(-4).toUpperCase()}</p>
+                              <button
+                                onClick={() => {
+                                  const activeSize = printers.find(p => p.active)?.name.includes('80mm') ? '80mm' : '58mm'
+                                  printThermalTicket(order, activeSize)
+                                }}
+                                className="p-1 rounded bg-slate-105 hover:bg-slate-200 text-zinc-600 transition-colors border border-zinc-200 cursor-pointer"
+                                title="Imprimir ticket"
+                              >
+                                <Printer className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                             <p className="text-xs text-zinc-605 font-medium mt-0.5">{order.nombre_cliente}</p>
                           </div>
                           <span className="text-[10px] font-bold uppercase py-1 px-2 bg-indigo-50 text-indigo-850 border border-indigo-200 rounded-lg">
@@ -1243,25 +1406,38 @@ ${simulatedTicket.notas ? `NOTAS: ${simulatedTicket.notas}\n` : ''}-------------
               })()}
             </pre>
 
-            <div className="flex gap-3 pt-2">
+            <div className="flex flex-col gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => {
-                  const receipt = `[ESC @ (Initialize)]\n[GS v 0 (Print Logo)]\n[ESC a 1 (Align Center)]\n------------------------------------------\n         ${tenant.tenant_name.toUpperCase()}\n       TICKET DE ORDEN DE COCINA\n------------------------------------------\nORDEN ID : #${simulatedTicket.id.slice(-4).toUpperCase()}\nFECHA    : ${new Date(simulatedTicket.created_at).toLocaleString()}\nTIPO     : ${simulatedTicket.tipo.toUpperCase()}\n------------------------------------------\nPRODUCTO                  CANT.    PRECIO\n------------------------------------------\n${simulatedTicket.items.map(item => `${item.name.padEnd(25)} ${String(item.qty).padStart(2)}x   $${item.price}`).join('\n')}\n------------------------------------------\nTOTAL                             $${simulatedTicket.total}\n------------------------------------------\n[ESC a 0 (Align Left)]\nDIRECCIÓN:\n${simulatedTicket.calle} #${simulatedTicket.numero}\nCol. ${simulatedTicket.colonia}\n${simulatedTicket.notas ? `NOTAS: ${simulatedTicket.notas}\n` : ''}------------------------------------------\n[GS V 66 0 (Feed and Cut Paper)]`;
-                  console.log(receipt);
-                  alert('📋 ¡Comandos ESC/POS copiados en la consola del navegador!');
+                  const activeSize = printers.find(p => p.active)?.name.includes('80mm') ? '80mm' : '58mm'
+                  printThermalTicket(simulatedTicket, activeSize)
                 }}
-                className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 py-3 rounded-xl font-bold text-center border border-zinc-700 cursor-pointer"
+                className="w-full bg-amber-500 hover:bg-amber-600 text-zinc-950 py-3 rounded-xl font-black text-center shadow-md cursor-pointer flex items-center justify-center gap-1.5"
               >
-                Copiar a Consola
+                <Printer className="w-4 h-4" /> Imprimir Ticket Físico
               </button>
-              <button
-                type="button"
-                onClick={() => setSimulatedTicket(null)}
-                className="flex-1 bg-amber-500 hover:bg-amber-600 text-zinc-950 py-3 rounded-xl font-black text-center shadow-md cursor-pointer"
-              >
-                Entendido
-              </button>
+              
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const receipt = `[ESC @ (Initialize)]\n[GS v 0 (Print Logo)]\n[ESC a 1 (Align Center)]\n------------------------------------------\n         ${tenant.tenant_name.toUpperCase()}\n       TICKET DE ORDEN DE COCINA\n------------------------------------------\nORDEN ID : #${simulatedTicket.id.slice(-4).toUpperCase()}\nFECHA    : ${new Date(simulatedTicket.created_at).toLocaleString()}\nTIPO     : ${simulatedTicket.tipo.toUpperCase()}\n------------------------------------------\nPRODUCTO                  CANT.    PRECIO\n------------------------------------------\n${simulatedTicket.items.map(item => `${item.name.padEnd(25)} ${String(item.qty).padStart(2)}x   $${item.price}`).join('\n')}\n------------------------------------------\nTOTAL                             $${simulatedTicket.total}\n------------------------------------------\n[ESC a 0 (Align Left)]\nDIRECCIÓN:\n${simulatedTicket.calle} #${simulatedTicket.numero}\nCol. ${simulatedTicket.colonia}\n${simulatedTicket.notas ? `NOTAS: ${simulatedTicket.notas}\n` : ''}------------------------------------------\n[GS V 66 0 (Feed and Cut Paper)]`;
+                    console.log(receipt);
+                    alert('📋 ¡Comandos ESC/POS copiados en la consola del navegador!');
+                  }}
+                  className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 py-2.5 rounded-xl font-bold text-center border border-zinc-700 cursor-pointer text-xs"
+                >
+                  Copiar ESC/POS
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSimulatedTicket(null)}
+                  className="flex-1 bg-zinc-850 hover:bg-zinc-800 text-zinc-400 py-2.5 rounded-xl font-bold text-center border border-zinc-750 cursor-pointer text-xs"
+                >
+                  Cerrar
+                </button>
+              </div>
             </div>
           </div>
         </div>
