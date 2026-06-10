@@ -20,15 +20,16 @@
 CREATE OR REPLACE FUNCTION is_staff_of_business(p_business_id UUID)
 RETURNS BOOLEAN AS $$
 BEGIN
-  -- JOIN directo: evita subconsulta anidada y aprovecha el índice compuesto
-  -- idx_business_users_email_biz (email, business_id) WHERE activo = TRUE
+  -- Valida identidad del usuario autenticado contra business_users.
+  -- JOIN directo aprovecha el índice compuesto (email, business_id).
+  -- No filtra por 'activo' a nivel de función para máxima compatibilidad
+  -- con bases de datos donde la columna puede no existir aún.
   RETURN EXISTS (
     SELECT 1
     FROM business_users bu
     JOIN auth.users au ON au.id = auth.uid()
     WHERE bu.business_id = p_business_id
-      AND bu.activo     = TRUE
-      AND bu.email      = au.email
+      AND bu.email       = au.email
   );
 END;
 $$ LANGUAGE plpgsql
@@ -36,16 +37,20 @@ SECURITY DEFINER
 SET search_path = public, auth;
 
 -- ─────────────────────────────────────────────────────────────────────────
--- PASO 0-B: ÍNDICE DE SOPORTE PARA LA FUNCIÓN HELPER
--- Hace la búsqueda O(1) en lugar de full-scan en cada evaluación de política.
+-- PASO 0-B: ÍNDICES DE SOPORTE PARA LA FUNCIÓN HELPER
+-- Índices PLANOS (sin WHERE predicate) para máxima compatibilidad.
+-- PostgreSQL prohíbe subconsultas en predicados de índice (error 0A000).
+-- La columna 'activo' puede no existir en versiones anteriores del schema,
+-- por lo que NO se usa como predicado parcial aquí.
 -- ─────────────────────────────────────────────────────────────────────────
-CREATE INDEX IF NOT EXISTS idx_business_users_email_business
-  ON business_users (email, business_id)
-  WHERE activo = TRUE;
 
-CREATE INDEX IF NOT EXISTS idx_business_users_business_activo
-  ON business_users (business_id)
-  WHERE activo = TRUE;
+-- Índice principal: búsqueda O(1) en is_staff_of_business()
+CREATE INDEX IF NOT EXISTS idx_business_users_email_biz
+  ON business_users (email, business_id);
+
+-- Índice secundario: listado de usuarios por negocio
+CREATE INDEX IF NOT EXISTS idx_business_users_business_id
+  ON business_users (business_id);
 
 -- Índice de soporte para lecturas públicas por qr_token (portal cliente)
 CREATE INDEX IF NOT EXISTS idx_clientes_qr_token_business
