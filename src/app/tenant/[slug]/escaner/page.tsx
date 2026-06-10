@@ -141,7 +141,10 @@ export default function EscanerTrabajadores() {
       if (esUUID) {
         query = query.eq('id', criterioLimpio);
       } else {
-        query = query.eq('telefono', criterioLimpio);
+        const cleanDigits = criterioLimpio.replace(/\D/g, '')
+        const last10 = cleanDigits.slice(-10)
+        const telNormalizado = last10.length === 10 ? `+52${last10}` : criterioLimpio
+        query = query.eq('telefono', telNormalizado);
       }
 
       if (activeBizId) {
@@ -191,13 +194,17 @@ export default function EscanerTrabajadores() {
     if (!searchedPhone || !nuevoClienteNombre.trim()) return
     setCargando(true)
     try {
+      const cleanDigits = searchedPhone.replace(/\D/g, '')
+      const last10 = cleanDigits.slice(-10)
+      const telNormalizado = last10.length === 10 ? `+52${last10}` : searchedPhone
+      
       const activeBizId = businessId || business?.id || ''
       const { data, error } = await supabase
         .from('clientes')
         .insert({
           business_id: activeBizId,
-          nombre: nuevoClienteNombre.trim(),
-          telefono: searchedPhone,
+          nombre: nuevoClienteNombre.trim() || null,
+          telefono: telNormalizado,
           puntos: 0,
           visitas: 0,
           bloqueado: false

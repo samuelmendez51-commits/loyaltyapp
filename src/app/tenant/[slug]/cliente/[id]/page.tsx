@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -79,12 +79,18 @@ function RuletaVIP({
   cliente,
   onCerrar,
   onResetPuntos,
+  bloquearCierre = false,
+  activePendingPrize = null,
+  onClaimed,
 }: {
   premios: Premio[]
   business: any
   cliente: any
   onCerrar: () => void
   onResetPuntos: () => void
+  bloquearCierre?: boolean
+  activePendingPrize?: any
+  onClaimed?: () => void
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [girando, setGirando] = useState(false)
@@ -201,7 +207,16 @@ function RuletaVIP({
  
     const n = premiosList.length
     const arcAngle = (2 * Math.PI) / n
-    const idxGanador = Math.floor(Math.random() * n)
+    
+    // Forzar ganador si existe premio inmutable pre-seleccionado
+    let idxGanador = -1
+    if (activePendingPrize) {
+      idxGanador = premiosList.findIndex((p: any) => p.nombre.toLowerCase().trim() === activePendingPrize.premio_nombre.toLowerCase().trim())
+    }
+    if (idxGanador === -1) {
+      idxGanador = Math.floor(Math.random() * n)
+    }
+
     const vueltasExtra = 5 + Math.floor(Math.random() * 3)
     const anguloObjetivo = vueltasExtra * 2 * Math.PI + (2 * Math.PI - idxGanador * arcAngle)
     const anguloInicial = anguloActual
@@ -249,15 +264,23 @@ function RuletaVIP({
       }
     }
  
-    // 2. Registrar en premios_canjes
+    // 2. Registrar/actualizar en premios_canjes
     try {
-      await supabase
-        .from('premios_canjes')
-        .insert({
-          cliente_id: cliente.id,
-          premio_nombre: premioGanado.nombre,
-          estado: 'Pendiente'
-        })
+      if (activePendingPrize) {
+        await supabase
+          .from('premios_canjes')
+          .update({ estado: 'Reclamado' })
+          .eq('id', activePendingPrize.id)
+      } else {
+        await supabase
+          .from('premios_canjes')
+          .insert({
+            cliente_id: cliente.id,
+            premio_nombre: premioGanado.nombre,
+            estado: 'Reclamado'
+          })
+      }
+      if (onClaimed) onClaimed()
     } catch (e) {
       console.error('[Ruleta] Error al guardar premios_canjes:', e)
     }
@@ -275,9 +298,11 @@ function RuletaVIP({
       <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden animate-slideUp">
         {/* Header */}
         <div className="relative p-6 pb-3 border-b border-[#f0f0f0]">
-          <button onClick={onCerrar} className="absolute top-4 right-4 w-8 h-8 rounded-full bg-[#fafafa] hover:bg-[#f4f4f5] flex items-center justify-center transition-colors">
-            <X className="w-4 h-4 text-[#71717a]" />
-          </button>
+          {!bloquearCierre && (
+            <button onClick={onCerrar} className="absolute top-4 right-4 w-8 h-8 rounded-full bg-[#fafafa] hover:bg-[#f4f4f5] flex items-center justify-center transition-colors">
+              <X className="w-4 h-4 text-[#71717a]" />
+            </button>
+          )}
           <div className="text-center">
             <div className="text-3xl mb-1">🎰</div>
             <h2 className="text-lg font-bold text-[#09090b] tracking-tight">¡Ruleta de Premios VIP!</h2>
@@ -365,6 +390,7 @@ export default function TarjetaLealtadFinal() {
   const [osDetectado, setOsDetectado] = useState<'ios' | 'android' | 'otro'>('ios')
   const [menuDigital, setMenuDigital] = useState<any>(null)
   const [ultimoPedidoTotal, setUltimoPedidoTotal] = useState<number>(0)
+  const [activePendingPrize, setActivePendingPrize] = useState<any>(null)
 
   const [linkFacebook, setLinkFacebook] = useState('')
   const [linkInstagram, setLinkInstagram] = useState('')
@@ -566,232 +592,268 @@ export default function TarjetaLealtadFinal() {
   }, [cliente?.id])
 
   useEffect(() => {
-    const cargarDatos = async () => {
-      if (!id) return
-      const { data: clienteData } = await supabase
-        .from('clientes')
-        .select('*')
-        .eq('id', id)
-        .maybeSingle()
+    if (!id) return
 
-      if (clienteData) {
-        setCliente(clienteData)
-        
-        // Cargar pedido activo de delivery (creado en las últimas 2 horas con estado de pre-despacho)
-        try {
-          const dosHorasAtras = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
-          const { data: ord } = await supabase
-            .from('orders')
-            .select('*')
-            .eq('cliente_id', clienteData.id)
-            .eq('tipo', 'delivery')
-            .in('delivery_status', ['SHIPPED_SCHEDULED', 'SHIPPED_IMMEDIATE'])
-            .gt('created_at', dosHorasAtras)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle()
-
-          if (ord) {
-            setActiveOrder(ord)
-          }
-        } catch (err) {
-          console.warn('Error al cargar pedido activo del cliente:', err)
-        }
-        setForm(prev => ({
-          ...prev,
-          nombre: clienteData.nombre || '',
-          telefono: clienteData.telefono || ''
-        }))
-        setTelefonoAutocompletar(clienteData.telefono || '')
-        if (clienteData.business_id) {
-          const { data: bizData } = await supabase
-            .from('businesses')
-            .select('*')
-            .eq('id', clienteData.business_id)
-            .maybeSingle()
-          if (bizData) {
-            // ── Guardia cross-tenant ──
-            // Impide que tenantB.loyaltyclub.mx/cliente/{idDeTenantA} muestre datos ajenos
-            if (slug && bizData.slug !== slug) {
-              setCargando(false)
-              return // Tarjeta no pertenece a este negocio
-            }
-            setBusiness({ ...bizData, name: bizData.nombre })
-
-            // Cargar redes sociales y horarios comerciales
-            let linkFb = (bizData as any).link_facebook || ''
-            let linkIg = (bizData as any).link_instagram || ''
-            let linkTk = (bizData as any).link_tiktok || ''
-            let linkYt = (bizData as any).link_youtube || ''
-            let horarioSem = (bizData as any).horario_semanal || null
-
-            if (bizData.direccion && bizData.direccion.includes('{')) {
-              try {
-                const jsonStart = bizData.direccion.indexOf('{')
-                const jsonStr = bizData.direccion.substring(jsonStart)
-                const parsed = JSON.parse(jsonStr)
-                if (parsed.facebook) linkFb = parsed.facebook
-                if (parsed.instagram) linkIg = parsed.instagram
-                if (parsed.tiktok) linkTk = parsed.tiktok
-                if (parsed.youtube) linkYt = parsed.youtube
-                if (parsed.horario_semanal) horarioSem = parsed.horario_semanal
-              } catch (err) {
-                console.warn("Error parsing schedule fallback JSON in client portal:", err)
-              }
-            }
-
-            setLinkFacebook(linkFb)
-            setLinkInstagram(linkIg)
-            setLinkTiktok(linkTk)
-            setLinkYoutube(linkYt)
-
-            const horarioDefault = {
-              lunes: { cerrado: true, apertura: '14:00', cierre: '22:00' },
-              martes: { cerrado: false, apertura: '14:00', cierre: '21:30' },
-              miercoles: { cerrado: false, apertura: '14:00', cierre: '21:30' },
-              jueves: { cerrado: false, apertura: '14:00', cierre: '21:30' },
-              viernes: { cerrado: false, apertura: '14:00', cierre: '22:00' },
-              sabado: { cerrado: false, apertura: '14:00', cierre: '22:00' },
-              domingo: { cerrado: false, apertura: '14:00', cierre: '21:30' }
-            }
-            const horarioFinal = horarioSem || horarioDefault
-            setHorarioSemanal(horarioFinal)
-
-            // Validar si está cerrado por el horario comercial semanal
-            const estaCerrado = verificarHorarioNegocio(horarioFinal)
-            setFueraDeHorario(estaCerrado)
-
-            const diasSemana = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado']
-            const diaHoy = diasSemana[new Date().getDay()]
-            const configHoy = horarioFinal[diaHoy]
-            if (configHoy) {
-              setHoraAperturaHoy(configHoy.apertura || '14:00')
-              setHoraCierreHoy(configHoy.cierre || '22:00')
-            }
-          }
-
-          // Cargar premios del negocio
-          const { data: premiosData } = await (supabase as any)
-            .from('loyalty_rewards')
-            .select('*')
-            .eq('business_id', clienteData.business_id)
-            .eq('activo', true)
-            .order('sello_requerido')
-          if (premiosData) setPremios(premiosData as Premio[])
-
-
-          // Cargar menú digital
-          const { data: menuData } = await supabase
-            .from('menus_digitales')
-            .select('*')
-            .eq('business_id', clienteData.business_id)
-            .eq('activo', true)
-            .maybeSingle()
-          if (menuData) setMenuDigital(menuData)
-
-          // Cargar grupos del menú
-          try {
-            const { data: gData } = await supabase
-              .from('menu_groups')
-              .select('*')
-              .eq('business_id', clienteData.business_id)
-              .eq('activo', true)
-              .in('tipo_menu', [tipoMenu, 'ambos'])
-              .order('orden')
-            if (gData) {
-              setGrupos(gData)
-              if (gData.length > 0) setGrupoActivo(gData[0].id)
-            }
-          } catch (e) {
-            console.warn('Error loading menu groups:', e)
-          }
-
-          // Cargar productos con modificadores y saneamiento
-          try {
-            const { data: pData } = await supabase
-              .from('menu_products')
-              .select('*, product_modifiers(*, modifier_options(*))')
-              .eq('business_id', clienteData.business_id)
-            if (pData) {
-              const ahora = new Date()
-              let huboCambio = false
-
-              const productosProcesados = await Promise.all(pData.map(async (prod: any) => {
-                if (!prod.disponible && prod.suspension_hasta && new Date(prod.suspension_hasta) < ahora) {
-                  await supabase
-                    .from('menu_products')
-                    .update({ disponible: true, suspension_tipo: 'indefinida', suspension_hasta: null })
-                    .eq('id', prod.id)
-                  huboCambio = true
-                  return { ...prod, disponible: true, suspension_tipo: 'indefinida', suspension_hasta: null }
-                }
-                return prod
-              }))
-
-              const disponibles = productosProcesados.filter((p: any) => p.disponible)
-              setProductos(disponibles as MenuProduct[])
-            }
-          } catch (e) {
-            console.warn('Error loading menu products:', e)
-          }
-
-          // Cargar Programa de Fidelidad Activo (Defensivo por si no se han corrido las migraciones aún)
-          try {
-            const { data: progActivo } = await supabase
-              .from('programas_fidelidad')
-              .select('id, nombre_club, logo_url, portada_url, total_estampillas')
-              .eq('business_id', clienteData.business_id)
-              .eq('activo', true)
-              .maybeSingle()
-            if (progActivo) {
-              setProgramaActivo(progActivo)
-            }
-          } catch (e) {
-            console.warn('La tabla de programas_fidelidad o sus columnas logo_url/portada_url no están listas.', e)
+    const channel = supabase
+      .channel(`cliente-updates-${id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'clientes',
+          filter: `id=eq.${id}`
+        },
+        (payload) => {
+          const updatedCli = payload.new as any
+          if (updatedCli) {
+            setCliente(updatedCli)
+            cargarDatos()
           }
         }
+      )
+      .subscribe()
 
-        const { data: couponData } = await supabase
-          .from('tracking_events')
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [id])
+
+  const cargarDatos = useCallback(async () => {
+    if (!id) return
+    const { data: clienteData } = await supabase
+      .from('clientes')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle()
+
+    if (clienteData) {
+      setCliente(clienteData)
+      
+      // Cargar pedido activo de delivery (creado en las últimas 2 horas con estado de pre-despacho)
+      try {
+        const dosHorasAtras = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
+        const { data: ord } = await supabase
+          .from('orders')
           .select('*')
           .eq('cliente_id', clienteData.id)
-          .eq('event_type', 'reward_generated')
-          .eq('cupon_canjeado', false)
+          .eq('tipo', 'delivery')
+          .in('delivery_status', ['SHIPPED_SCHEDULED', 'SHIPPED_IMMEDIATE'])
+          .gt('created_at', dosHorasAtras)
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle()
-        if (couponData) setActiveCoupon(couponData)
 
-        // Cargar el total del último pedido registrado del cliente
+        if (ord) {
+          setActiveOrder(ord)
+        }
+      } catch (err) {
+        console.warn('Error al cargar pedido activo del cliente:', err)
+      }
+
+      // Cargar premio de ruleta pendiente si existe
+      try {
+        const { data: pending } = await supabase
+          .from('premios_canjes')
+          .select('*')
+          .eq('cliente_id', clienteData.id)
+          .eq('estado', 'Pendiente')
+          .order('creado_en', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        
+        setActivePendingPrize(pending || null)
+      } catch (err) {
+        console.warn('Error al cargar premio pendiente:', err)
+      }
+
+      setForm(prev => ({
+        ...prev,
+        nombre: clienteData.nombre || '',
+        telefono: clienteData.telefono || ''
+      }))
+      setTelefonoAutocompletar(clienteData.telefono || '')
+      if (clienteData.business_id) {
+        const { data: bizData } = await supabase
+          .from('businesses')
+          .select('*')
+          .eq('id', clienteData.business_id)
+          .maybeSingle()
+        if (bizData) {
+          // ── Guardia cross-tenant ──
+          if (slug && bizData.slug !== slug) {
+            setCargando(false)
+            return
+          }
+          setBusiness({ ...bizData, name: bizData.nombre })
+
+          let linkFb = (bizData as any).link_facebook || ''
+          let linkIg = (bizData as any).link_instagram || ''
+          let linkTk = (bizData as any).link_tiktok || ''
+          let linkYt = (bizData as any).link_youtube || ''
+          let horarioSem = (bizData as any).horario_semanal || null
+
+          if (bizData.direccion && bizData.direccion.includes('{')) {
+            try {
+              const jsonStart = bizData.direccion.indexOf('{')
+              const jsonStr = bizData.direccion.substring(jsonStart)
+              const parsed = JSON.parse(jsonStr)
+              if (parsed.facebook) linkFb = parsed.facebook
+              if (parsed.instagram) linkIg = parsed.instagram
+              if (parsed.tiktok) linkTk = parsed.tiktok
+              if (parsed.youtube) linkYt = parsed.youtube
+              if (parsed.horario_semanal) horarioSem = parsed.horario_semanal
+            } catch (err) {
+              console.warn("Error parsing schedule fallback JSON in client portal:", err)
+            }
+          }
+
+          setLinkFacebook(linkFb)
+          setLinkInstagram(linkIg)
+          setLinkTiktok(linkTk)
+          setLinkYoutube(linkYt)
+
+          const horarioDefault = {
+            lunes: { cerrado: true, apertura: '14:00', cierre: '22:00' },
+            martes: { cerrado: false, apertura: '14:00', cierre: '21:30' },
+            miercoles: { cerrado: false, apertura: '14:00', cierre: '21:30' },
+            jueves: { cerrado: false, apertura: '14:00', cierre: '21:30' },
+            viernes: { cerrado: false, apertura: '14:00', cierre: '22:00' },
+            sabado: { cerrado: false, apertura: '14:00', cierre: '22:00' },
+            domingo: { cerrado: false, apertura: '14:00', cierre: '21:30' }
+          }
+          const horarioFinal = horarioSem || horarioDefault
+          setHorarioSemanal(horarioFinal)
+
+          const estaCerrado = verificarHorarioNegocio(horarioFinal)
+          setFueraDeHorario(estaCerrado)
+
+          const diasSemana = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado']
+          const diaHoy = diasSemana[new Date().getDay()]
+          const configHoy = horarioFinal[diaHoy]
+          if (configHoy) {
+            setHoraAperturaHoy(configHoy.apertura || '14:00')
+            setHoraCierreHoy(configHoy.cierre || '22:00')
+          }
+        }
+
+        const { data: premiosData } = await (supabase as any)
+          .from('loyalty_rewards')
+          .select('*')
+          .eq('business_id', clienteData.business_id)
+          .eq('activo', true)
+          .order('sello_requerido')
+        if (premiosData) setPremios(premiosData as Premio[])
+
+        const { data: menuData } = await supabase
+          .from('menus_digitales')
+          .select('*')
+          .eq('business_id', clienteData.business_id)
+          .eq('activo', true)
+          .maybeSingle()
+        if (menuData) setMenuDigital(menuData)
+
         try {
-          const { data: lastOrder } = await supabase
-            .from('orders')
-            .select('total')
-            .eq('cliente_id', clienteData.id)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle()
-          
-          if (lastOrder) {
-            setUltimoPedidoTotal(Number(lastOrder.total) || 0)
+          const { data: gData } = await supabase
+            .from('menu_groups')
+            .select('*')
+            .eq('business_id', clienteData.business_id)
+            .eq('activo', true)
+            .in('tipo_menu', [tipoMenu, 'ambos'])
+            .order('orden')
+          if (gData) {
+            setGrupos(gData)
+            if (gData.length > 0) setGrupoActivo(gData[0].id)
           }
         } catch (e) {
-          console.warn('Error al cargar el último pedido del cliente:', e)
+          console.warn('Error loading menu groups:', e)
         }
-      } else {
-        if (slug) {
-          const { data: bizData } = await supabase
-            .from('businesses')
-            .select('*')
-            .eq('slug', slug)
+
+        try {
+          const { data: pData } = await supabase
+            .from('menu_products')
+            .select('*, product_modifiers(*, modifier_options(*))')
+            .eq('business_id', clienteData.business_id)
+          if (pData) {
+            const ahora = new Date()
+            let huboCambio = false
+
+            const productosProcesados = await Promise.all(pData.map(async (prod: any) => {
+              if (!prod.disponible && prod.suspension_hasta && new Date(prod.suspension_hasta) < ahora) {
+                await supabase
+                  .from('menu_products')
+                  .update({ disponible: true, suspension_tipo: 'indefinida', suspension_hasta: null })
+                  .eq('id', prod.id)
+                huboCambio = true
+                return { ...prod, disponible: true, suspension_tipo: 'indefinida', suspension_hasta: null }
+              }
+              return prod
+            }))
+
+            const disponibles = productosProcesados.filter((p: any) => p.disponible)
+            setProductos(disponibles as MenuProduct[])
+          }
+        } catch (e) {
+          console.warn('Error loading menu products:', e)
+        }
+
+        try {
+          const { data: progActivo } = await supabase
+            .from('programas_fidelidad')
+            .select('id, nombre_club, logo_url, portada_url, total_estampillas')
+            .eq('business_id', clienteData.business_id)
+            .eq('activo', true)
             .maybeSingle()
-          if (bizData) setBusiness({ ...bizData, name: bizData.nombre })
+          if (progActivo) {
+            setProgramaActivo(progActivo)
+          }
+        } catch (e) {
+          console.warn('La tabla de programas_fidelidad o sus columnas logo_url/portada_url no están listas.', e)
         }
       }
-      setCargando(false)
+
+      const { data: couponData } = await supabase
+        .from('tracking_events')
+        .select('*')
+        .eq('cliente_id', clienteData.id)
+        .eq('event_type', 'reward_generated')
+        .eq('cupon_canjeado', false)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (couponData) setActiveCoupon(couponData)
+
+      try {
+        const { data: lastOrder } = await supabase
+          .from('orders')
+          .select('total')
+          .eq('cliente_id', clienteData.id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        
+        if (lastOrder) {
+          setUltimoPedidoTotal(Number(lastOrder.total) || 0)
+        }
+      } catch (e) {
+        console.warn('Error al cargar el último pedido del cliente:', e)
+      }
+    } else {
+      if (slug) {
+        const { data: bizData } = await supabase
+          .from('businesses')
+          .select('*')
+          .eq('slug', slug)
+          .maybeSingle()
+        if (bizData) setBusiness({ ...bizData, name: bizData.nombre })
+      }
     }
+    setCargando(false)
+  }, [id, slug, tipoMenu])
+
+  useEffect(() => {
     cargarDatos()
-  }, [id])
+  }, [cargarDatos])
 
   const generarPaseGoogle = async () => {
     setGenerandoGoogle(true)
@@ -840,6 +902,12 @@ export default function TarjetaLealtadFinal() {
 
   // La ruleta solo se activa si tiene la estructura y cumple el monto mínimo de su última compra
   const tieneRuletaActiva = tieneEstructuraRuleta && cumpleMontoMinimoRuleta
+
+  useEffect(() => {
+    if (tieneRuletaActiva) {
+      setMostrarRuleta(true)
+    }
+  }, [tieneRuletaActiva])
 
   // ── Textos Dinámicos Personalizables ──
   const labels = {
@@ -1313,6 +1381,9 @@ _Pedido procesado a través de LoyaltyApp VIP_`
           cliente={cliente}
           onCerrar={() => setMostrarRuleta(false)}
           onResetPuntos={() => setCliente((prev: any) => prev ? { ...prev, puntos: 0 } : null)}
+          bloquearCierre={tieneRuletaActiva}
+          activePendingPrize={activePendingPrize}
+          onClaimed={() => setActivePendingPrize(null)}
         />
       )}
 

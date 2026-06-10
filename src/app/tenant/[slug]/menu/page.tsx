@@ -653,10 +653,21 @@ _Pedido procesado a través de LoyaltyApp VIP_`
 
   const verificarTelefono = async () => {
     if (!business) return
+    const cleanDigits = (form.telefono || '').replace(/\D/g, '')
+    const last10 = cleanDigits.slice(-10)
+    if (last10.length !== 10) {
+      alert('Por favor ingresa un teléfono válido de 10 dígitos.')
+      return
+    }
+    const telNormalizado = `+52${last10}`
+    
+    // Actualizar estado del form con el teléfono limpio
+    setForm(prev => ({ ...prev, telefono: telNormalizado }))
+
     const { data } = await supabase
       .from('clientes')
       .select('*')
-      .eq('telefono', form.telefono)
+      .eq('telefono', telNormalizado)
       .eq('business_id', business.id)
       .maybeSingle()
     setClienteExistente(data)
@@ -787,9 +798,13 @@ _Pedido procesado a través de LoyaltyApp VIP_`
     if (!business) return
     setEnviando(true)
 
+    const cleanDigits = (form.telefono || '').replace(/\D/g, '')
+    const last10 = cleanDigits.slice(-10)
+    const telNormalizado = last10.length === 10 ? `+52${last10}` : form.telefono
+
     const { data: nuevoCliente } = await supabase.from('clientes').insert({
-      nombre: form.nombre,
-      telefono: form.telefono,
+      nombre: form.nombre || null,
+      telefono: telNormalizado,
       puntos: 0,
       business_id: business.id,
     }).select().single()

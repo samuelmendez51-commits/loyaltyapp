@@ -500,6 +500,7 @@ export default function DashboardPage() {
 
   // Producto Form / Edición
   const [productoAEditar, setProductoAEditar] = useState<any>(null)
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [nombreProd, setNombreProd] = useState('')
   const [descProd, setDescProd] = useState('')
   const [precioProd, setPrecioProd] = useState('')
@@ -678,13 +679,16 @@ export default function DashboardPage() {
           // 2. Procesar filas
           rows.slice(startIdx).forEach(row => {
             if (telIdx >= row.length || !row[telIdx]) return
-            const tel = row[telIdx].toString().replace(/[^0-9]/g, '').slice(-10)
+            const rawTel = row[telIdx].toString()
+            const cleanDigits = rawTel.replace(/\D/g, '')
+            const last10 = cleanDigits.slice(-10)
             const nom = nameIdx !== -1 && nameIdx < row.length && row[nameIdx] 
               ? row[nameIdx].toString().trim() 
               : ''
             
-            if (tel.length === 10) {
-              todosLosClientes.push({ nombre: nom || `Cliente ${tel}`, telefono: tel })
+            if (last10.length === 10) {
+              const tel = `+52${last10}`
+              todosLosClientes.push({ nombre: nom || null as any, telefono: tel })
             }
           })
           
@@ -1802,6 +1806,7 @@ export default function DashboardPage() {
       setDisponibleProd(true)
       setEsUpsellProd(false)
       setGroupIdProd('')
+      setIsEditModalOpen(false)
       cargarDatosMenu(businessId)
     }
   }
@@ -2341,8 +2346,19 @@ export default function DashboardPage() {
 
   const eliminarCliente = async (id: string) => {
     if (!confirm('¿Eliminar este socio VIP definitivamente?')) return
-    await supabase.from('clientes').delete().eq('id', id)
-    cargarDatos()
+    try {
+      await supabase.from('tracking_events').delete().eq('cliente_id', id)
+      await supabase.from('historial_puntos').delete().eq('cliente_id', id)
+      await supabase.from('orders').delete().eq('cliente_id', id)
+      await supabase.from('premios_canjes').delete().eq('cliente_id', id)
+      await supabase.from('roulette_spins').delete().eq('cliente_id', id)
+      const { error } = await supabase.from('clientes').delete().eq('id', id)
+      if (error) throw error
+      alert('✅ Socio VIP eliminado permanentemente')
+      cargarDatos()
+    } catch (e: any) {
+      alert('Error al eliminar socio VIP: ' + e.message)
+    }
   }
 
   const abrirEditarCliente = (c: Cliente) => {
@@ -2361,11 +2377,12 @@ export default function DashboardPage() {
       return
     }
 
-    const telLimpio = editCliTelefono.replace(/\D/g, '')
-    if (telLimpio.length !== 10) {
+    const last10 = editCliTelefono.replace(/\D/g, '').slice(-10)
+    if (last10.length !== 10) {
       alert('El teléfono debe tener exactamente 10 dígitos.')
       return
     }
+    const telLimpio = `+52${last10}`
 
     setGuardandoEdicionCli(true)
     try {
@@ -3984,65 +4001,125 @@ export default function DashboardPage() {
                 {/* 3. GESTIÓN DE PRODUCTOS */}
                 {subPestañaMenu === 'productos' && (
                   <div className="space-y-6 animate-fadeIn">
-                    {/* Formulario */}
-                    <div className="bg-[#fafafa] border border-[#e4e4e7] p-5 rounded-2xl space-y-4">
-                      <h4 className="text-xs font-bold text-[#09090b] uppercase tracking-wider">
-                        {productoAEditar ? '✏️ Editar Producto' : '➕ Agregar Nuevo Producto'}
-                      </h4>
+                    {/* Header con botón para abrir modal */}
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-[#f4f4f5] pb-4">
+                      <div>
+                        <p className="text-xs text-[#71717a] font-medium leading-relaxed">
+                          Administra los productos de tu menú, precios y modificadores.
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setProductoAEditar(null);
+                          setNombreProd('');
+                          setDescProd('');
+                          setPrecioProd('');
+                          setImagenProdUrl('');
+                          setDisponibleProd(true);
+                          setEsUpsellProd(false);
+                          setGroupIdProd('');
+                          setIsEditModalOpen(true);
+                        }}
+                        className="bg-[#09090b] hover:bg-zinc-800 text-white font-black text-xs py-3 px-6 rounded-2xl transition-all shadow-md shrink-0 flex items-center gap-2"
+                      >
+                        <span>➕</span> Crear Producto
+                      </button>
+                    </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                          <label className={LBL}>Nombre Producto *</label>
-                          <input type="text" value={nombreProd} onChange={e => setNombreProd(e.target.value)} className={IC + ' bg-white'} placeholder="Alitas 16 piezas, Hamburguesa Especial" />
-                        </div>
-                        <div>
-                          <label className={LBL}>Categoría vinculada *</label>
-                          <select value={groupIdProd} onChange={e => setGroupIdProd(e.target.value)} className={IC + ' bg-white font-bold'}>
-                            <option value="">-- Elige Categoría --</option>
-                            {menuGroups.map(g => (
-                              <option key={g.id} value={g.id}>{g.nombre} ({g.tipo_menu})</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <label className={LBL}>Precio unitario ($) *</label>
-                          <input type="number" value={precioProd} onChange={e => setPrecioProd(e.target.value)} className={IC + ' bg-white'} placeholder="180" />
-                        </div>
-                        <div>
-                          <label className={LBL}>Imagen del producto (URL o Subir archivo)</label>
-                          <div className="flex gap-2">
-                            <input type="text" value={imagenProdUrl} onChange={e => setImagenProdUrl(e.target.value)} className={IC + ' bg-white flex-1'} placeholder="https://..." />
-                            <label className="bg-[#09090b] hover:bg-zinc-800 text-white text-xs font-bold px-3 py-3 rounded-xl transition-all cursor-pointer flex items-center justify-center shrink-0">
-                              {subiendoImgProd ? 'Subiendo...' : '📸 Subir'}
-                              <input type="file" accept="image/*" hidden onChange={e => { if (e.target.files?.[0]) subirImagenProd(e.target.files[0]) }} />
-                            </label>
+                    {/* MODAL PARA CREAR Y EDITAR PRODUCTO */}
+                    {isEditModalOpen && (
+                      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                        <div className="bg-white border border-[#e4e4e7] rounded-3xl p-6 w-full max-w-xl shadow-2xl relative animate-fadeIn text-[#09090b] max-h-[90vh] overflow-y-auto">
+                          {/* Botón Cerrar */}
+                          <button 
+                            onClick={() => {
+                              setIsEditModalOpen(false);
+                              setProductoAEditar(null);
+                              setNombreProd('');
+                              setDescProd('');
+                              setPrecioProd('');
+                              setImagenProdUrl('');
+                              setDisponibleProd(true);
+                              setEsUpsellProd(false);
+                              setGroupIdProd('');
+                            }}
+                            className="absolute top-4 right-4 w-8 h-8 rounded-full bg-[#fafafa] hover:bg-[#f4f4f5] flex items-center justify-center transition-colors text-[#71717a]"
+                          >
+                            <span className="text-base">✕</span>
+                          </button>
+
+                          <h3 className="text-lg font-black text-[#09090b] tracking-tight mb-4">
+                            {productoAEditar ? '✏️ Editar Producto' : '➕ Crear Producto'}
+                          </h3>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-left">
+                            <div>
+                              <label className={LBL}>Nombre Producto *</label>
+                              <input type="text" value={nombreProd} onChange={e => setNombreProd(e.target.value)} className={IC + ' bg-white'} placeholder="Alitas 16 piezas, Hamburguesa Especial" />
+                            </div>
+                            <div>
+                              <label className={LBL}>Categoría vinculada *</label>
+                              <select value={groupIdProd} onChange={e => setGroupIdProd(e.target.value)} className={IC + ' bg-white font-bold'}>
+                                <option value="">-- Elige Categoría --</option>
+                                {menuGroups.map(g => (
+                                  <option key={g.id} value={g.id}>{g.nombre} ({g.tipo_menu})</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className={LBL}>Precio unitario ($) *</label>
+                              <input type="number" value={precioProd} onChange={e => setPrecioProd(e.target.value)} className={IC + ' bg-white'} placeholder="180" />
+                            </div>
+                            <div>
+                              <label className={LBL}>Imagen del producto (URL o Subir archivo)</label>
+                              <div className="flex gap-2">
+                                <input type="text" value={imagenProdUrl} onChange={e => setImagenProdUrl(e.target.value)} className={IC + ' bg-white flex-1'} placeholder="https://..." />
+                                <label className="bg-[#09090b] hover:bg-zinc-800 text-white text-xs font-bold px-3 py-3 rounded-xl transition-all cursor-pointer flex items-center justify-center shrink-0">
+                                  {subiendoImgProd ? 'Subiendo...' : '📸 Subir'}
+                                  <input type="file" accept="image/*" hidden onChange={e => { if (e.target.files?.[0]) subirImagenProd(e.target.files[0]) }} />
+                                </label>
+                              </div>
+                            </div>
+                            <div className="sm:col-span-2">
+                              <label className={LBL}>Descripción del Producto / Ingredientes</label>
+                              <textarea value={descProd} onChange={e => setDescProd(e.target.value)} className={IC + ' bg-white h-20 py-2'} placeholder="Ingredientes, porciones, detalles..." />
+                            </div>
+                            <div className="flex items-center gap-6">
+                              <label className="flex items-center gap-2 text-xs font-semibold text-[#3f3f46] cursor-pointer">
+                                <input type="checkbox" checked={disponibleProd} onChange={e => setDisponibleProd(e.target.checked)} className="rounded border-[#e4e4e7] text-[#dc2626] focus:ring-[#dc2626]" />
+                                ¿Disponible hoy?
+                              </label>
+                              <label className="flex items-center gap-2 text-xs font-semibold text-[#3f3f46] cursor-pointer">
+                                <input type="checkbox" checked={esUpsellProd} onChange={e => setEsUpsellProd(e.target.checked)} className="rounded border-[#e4e4e7] text-[#dc2626] focus:ring-[#dc2626]" />
+                                ¿Ofrecer como Upsell al final?
+                              </label>
+                            </div>
+                          </div>
+
+                          <div className="flex gap-3 border-t border-[#e4e4e7] pt-4 mt-4">
+                            <button 
+                              onClick={() => {
+                                setIsEditModalOpen(false);
+                                setProductoAEditar(null);
+                                setNombreProd('');
+                                setDescProd('');
+                                setPrecioProd('');
+                                setImagenProdUrl('');
+                                setDisponibleProd(true);
+                                setEsUpsellProd(false);
+                                setGroupIdProd('');
+                              }} 
+                              className="flex-1 border border-[#e4e4e7] text-[#52525b] hover:bg-[#fafafa] py-3 rounded-xl font-bold transition-all text-xs"
+                            >
+                              Cancelar
+                            </button>
+                            <button onClick={guardarProducto} disabled={guardandoProd || !nombreProd || !precioProd || !groupIdProd} className="flex-1 btn-primary py-3 rounded-xl text-xs font-black uppercase tracking-widest">
+                              {guardandoProd ? 'Guardando...' : '💾 Guardar Producto'}
+                            </button>
                           </div>
                         </div>
-                        <div className="sm:col-span-2">
-                          <label className={LBL}>Descripción del Producto / Ingredientes</label>
-                          <textarea value={descProd} onChange={e => setDescProd(e.target.value)} className={IC + ' bg-white h-20 py-2'} placeholder="Ingredientes, porciones, detalles..." />
-                        </div>
-                        <div className="flex items-center gap-6">
-                          <label className="flex items-center gap-2 text-xs font-semibold text-[#3f3f46] cursor-pointer">
-                            <input type="checkbox" checked={disponibleProd} onChange={e => setDisponibleProd(e.target.checked)} className="rounded border-[#e4e4e7] text-[#dc2626] focus:ring-[#dc2626]" />
-                            ¿Disponible hoy?
-                          </label>
-                          <label className="flex items-center gap-2 text-xs font-semibold text-[#3f3f46] cursor-pointer">
-                            <input type="checkbox" checked={esUpsellProd} onChange={e => setEsUpsellProd(e.target.checked)} className="rounded border-[#e4e4e7] text-[#dc2626] focus:ring-[#dc2626]" />
-                            ¿Ofrecer como Upsell al final?
-                          </label>
-                        </div>
                       </div>
-
-                      <div className="flex gap-3 border-t border-[#e4e4e7] pt-4">
-                        {productoAEditar && (
-                          <button onClick={() => { setProductoAEditar(null); setNombreProd(''); setDescProd(''); setPrecioProd(''); setImagenProdUrl(''); setEsUpsellProd(false); setGroupIdProd(''); }} className="flex-1 border border-[#e4e4e7] text-[#52525b] hover:bg-white py-3 rounded-xl font-bold transition-all text-xs">Cancelar</button>
-                        )}
-                        <button onClick={guardarProducto} disabled={guardandoProd || !nombreProd || !precioProd || !groupIdProd} className="flex-1 btn-primary py-3 rounded-xl text-xs font-black uppercase tracking-widest">
-                          {guardandoProd ? 'Guardando...' : '💾 Guardar Producto'}
-                        </button>
-                      </div>
-                    </div>
+                    )}
 
                     {/* Tabla de productos */}
                     <div className="border border-[#e4e4e7] rounded-2xl overflow-hidden shadow-sm">
@@ -4081,7 +4158,7 @@ export default function DashboardPage() {
                                   <td className="px-4 py-3 text-xs font-mono font-bold text-[#dc2626]">${p.precio}</td>
                                   <td className="px-4 py-3 text-right space-x-2">
                                     <button onClick={() => abrirGestorModificadores(p)} className="text-xs border border-[#e4e4e7] hover:bg-[#fafafa] font-bold py-1.5 px-3 rounded-lg text-[#09090b] transition-all">⚙️ Modificadores</button>
-                                    <button onClick={() => { setProductoAEditar(p); setNombreProd(p.nombre); setDescProd(p.descripcion || ''); setPrecioProd(String(p.precio)); setImagenProdUrl(p.imagen_url || ''); setDisponibleProd(p.disponible); setEsUpsellProd(!!p.es_upsell); setGroupIdProd(p.group_id); }} className="text-xs border border-[#e4e4e7] hover:bg-[#fafafa] font-bold py-1.5 px-3 rounded-lg text-[#52525b] transition-all">Editar</button>
+                                    <button onClick={() => { setProductoAEditar(p); setNombreProd(p.nombre); setDescProd(p.descripcion || ''); setPrecioProd(String(p.precio)); setImagenProdUrl(p.imagen_url || ''); setDisponibleProd(p.disponible); setEsUpsellProd(!!p.es_upsell); setGroupIdProd(p.group_id); setIsEditModalOpen(true); }} className="text-xs border border-[#e4e4e7] hover:bg-[#fafafa] font-bold py-1.5 px-3 rounded-lg text-[#52525b] transition-all">Editar</button>
                                     <button onClick={() => borrarProducto(p.id)} className="text-xs bg-red-50 border border-red-100 hover:bg-red-100 font-bold py-1.5 px-3 rounded-lg text-[#dc2626] transition-all">Eliminar</button>
                                   </td>
                                 </tr>

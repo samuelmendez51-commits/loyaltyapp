@@ -18,7 +18,7 @@ export async function POST(req: Request) {
     // 1. Cargar la orden y validar token y estado
     const { data: order, error: fetchError } = await supabase
       .from('orders')
-      .select('id, delivery_status, delivery_token')
+      .select('id, delivery_status, delivery_token, cliente_id, business_id, sello_aprobado')
       .eq('id', order_id)
       .single()
 
@@ -47,11 +47,9 @@ export async function POST(req: Request) {
 
       if (!fleetRes.ok) {
         console.error('[Ready Override API] External fleet speed-up failed:', await fleetRes.text())
-        // Continue anyway to maintain robust operational flow
       }
     } catch (err) {
       console.error('[Ready Override API] Error contacting fleet API:', err)
-      // Continue anyway to maintain robust operational flow
     }
 
     // 3. Actualizar estado de la orden en Supabase
@@ -59,6 +57,8 @@ export async function POST(req: Request) {
       .from('orders')
       .update({
         delivery_status: 'SHIPPED_IMMEDIATE',
+        sello_aprobado: true,
+        estado: 'aprobado',
         updated_at: new Date().toISOString()
       })
       .eq('id', order_id)
@@ -66,6 +66,71 @@ export async function POST(req: Request) {
       .single()
 
     if (updateError) throw updateError
+
+    // 4. Si el sello no estaba aprobado, sumar punto al cliente y registrar premios inmutables
+    if (!order.sello_aprobado && order.cliente_id && order.business_id) {
+      const { data: client } = await supabase
+        .from('clientes')
+        .select('*')
+        .eq('id', order.cliente_id)
+        .single()
+
+      if (client) {
+        const { data: biz } = await supabase
+          .from('businesses')
+          .select('max_sellos, premios_ruleta')
+          .eq('id', order.business_id)
+          .single()
+
+        const maxSellos = Number(biz?.max_sellos) || 10
+        const nuevosPuntos = Math.min(client.puntos + 1, maxSellos)
+
+        // Actualizar de forma atómica los puntos
+        await supabase
+          .from('clientes')
+          .update({ puntos: nuevosPuntos })
+          .eq('id', client.id)
+
+        // Auditoría
+        await supabase
+          .from('historial_puntos')
+          .insert({
+            cliente_id: client.id,
+            business_id: order.business_id,
+            cantidad: 1,
+            tipo_movimiento: 'suma',
+            descripcion: 'Sello acumulado por pedido completado en cocina'
+          })
+
+        // Inyectar premio inmutable de la ruleta si alcanza el tope
+        if (nuevosPuntos >= maxSellos) {
+          let poolPremios = ['Café Gratis', 'Postre Sorpresa', 'Bebida Grande', '20% Descuento']
+          if (biz?.premios_ruleta) {
+            try {
+              const parsed = Array.isArray(biz.premios_ruleta) 
+                ? biz.premios_ruleta 
+                : (typeof biz.premios_ruleta === 'string' ? JSON.parse(biz.premios_ruleta) : biz.premios_ruleta)
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                poolPremios = parsed
+              }
+            } catch (err) {
+              console.error('Error parsing business premios_ruleta:', err)
+            }
+          }
+
+          const premioGanador = poolPremios[Math.floor(Math.random() * poolPremios.length)]
+
+          // Crear spin/canje inmutable
+          await supabase
+            .from('premios_canjes')
+            .insert({
+              cliente_id: client.id,
+              premio_nombre: premioGanador,
+              estado: 'Pendiente'
+            })
+        }
+      }
+    }
 
     return NextResponse.json({
       success: true,
