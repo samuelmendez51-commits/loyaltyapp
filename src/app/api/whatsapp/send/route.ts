@@ -16,8 +16,90 @@ async function sendViaWhatsAppGateway({
   recipient: string
   text: string
 }) {
-  // Aquí es donde en producción se configuraría la integración real.
-  // Ejemplo simulado para desarrollo:
+  const provider = process.env.WHATSAPP_PROVIDER || 'mock'
+  
+  if (provider === 'evolution') {
+    const apiUrl = process.env.WHATSAPP_API_URL
+    const apiKey = process.env.WHATSAPP_API_KEY
+    const instanceName = process.env.WHATSAPP_INSTANCE_NAME
+
+    if (!apiUrl || !apiKey || !instanceName) {
+      console.warn('⚠️ [WhatsApp] Falta configuración para Evolution API. Fallback a simulador.')
+      return runMockSimulator(senderPayload, recipient, text)
+    }
+
+    const url = `${apiUrl.replace(/\/$/, '')}/message/sendText/${instanceName}`
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': apiKey
+      },
+      body: JSON.stringify({
+        number: recipient,
+        options: {
+          delay: 1200,
+          presence: 'composing'
+        },
+        textMessage: {
+          text: text
+        }
+      })
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`Evolution API error: ${response.status} - ${errorText}`)
+    }
+
+    console.log(`✅ [WhatsApp] Mensaje enviado vía Evolution API a ${recipient}`)
+    return { success: true }
+  }
+
+  if (provider === 'meta') {
+    const metaToken = process.env.WHATSAPP_META_TOKEN
+    const phoneId = process.env.WHATSAPP_META_PHONE_ID
+
+    if (!metaToken || !phoneId) {
+      console.warn('⚠️ [WhatsApp] Falta configuración para Meta Cloud API. Fallback a simulador.')
+      return runMockSimulator(senderPayload, recipient, text)
+    }
+
+    const url = `https://graph.facebook.com/v18.0/${phoneId}/messages`
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${metaToken}`
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: recipient,
+        type: 'text',
+        text: {
+          preview_url: text.includes('http'),
+          body: text
+        }
+      })
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(`Meta Cloud API error: ${response.status} - ${JSON.stringify(errorData)}`)
+    }
+
+    console.log(`✅ [WhatsApp] Mensaje enviado vía Meta Cloud API a ${recipient}`)
+    return { success: true }
+  }
+
+  // Fallback / Mock
+  return runMockSimulator(senderPayload, recipient, text)
+}
+
+function runMockSimulator(senderPayload: string, recipient: string, text: string) {
   console.log(`\n=========================================`)
   console.log(`📲 [WHATSAPP GATEWAY SIMULATOR]`)
   console.log(`INSTANCIA EMISORA (TEL NEGOCIO) : ${senderPayload}`)
@@ -26,7 +108,6 @@ async function sendViaWhatsAppGateway({
   console.log(`-----------------------------------------`)
   console.log(text)
   console.log(`=========================================\n`)
-  
   return { success: true }
 }
 
