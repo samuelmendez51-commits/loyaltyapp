@@ -20,14 +20,15 @@
 CREATE OR REPLACE FUNCTION is_staff_of_business(p_business_id UUID)
 RETURNS BOOLEAN AS $$
 BEGIN
+  -- JOIN directo: evita subconsulta anidada y aprovecha el índice compuesto
+  -- idx_business_users_email_biz (email, business_id) WHERE activo = TRUE
   RETURN EXISTS (
     SELECT 1
     FROM business_users bu
+    JOIN auth.users au ON au.id = auth.uid()
     WHERE bu.business_id = p_business_id
-      AND bu.activo = TRUE
-      AND bu.email = (
-        SELECT email FROM auth.users WHERE id = auth.uid()
-      )
+      AND bu.activo     = TRUE
+      AND bu.email      = au.email
   );
 END;
 $$ LANGUAGE plpgsql
@@ -54,13 +55,23 @@ CREATE INDEX IF NOT EXISTS idx_clientes_qr_token_business
 CREATE INDEX IF NOT EXISTS idx_premios_canjes_cliente_id
   ON premios_canjes (cliente_id);
 
--- Índice de soporte para historical_monthly_stats si existe
-CREATE INDEX IF NOT EXISTS idx_historical_monthly_stats_business
-  ON historical_monthly_stats (business_id)
-  WHERE EXISTS (
+-- Índice de soporte para historical_monthly_stats (sólo si la tabla ya existe).
+-- PostgreSQL NO permite subconsultas en predicados de índice (error 0A000),
+-- por lo que se usa DO $$ para verificar existencia antes de ejecutar.
+DO $$
+BEGIN
+  IF EXISTS (
     SELECT 1 FROM information_schema.tables
-    WHERE table_schema = 'public' AND table_name = 'historical_monthly_stats'
-  );
+    WHERE table_schema = 'public'
+      AND table_name   = 'historical_monthly_stats'
+  ) THEN
+    -- Índice plano sin subconsulta en el WHERE predicate
+    EXECUTE '
+      CREATE INDEX IF NOT EXISTS idx_historical_monthly_stats_business
+        ON historical_monthly_stats (business_id)
+    ';
+  END IF;
+END $$;
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- ██████████████████████  TABLA: businesses  █████████████████████████████
