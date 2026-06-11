@@ -427,411 +427,7 @@ export default function DashboardPage() {
   const [pinesVisibles, setPinesVisibles] = useState<Record<string, boolean>>({})
   const togglePinVisible = (id: string) => setPinesVisibles(prev => ({ ...prev, [id]: !prev[id] }))
 
-  // ── ESTADOS DEL ESCÁNER INTEGRADO ──
-  const [scanCliente, setScanCliente] = useState<any>(null)
-  const [scanMensaje, setScanMensaje] = useState({ tipo: '', texto: '' })
-  const [scanCargando, setScanCargando] = useState(false)
-  const [scanInputManual, setScanInputManual] = useState('')
-  const [scanCoupon, setScanCoupon] = useState<any>(null)
-  const [scanSearchedPhone, setScanSearchedPhone] = useState('')
-  const [scanNuevoClienteNombre, setScanNuevoClienteNombre] = useState('')
-  const [scanRegistradoExito, setScanRegistradoExito] = useState<any>(null)
-  const [scanEnviandoWhatsapp, setScanEnviandoWhatsapp] = useState(false)
-  const [scanEnvioExitoMsg, setScanEnvioExitoMsg] = useState('')
-  const [scanHasCamera, setScanHasCamera] = useState<boolean | null>(null)
-  const [mostrarBuscadorManual, setMostrarBuscadorManual] = useState(false)
 
-  // --- Lógica de Escáner Integrada ---
-  const sellosTotales = programas.find(p => p.activo === true)?.total_estampillas || business?.max_sellos || 10
-
-  // Efecto: verificar si el dispositivo tiene cámara
-  useEffect(() => {
-    if (typeof navigator !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
-      try {
-        navigator.mediaDevices.enumerateDevices()
-          .then(devices => {
-            const videoDevices = devices.filter(device => device.kind === 'videoinput')
-            if (videoDevices.length === 0) {
-              setScanHasCamera(false)
-              setMostrarBuscadorManual(true)
-            } else {
-              setScanHasCamera(true)
-            }
-          })
-          .catch(err => {
-            setScanHasCamera(false)
-            setMostrarBuscadorManual(true)
-          })
-      } catch (err) {
-        setScanHasCamera(false)
-        setMostrarBuscadorManual(true)
-      }
-    } else {
-      setScanHasCamera(false)
-      setMostrarBuscadorManual(true)
-    }
-  }, [])
-
-  // Inicialización del escáner
-  useEffect(() => {
-    if (pestaña !== 'escaner' || scanHasCamera === false) return
-
-    let scanner: any = null
-    try {
-      scanner = new Html5QrcodeScanner(
-        "reader", 
-        { fps: 15, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 }, 
-        false
-      )
-
-      const onScanSuccess = async (decodedText: string) => {
-        try {
-          await scanner.clear()
-          const idLimpio = decodedText.includes('/') ? decodedText.split('/').pop() : decodedText;
-          if (idLimpio) buscarCliente(idLimpio.trim());
-        } catch (err) {
-          // Silencioso
-        }
-      }
-
-      scanner.render(onScanSuccess, (error: any) => { })
-    } catch (e) {
-      setScanHasCamera(false)
-      setMostrarBuscadorManual(true)
-    }
-
-    return () => {
-      if (scanner) {
-        scanner.clear().catch(err => { /* Silencioso */ })
-      }
-    }
-  }, [pestaña, scanHasCamera])
-
-  const buscarCliente = async (criterio: string) => {
-    if (!criterio) return
-    setScanCargando(true)
-    setScanCoupon(null)
-
-    let criterioLimpio = criterio
-    try {
-      const decoded = atob(criterio.trim())
-      const parsed = JSON.parse(decoded)
-      if ((parsed.seguro === 'LOYALTYCLUB-VIP-CANJE' || parsed.seguro === 'LOYALTYCLUB-VIP-CANJE') && parsed.cliente_id) {
-        criterioLimpio = parsed.cliente_id
-        alert(`🏆 ¡Pase QR Cifrado VIP Validado!\nSocio: ${parsed.nombre}\nFidelidad: ${parsed.puntos}/${sellosTotales} sellos.\nListo para canjear premio mayor.`);
-      }
-    } catch (e) {
-      // Continuar con el criterio original
-    }
-
-    try {
-      const esCupon = criterioLimpio.toUpperCase().startsWith('REWARD-');
-      const activeBizIdVal = business?.id || ''
-
-      if (esCupon) {
-        const { data: couponData, error: couponErr } = await supabase
-          .from('tracking_events')
-          .select('*, clientes(nombre, telefono, puntos)')
-          .eq('codigo_cupon', criterioLimpio.toUpperCase())
-          .eq('event_type', 'reward_generated')
-          .maybeSingle()
-
-        if (couponErr || !couponData) {
-          setScanMensaje({ tipo: 'error', texto: 'CUPÓN DE REGALO NO VÁLIDO O INEXISTENTE' })
-        } else if (couponData.cupon_canjeado) {
-          setScanMensaje({ tipo: 'error', texto: 'CUPÓN YA CANJEADO ANTERIORMENTE' })
-        } else if (activeBizIdVal && couponData.business_id !== activeBizIdVal) {
-          setScanMensaje({ tipo: 'error', texto: 'ESTE CUPÓN PERTENECE A OTRO COMERCIO' })
-        } else {
-          setScanCoupon(couponData)
-          const cli = couponData.clientes as any
-          setScanCliente({
-            id: couponData.cliente_id,
-            nombre: cli?.nombre || 'Socio VIP',
-            telefono: cli?.telefono || '',
-            puntos: cli?.puntos || 0
-          })
-          setScanMensaje({ tipo: '', texto: '' })
-          setScanInputManual('')
-        }
-        setScanCargando(false)
-        return
-      }
-
-      const esUUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(criterioLimpio);
-      let query = supabase.from('clientes').select('*');
-      
-      if (esUUID) {
-        query = query.eq('id', criterioLimpio);
-      } else {
-        const cleanDigits = (criterioLimpio || "").replace(/\D/g, '')
-        const last10 = cleanDigits.slice(-10)
-        const telNormalizado = last10.length === 10 ? `+52${last10}` : (criterioLimpio || '')
-        query = query.eq('telefono', telNormalizado);
-      }
-
-      if (activeBizIdVal) {
-        query = query.eq('business_id', activeBizIdVal)
-      }
-      
-      const { data, error } = await query.maybeSingle();
-
-      if (error || !data) {
-        setScanMensaje({ tipo: 'error', texto: 'CLIENTE NO ENCONTRADO EN TU NEGOCIO' })
-        const isPhone = /^\d{10}$/.test(criterioLimpio)
-        if (isPhone) {
-          setScanSearchedPhone(criterioLimpio)
-        } else {
-          setScanSearchedPhone('')
-        }
-      } else {
-        setScanCliente(data)
-        setScanMensaje({ tipo: '', texto: '' })
-        setScanInputManual('')
-        setScanSearchedPhone('')
-        setScanNuevoClienteNombre('')
-        setScanRegistradoExito(null)
-      }
-    } catch (err) {
-      setScanMensaje({ tipo: 'error', texto: 'ERROR DE CONEXIÓN' })
-    } finally {
-      setScanCargando(false)
-    }
-  }
-
-  const handleKeyDownBusqueda = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      procesarBusquedaManual();
-    }
-  };
-
-  const procesarBusquedaManual = () => {
-    const valorSaneado = scanInputManual.trim();
-    if (!valorSaneado) return;
-    const criterioLimpio = valorSaneado.includes('/') ? valorSaneado.split('/').pop() : valorSaneado;
-    if (criterioLimpio) buscarCliente(criterioLimpio.trim());
-  };
-
-  const handleRegistroExpress = async () => {
-    if (!scanSearchedPhone || !scanNuevoClienteNombre.trim()) return
-    setScanCargando(true)
-    try {
-      const cleanDigits = scanSearchedPhone.replace(/\D/g, '')
-      const last10 = cleanDigits.slice(-10)
-      const telNormalizado = last10.length === 10 ? `+52${last10}` : scanSearchedPhone
-      
-      const activeBizIdVal = business?.id || ''
-      const { data, error } = await supabase
-        .from('clientes')
-        .insert({
-          business_id: activeBizIdVal,
-          nombre: scanNuevoClienteNombre.trim() || null,
-          telefono: telNormalizado,
-          puntos: 0,
-          visitas: 0,
-          bloqueado: false
-        })
-        .select()
-        .single()
-
-      if (error) throw error
-      
-      setScanRegistradoExito(data)
-    } catch (err: any) {
-      alert('Error al registrar cliente: ' + err.message)
-    } finally {
-      setScanCargando(false)
-    }
-  }
-
-  const manejarAccionVIP = async () => {
-    if (!scanCliente) return
-    setScanCargando(true)
-
-    const activeBizIdVal = business?.id || ''
-
-    if (scanCoupon) {
-      try {
-        const { error: errorCoupon } = await supabase
-          .from('tracking_events')
-          .update({ cupon_canjeado: true })
-          .eq('id', scanCoupon.id)
-
-        if (errorCoupon) throw errorCoupon
-
-        const { error: errorCliente } = await supabase
-          .from('clientes')
-          .update({ puntos: 0 })
-          .eq('id', scanCliente.id)
-
-        if (errorCliente) throw errorCliente
-
-        await supabase
-          .from('historial_puntos')
-          .insert({
-             cliente_id: scanCliente.id,
-             cantidad: scanCliente.puntos, 
-             motivo: 'resta'
-          });
-
-        if (activeBizIdVal) {
-          await supabase.from('tracking_events').insert({
-            business_id: activeBizIdVal,
-            cliente_id: scanCliente.id,
-            event_type: 'reward_redeemed',
-            metadata: { canal: 'mostrador', codigo_cupon: scanCoupon.codigo_cupon, puntos_canjeados: scanCliente.puntos }
-          })
-        }
-
-        if (typeof navigator !== 'undefined' && navigator.vibrate) {
-          navigator.vibrate([200, 100, 200, 100, 400])
-        }
-        
-        setScanMensaje({ 
-          tipo: 'exito', 
-          texto: '¡REGALO ENTREGADO Y CUPÓN CANJEADO CON ÉXITO!' 
-        })
-        
-        setTimeout(() => {
-          setScanCliente(null);
-          setScanCoupon(null);
-          setScanMensaje({ tipo: '', texto: '' });
-          cargarClientesYHistorial();
-        }, 2500)
-
-      } catch (err) {
-        console.error(err);
-        setScanMensaje({ tipo: 'error', texto: 'ERROR AL CANJEAR EL CUPÓN' })
-      } finally {
-        setScanCargando(false)
-      }
-      return
-    }
-
-    const maxStamps = sellosTotales
-    const esCanjeDePremio = scanCliente.puntos >= maxStamps;
-
-    try {
-      const nuevosPuntos = esCanjeDePremio ? 0 : scanCliente.puntos + 1;
-
-      const { error: errorCliente } = await supabase
-        .from('clientes')
-        .update({ puntos: nuevosPuntos })
-        .eq('id', scanCliente.id)
-
-      if (errorCliente) throw new Error('No se pudo actualizar el registro');
-
-      await supabase
-        .from('historial_puntos')
-        .insert({
-           cliente_id: scanCliente.id,
-           cantidad: esCanjeDePremio ? maxStamps : 1, 
-           motivo: esCanjeDePremio ? 'resta' : 'suma'
-        });
-
-      if (activeBizIdVal) {
-        await supabase.from('tracking_events').insert({
-          business_id: activeBizIdVal,
-          cliente_id: scanCliente.id,
-          event_type: esCanjeDePremio ? 'reward_redeemed' : 'approved_by_staff',
-          metadata: { canal: 'mostrador', puntos_anteriores: scanCliente.puntos }
-        })
-      }
-
-      if (typeof navigator !== 'undefined' && navigator.vibrate) {
-        navigator.vibrate(esCanjeDePremio ? [200, 100, 200, 100, 400] : [100, 50, 100])
-      }
-      
-      setScanMensaje({ 
-        tipo: 'exito', 
-        texto: esCanjeDePremio ? '¡PREMIO ENTREGADO!' : '¡SELLO AGREGADO!' 
-      })
-      
-      setTimeout(() => {
-        setScanCliente(null);
-        setScanMensaje({ tipo: '', texto: '' });
-        cargarClientesYHistorial();
-      }, 2500)
-
-    } catch (err) {
-      console.error(err);
-      setScanMensaje({ tipo: 'error', texto: 'ERROR AL PROCESAR' })
-    } finally {
-      setScanCargando(false)
-    }
-  }
-
-  const manejarAjusteSello = async (delta: number) => {
-    if (!scanCliente) return
-    setScanCargando(true)
-
-    const activeBizIdVal = business?.id || ''
-    const maxStamps = sellosTotales
-    const nuevosPuntos = Math.max(0, Math.min(maxStamps, scanCliente.puntos + delta))
-
-    try {
-      const { error: errorCliente } = await supabase
-        .from('clientes')
-        .update({ puntos: nuevosPuntos })
-        .eq('id', scanCliente.id)
-
-      if (errorCliente) throw new Error('No se pudo actualizar el registro');
-
-      await supabase
-        .from('historial_puntos')
-        .insert({
-           cliente_id: scanCliente.id,
-           cantidad: Math.abs(delta), 
-           motivo: delta > 0 ? 'suma' : 'resta'
-        });
-
-      if (activeBizIdVal) {
-        await supabase.from('tracking_events').insert({
-          business_id: activeBizIdVal,
-          cliente_id: scanCliente.id,
-          event_type: 'puntos_ajustados',
-          metadata: { canal: 'mostrador', delta, nuevosPuntos, puntos_anteriores: scanCliente.puntos }
-        })
-      }
-
-      if (typeof navigator !== 'undefined' && navigator.vibrate) {
-        navigator.vibrate([100, 50, 100])
-      }
-      
-      setScanMensaje({ 
-        tipo: 'exito', 
-        texto: delta > 0 ? '¡SELLO AGREGADO CON ÉXITO!' : '¡SELLO RETIRADO CON ÉXITO!' 
-      })
-      
-      setTimeout(() => {
-        setScanCliente((prev: any) => ({ ...prev, puntos: nuevosPuntos }))
-        setScanMensaje({ tipo: '', texto: '' });
-        cargarClientesYHistorial();
-      }, 1500)
-
-    } catch (err) {
-      console.error(err);
-      setScanMensaje({ tipo: 'error', texto: 'ERROR AL PROCESAR EL AJUSTE' })
-    } finally {
-      setScanCargando(false)
-    }
-  }
-
-  const cargarClientesYHistorial = async () => {
-    if (!business?.id) return
-    const { data: dataClientes } = await supabase
-      .from('clientes')
-      .select('*')
-      .eq('business_id', business.id)
-      .order('created_at', { ascending: false })
-    if (dataClientes) setClientes(dataClientes)
-
-    const { data: dataHistorial } = await supabase
-      .from('historial_puntos').select('*, clientes(nombre)')
-      .order('created_at', { ascending: false }).limit(60)
-    if (dataHistorial) setHistorial(dataHistorial)
-  }
 
 
   // Horarios Estilo LoyaltyClub (Lunes a Domingo)
@@ -1282,6 +878,412 @@ export default function DashboardPage() {
   const completedStepsCount = stepsList.filter(s => s.completed).length
   const porcentajeCompleto = (completedStepsCount / 4) * 100
   const checklistCompletado = completedStepsCount === 4
+
+  // ── ESTADOS DEL ESCÁNER INTEGRADO ──
+  const [scanCliente, setScanCliente] = useState<any>(null)
+  const [scanMensaje, setScanMensaje] = useState({ tipo: '', texto: '' })
+  const [scanCargando, setScanCargando] = useState(false)
+  const [scanInputManual, setScanInputManual] = useState('')
+  const [scanCoupon, setScanCoupon] = useState<any>(null)
+  const [scanSearchedPhone, setScanSearchedPhone] = useState('')
+  const [scanNuevoClienteNombre, setScanNuevoClienteNombre] = useState('')
+  const [scanRegistradoExito, setScanRegistradoExito] = useState<any>(null)
+  const [scanEnviandoWhatsapp, setScanEnviandoWhatsapp] = useState(false)
+  const [scanEnvioExitoMsg, setScanEnvioExitoMsg] = useState('')
+  const [scanHasCamera, setScanHasCamera] = useState<boolean | null>(null)
+  const [mostrarBuscadorManual, setMostrarBuscadorManual] = useState(false)
+
+  // --- Lógica de Escáner Integrada ---
+  const sellosTotales = (programas || []).find(p => p.activo === true)?.total_estampillas || business?.max_sellos || 10
+
+  // Efecto: verificar si el dispositivo tiene cámara
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+      try {
+        navigator.mediaDevices.enumerateDevices()
+          .then(devices => {
+            const videoDevices = devices.filter(device => device.kind === 'videoinput')
+            if (videoDevices.length === 0) {
+              setScanHasCamera(false)
+              setMostrarBuscadorManual(true)
+            } else {
+              setScanHasCamera(true)
+            }
+          })
+          .catch(err => {
+            setScanHasCamera(false)
+            setMostrarBuscadorManual(true)
+          })
+      } catch (err) {
+        setScanHasCamera(false)
+        setMostrarBuscadorManual(true)
+      }
+    } else {
+      setScanHasCamera(false)
+      setMostrarBuscadorManual(true)
+    }
+  }, [])
+
+  // Inicialización del escáner
+  useEffect(() => {
+    if (pestaña !== 'escaner' || scanHasCamera === false) return
+
+    let scanner: any = null
+    try {
+      scanner = new Html5QrcodeScanner(
+        "reader", 
+        { fps: 15, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 }, 
+        false
+      )
+
+      const onScanSuccess = async (decodedText: string) => {
+        try {
+          await scanner.clear()
+          const idLimpio = decodedText.includes('/') ? decodedText.split('/').pop() : decodedText;
+          if (idLimpio) buscarCliente(idLimpio.trim());
+        } catch (err) {
+          // Silencioso
+        }
+      }
+
+      scanner.render(onScanSuccess, (error: any) => { })
+    } catch (e) {
+      setScanHasCamera(false)
+      setMostrarBuscadorManual(true)
+    }
+
+    return () => {
+      if (scanner) {
+        scanner.clear().catch(err => { /* Silencioso */ })
+      }
+    }
+  }, [pestaña, scanHasCamera])
+
+  const buscarCliente = async (criterio: string) => {
+    if (!criterio) return
+    setScanCargando(true)
+    setScanCoupon(null)
+
+    let criterioLimpio = criterio
+    try {
+      const decoded = atob(criterio.trim())
+      const parsed = JSON.parse(decoded)
+      if ((parsed.seguro === 'LOYALTYCLUB-VIP-CANJE' || parsed.seguro === 'LOYALTYCLUB-VIP-CANJE') && parsed.cliente_id) {
+        criterioLimpio = parsed.cliente_id
+        alert(`🏆 ¡Pase QR Cifrado VIP Validado!\nSocio: ${parsed.nombre}\nFidelidad: ${parsed.puntos}/${sellosTotales} sellos.\nListo para canjear premio mayor.`);
+      }
+    } catch (e) {
+      // Continuar con el criterio original
+    }
+
+    try {
+      const esCupon = criterioLimpio.toUpperCase().startsWith('REWARD-');
+      const activeBizIdVal = business?.id || ''
+
+      if (esCupon) {
+        const { data: couponData, error: couponErr } = await supabase
+          .from('tracking_events')
+          .select('*, clientes(nombre, telefono, puntos)')
+          .eq('codigo_cupon', criterioLimpio.toUpperCase())
+          .eq('event_type', 'reward_generated')
+          .maybeSingle()
+
+        if (couponErr || !couponData) {
+          setScanMensaje({ tipo: 'error', texto: 'CUPÓN DE REGALO NO VÁLIDO O INEXISTENTE' })
+        } else if (couponData.cupon_canjeado) {
+          setScanMensaje({ tipo: 'error', texto: 'CUPÓN YA CANJEADO ANTERIORMENTE' })
+        } else if (activeBizIdVal && couponData.business_id !== activeBizIdVal) {
+          setScanMensaje({ tipo: 'error', texto: 'ESTE CUPÓN PERTENECE A OTRO COMERCIO' })
+        } else {
+          setScanCoupon(couponData)
+          const cli = couponData.clientes as any
+          setScanCliente({
+            id: couponData.cliente_id,
+            nombre: cli?.nombre || 'Socio VIP',
+            telefono: cli?.telefono || '',
+            puntos: cli?.puntos || 0
+          })
+          setScanMensaje({ tipo: '', texto: '' })
+          setScanInputManual('')
+        }
+        setScanCargando(false)
+        return
+      }
+
+      const esUUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(criterioLimpio);
+      let query = supabase.from('clientes').select('*');
+      
+      if (esUUID) {
+        query = query.eq('id', criterioLimpio);
+      } else {
+        const cleanDigits = (criterioLimpio || "").replace(/\D/g, '')
+        const last10 = cleanDigits.slice(-10)
+        const telNormalizado = last10.length === 10 ? `+52${last10}` : (criterioLimpio || '')
+        query = query.eq('telefono', telNormalizado);
+      }
+
+      if (activeBizIdVal) {
+        query = query.eq('business_id', activeBizIdVal)
+      }
+      
+      const { data, error } = await query.maybeSingle();
+
+      if (error || !data) {
+        setScanMensaje({ tipo: 'error', texto: 'CLIENTE NO ENCONTRADO EN TU NEGOCIO' })
+        const isPhone = /^\d{10}$/.test(criterioLimpio)
+        if (isPhone) {
+          setScanSearchedPhone(criterioLimpio)
+        } else {
+          setScanSearchedPhone('')
+        }
+      } else {
+        setScanCliente(data)
+        setScanMensaje({ tipo: '', texto: '' })
+        setScanInputManual('')
+        setScanSearchedPhone('')
+        setScanNuevoClienteNombre('')
+        setScanRegistradoExito(null)
+      }
+    } catch (err) {
+      setScanMensaje({ tipo: 'error', texto: 'ERROR DE CONEXIÓN' })
+    } finally {
+      setScanCargando(false)
+    }
+  }
+
+  const handleKeyDownBusqueda = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      procesarBusquedaManual();
+    }
+  };
+
+  const procesarBusquedaManual = () => {
+    const valorSaneado = scanInputManual.trim();
+    if (!valorSaneado) return;
+    const criterioLimpio = valorSaneado.includes('/') ? valorSaneado.split('/').pop() : valorSaneado;
+    if (criterioLimpio) buscarCliente(criterioLimpio.trim());
+  };
+
+  const handleRegistroExpress = async () => {
+    if (!scanSearchedPhone || !scanNuevoClienteNombre.trim()) return
+    setScanCargando(true)
+    try {
+      const cleanDigits = scanSearchedPhone.replace(/\D/g, '')
+      const last10 = cleanDigits.slice(-10)
+      const telNormalizado = last10.length === 10 ? `+52${last10}` : scanSearchedPhone
+      
+      const activeBizIdVal = business?.id || ''
+      const { data, error } = await supabase
+        .from('clientes')
+        .insert({
+          business_id: activeBizIdVal,
+          nombre: scanNuevoClienteNombre.trim() || null,
+          telefono: telNormalizado,
+          puntos: 0,
+          visitas: 0,
+          bloqueado: false
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+      
+      setScanRegistradoExito(data)
+    } catch (err: any) {
+      alert('Error al registrar cliente: ' + err.message)
+    } finally {
+      setScanCargando(false)
+    }
+  }
+
+  const manejarAccionVIP = async () => {
+    if (!scanCliente) return
+    setScanCargando(true)
+
+    const activeBizIdVal = business?.id || ''
+
+    if (scanCoupon) {
+      try {
+        const { error: errorCoupon } = await supabase
+          .from('tracking_events')
+          .update({ cupon_canjeado: true })
+          .eq('id', scanCoupon.id)
+
+        if (errorCoupon) throw errorCoupon
+
+        const { error: errorCliente } = await supabase
+          .from('clientes')
+          .update({ puntos: 0 })
+          .eq('id', scanCliente.id)
+
+        if (errorCliente) throw errorCliente
+
+        await supabase
+          .from('historial_puntos')
+          .insert({
+             cliente_id: scanCliente.id,
+             cantidad: scanCliente.puntos, 
+             motivo: 'resta'
+          });
+
+        if (activeBizIdVal) {
+          await supabase.from('tracking_events').insert({
+            business_id: activeBizIdVal,
+            cliente_id: scanCliente.id,
+            event_type: 'reward_redeemed',
+            metadata: { canal: 'mostrador', codigo_cupon: scanCoupon.codigo_cupon, puntos_canjeados: scanCliente.puntos }
+          })
+        }
+
+        if (typeof navigator !== 'undefined' && navigator.vibrate) {
+          navigator.vibrate([200, 100, 200, 100, 400])
+        }
+        
+        setScanMensaje({ 
+          tipo: 'exito', 
+          texto: '¡REGALO ENTREGADO Y CUPÓN CANJEADO CON ÉXITO!' 
+        })
+        
+        setTimeout(() => {
+          setScanCliente(null);
+          setScanCoupon(null);
+          setScanMensaje({ tipo: '', texto: '' });
+          cargarClientesYHistorial();
+        }, 2500)
+
+      } catch (err) {
+        console.error(err);
+        setScanMensaje({ tipo: 'error', texto: 'ERROR AL CANJEAR EL CUPÓN' })
+      } finally {
+        setScanCargando(false)
+      }
+      return
+    }
+
+    const maxStamps = sellosTotales
+    const esCanjeDePremio = scanCliente.puntos >= maxStamps;
+
+    try {
+      const nuevosPuntos = esCanjeDePremio ? 0 : scanCliente.puntos + 1;
+
+      const { error: errorCliente } = await supabase
+        .from('clientes')
+        .update({ puntos: nuevosPuntos })
+        .eq('id', scanCliente.id)
+
+      if (errorCliente) throw new Error('No se pudo actualizar el registro');
+
+      await supabase
+        .from('historial_puntos')
+        .insert({
+           cliente_id: scanCliente.id,
+           cantidad: esCanjeDePremio ? maxStamps : 1, 
+           motivo: esCanjeDePremio ? 'resta' : 'suma'
+        });
+
+      if (activeBizIdVal) {
+        await supabase.from('tracking_events').insert({
+          business_id: activeBizIdVal,
+          cliente_id: scanCliente.id,
+          event_type: esCanjeDePremio ? 'reward_redeemed' : 'approved_by_staff',
+          metadata: { canal: 'mostrador', puntos_anteriores: scanCliente.puntos }
+        })
+      }
+
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        navigator.vibrate(esCanjeDePremio ? [200, 100, 200, 100, 400] : [100, 50, 100])
+      }
+      
+      setScanMensaje({ 
+        tipo: 'exito', 
+        texto: esCanjeDePremio ? '¡PREMIO ENTREGADO!' : '¡SELLO AGREGADO!' 
+      })
+      
+      setTimeout(() => {
+        setScanCliente(null);
+        setScanMensaje({ tipo: '', texto: '' });
+        cargarClientesYHistorial();
+      }, 2500)
+
+    } catch (err) {
+      console.error(err);
+      setScanMensaje({ tipo: 'error', texto: 'ERROR AL PROCESAR' })
+    } finally {
+      setScanCargando(false)
+    }
+  }
+
+  const manejarAjusteSello = async (delta: number) => {
+    if (!scanCliente) return
+    setScanCargando(true)
+
+    const activeBizIdVal = business?.id || ''
+    const maxStamps = sellosTotales
+    const nuevosPuntos = Math.max(0, Math.min(maxStamps, scanCliente.puntos + delta))
+
+    try {
+      const { error: errorCliente } = await supabase
+        .from('clientes')
+        .update({ puntos: nuevosPuntos })
+        .eq('id', scanCliente.id)
+
+      if (errorCliente) throw new Error('No se pudo actualizar el registro');
+
+      await supabase
+        .from('historial_puntos')
+        .insert({
+           cliente_id: scanCliente.id,
+           cantidad: Math.abs(delta), 
+           motivo: delta > 0 ? 'suma' : 'resta'
+        });
+
+      if (activeBizIdVal) {
+        await supabase.from('tracking_events').insert({
+          business_id: activeBizIdVal,
+          cliente_id: scanCliente.id,
+          event_type: 'puntos_ajustados',
+          metadata: { canal: 'mostrador', delta, nuevosPuntos, puntos_anteriores: scanCliente.puntos }
+        })
+      }
+
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        navigator.vibrate([100, 50, 100])
+      }
+      
+      setScanMensaje({ 
+        tipo: 'exito', 
+        texto: delta > 0 ? '¡SELLO AGREGADO CON ÉXITO!' : '¡SELLO RETIRADO CON ÉXITO!' 
+      })
+      
+      setTimeout(() => {
+        setScanCliente((prev: any) => ({ ...prev, puntos: nuevosPuntos }))
+        setScanMensaje({ tipo: '', texto: '' });
+        cargarClientesYHistorial();
+      }, 1500)
+
+    } catch (err) {
+      console.error(err);
+      setScanMensaje({ tipo: 'error', texto: 'ERROR AL PROCESAR EL AJUSTE' })
+    } finally {
+      setScanCargando(false)
+    }
+  }
+
+  const cargarClientesYHistorial = async () => {
+    if (!business?.id) return
+    const { data: dataClientes } = await supabase
+      .from('clientes')
+      .select('*')
+      .eq('business_id', business.id)
+      .order('created_at', { ascending: false })
+    if (dataClientes) setClientes(dataClientes)
+
+    const { data: dataHistorial } = await supabase
+      .from('historial_puntos').select('*, clientes(nombre)')
+      .order('created_at', { ascending: false }).limit(60)
+    if (dataHistorial) setHistorial(dataHistorial)
+  }
 
   // ── Leaflet Interactive Map for Geopush ─────────────────────────────────────
   const mapRef = useRef<any>(null)
