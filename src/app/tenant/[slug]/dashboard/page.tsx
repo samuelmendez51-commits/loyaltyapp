@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { Html5QrcodeScanner } from 'html5-qrcode'
 import Papa from 'papaparse'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
 import { DeliveryPanel } from './DeliveryPanel'
 import {
@@ -362,8 +363,15 @@ function RenderIconoSello({ icono, size = 'w-8 h-8' }: { icono: string, size?: s
 export default function DashboardPage() {
   // ── Tenant: slug extraído del subdominio vía rewrite del middleware ──────────
   const slug = (useParams().slug as string) || ''
+  const searchParams = useSearchParams()
+  const [pestaña, setPestaña] = useState(searchParams.get('tab') || 'metricas')
 
-  const [pestaña, setPestaña] = useState('metricas')
+  useEffect(() => {
+    const tabParam = searchParams.get('tab')
+    if (tabParam) {
+      setPestaña(tabParam)
+    }
+  }, [searchParams])
   const [sidebarExpanded, setSidebarExpanded] = useState(true)
   const [quickToolsOpen, setQuickToolsOpen] = useState(false)
   const quickToolsRef = useRef<HTMLDivElement>(null)
@@ -418,6 +426,412 @@ export default function DashboardPage() {
   // Estado para visibilidad de PIN de empleados
   const [pinesVisibles, setPinesVisibles] = useState<Record<string, boolean>>({})
   const togglePinVisible = (id: string) => setPinesVisibles(prev => ({ ...prev, [id]: !prev[id] }))
+
+  // ── ESTADOS DEL ESCÁNER INTEGRADO ──
+  const [scanCliente, setScanCliente] = useState<any>(null)
+  const [scanMensaje, setScanMensaje] = useState({ tipo: '', texto: '' })
+  const [scanCargando, setScanCargando] = useState(false)
+  const [scanInputManual, setScanInputManual] = useState('')
+  const [scanCoupon, setScanCoupon] = useState<any>(null)
+  const [scanSearchedPhone, setScanSearchedPhone] = useState('')
+  const [scanNuevoClienteNombre, setScanNuevoClienteNombre] = useState('')
+  const [scanRegistradoExito, setScanRegistradoExito] = useState<any>(null)
+  const [scanEnviandoWhatsapp, setScanEnviandoWhatsapp] = useState(false)
+  const [scanEnvioExitoMsg, setScanEnvioExitoMsg] = useState('')
+  const [scanHasCamera, setScanHasCamera] = useState<boolean | null>(null)
+  const [mostrarBuscadorManual, setMostrarBuscadorManual] = useState(false)
+
+  // --- Lógica de Escáner Integrada ---
+  const sellosTotales = programas.find(p => p.activo === true)?.total_estampillas || business?.max_sellos || 10
+
+  // Efecto: verificar si el dispositivo tiene cámara
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+      try {
+        navigator.mediaDevices.enumerateDevices()
+          .then(devices => {
+            const videoDevices = devices.filter(device => device.kind === 'videoinput')
+            if (videoDevices.length === 0) {
+              setScanHasCamera(false)
+              setMostrarBuscadorManual(true)
+            } else {
+              setScanHasCamera(true)
+            }
+          })
+          .catch(err => {
+            setScanHasCamera(false)
+            setMostrarBuscadorManual(true)
+          })
+      } catch (err) {
+        setScanHasCamera(false)
+        setMostrarBuscadorManual(true)
+      }
+    } else {
+      setScanHasCamera(false)
+      setMostrarBuscadorManual(true)
+    }
+  }, [])
+
+  // Inicialización del escáner
+  useEffect(() => {
+    if (pestaña !== 'escaner' || scanHasCamera === false) return
+
+    let scanner: any = null
+    try {
+      scanner = new Html5QrcodeScanner(
+        "reader", 
+        { fps: 15, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 }, 
+        false
+      )
+
+      const onScanSuccess = async (decodedText: string) => {
+        try {
+          await scanner.clear()
+          const idLimpio = decodedText.includes('/') ? decodedText.split('/').pop() : decodedText;
+          if (idLimpio) buscarCliente(idLimpio.trim());
+        } catch (err) {
+          // Silencioso
+        }
+      }
+
+      scanner.render(onScanSuccess, (error: any) => { })
+    } catch (e) {
+      setScanHasCamera(false)
+      setMostrarBuscadorManual(true)
+    }
+
+    return () => {
+      if (scanner) {
+        scanner.clear().catch(err => { /* Silencioso */ })
+      }
+    }
+  }, [pestaña, scanHasCamera])
+
+  const buscarCliente = async (criterio: string) => {
+    if (!criterio) return
+    setScanCargando(true)
+    setScanCoupon(null)
+
+    let criterioLimpio = criterio
+    try {
+      const decoded = atob(criterio.trim())
+      const parsed = JSON.parse(decoded)
+      if ((parsed.seguro === 'LOYALTYCLUB-VIP-CANJE' || parsed.seguro === 'LOYALTYCLUB-VIP-CANJE') && parsed.cliente_id) {
+        criterioLimpio = parsed.cliente_id
+        alert(`🏆 ¡Pase QR Cifrado VIP Validado!\nSocio: ${parsed.nombre}\nFidelidad: ${parsed.puntos}/${sellosTotales} sellos.\nListo para canjear premio mayor.`);
+      }
+    } catch (e) {
+      // Continuar con el criterio original
+    }
+
+    try {
+      const esCupon = criterioLimpio.toUpperCase().startsWith('REWARD-');
+      const activeBizIdVal = business?.id || ''
+
+      if (esCupon) {
+        const { data: couponData, error: couponErr } = await supabase
+          .from('tracking_events')
+          .select('*, clientes(nombre, telefono, puntos)')
+          .eq('codigo_cupon', criterioLimpio.toUpperCase())
+          .eq('event_type', 'reward_generated')
+          .maybeSingle()
+
+        if (couponErr || !couponData) {
+          setScanMensaje({ tipo: 'error', texto: 'CUPÓN DE REGALO NO VÁLIDO O INEXISTENTE' })
+        } else if (couponData.cupon_canjeado) {
+          setScanMensaje({ tipo: 'error', texto: 'CUPÓN YA CANJEADO ANTERIORMENTE' })
+        } else if (activeBizIdVal && couponData.business_id !== activeBizIdVal) {
+          setScanMensaje({ tipo: 'error', texto: 'ESTE CUPÓN PERTENECE A OTRO COMERCIO' })
+        } else {
+          setScanCoupon(couponData)
+          const cli = couponData.clientes as any
+          setScanCliente({
+            id: couponData.cliente_id,
+            nombre: cli?.nombre || 'Socio VIP',
+            telefono: cli?.telefono || '',
+            puntos: cli?.puntos || 0
+          })
+          setScanMensaje({ tipo: '', texto: '' })
+          setScanInputManual('')
+        }
+        setScanCargando(false)
+        return
+      }
+
+      const esUUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(criterioLimpio);
+      let query = supabase.from('clientes').select('*');
+      
+      if (esUUID) {
+        query = query.eq('id', criterioLimpio);
+      } else {
+        const cleanDigits = (criterioLimpio || "").replace(/\D/g, '')
+        const last10 = cleanDigits.slice(-10)
+        const telNormalizado = last10.length === 10 ? `+52${last10}` : (criterioLimpio || '')
+        query = query.eq('telefono', telNormalizado);
+      }
+
+      if (activeBizIdVal) {
+        query = query.eq('business_id', activeBizIdVal)
+      }
+      
+      const { data, error } = await query.maybeSingle();
+
+      if (error || !data) {
+        setScanMensaje({ tipo: 'error', texto: 'CLIENTE NO ENCONTRADO EN TU NEGOCIO' })
+        const isPhone = /^\d{10}$/.test(criterioLimpio)
+        if (isPhone) {
+          setScanSearchedPhone(criterioLimpio)
+        } else {
+          setScanSearchedPhone('')
+        }
+      } else {
+        setScanCliente(data)
+        setScanMensaje({ tipo: '', texto: '' })
+        setScanInputManual('')
+        setScanSearchedPhone('')
+        setScanNuevoClienteNombre('')
+        setScanRegistradoExito(null)
+      }
+    } catch (err) {
+      setScanMensaje({ tipo: 'error', texto: 'ERROR DE CONEXIÓN' })
+    } finally {
+      setScanCargando(false)
+    }
+  }
+
+  const handleKeyDownBusqueda = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      procesarBusquedaManual();
+    }
+  };
+
+  const procesarBusquedaManual = () => {
+    const valorSaneado = scanInputManual.trim();
+    if (!valorSaneado) return;
+    const criterioLimpio = valorSaneado.includes('/') ? valorSaneado.split('/').pop() : valorSaneado;
+    if (criterioLimpio) buscarCliente(criterioLimpio.trim());
+  };
+
+  const handleRegistroExpress = async () => {
+    if (!scanSearchedPhone || !scanNuevoClienteNombre.trim()) return
+    setScanCargando(true)
+    try {
+      const cleanDigits = scanSearchedPhone.replace(/\D/g, '')
+      const last10 = cleanDigits.slice(-10)
+      const telNormalizado = last10.length === 10 ? `+52${last10}` : scanSearchedPhone
+      
+      const activeBizIdVal = business?.id || ''
+      const { data, error } = await supabase
+        .from('clientes')
+        .insert({
+          business_id: activeBizIdVal,
+          nombre: scanNuevoClienteNombre.trim() || null,
+          telefono: telNormalizado,
+          puntos: 0,
+          visitas: 0,
+          bloqueado: false
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+      
+      setScanRegistradoExito(data)
+    } catch (err: any) {
+      alert('Error al registrar cliente: ' + err.message)
+    } finally {
+      setScanCargando(false)
+    }
+  }
+
+  const manejarAccionVIP = async () => {
+    if (!scanCliente) return
+    setScanCargando(true)
+
+    const activeBizIdVal = business?.id || ''
+
+    if (scanCoupon) {
+      try {
+        const { error: errorCoupon } = await supabase
+          .from('tracking_events')
+          .update({ cupon_canjeado: true })
+          .eq('id', scanCoupon.id)
+
+        if (errorCoupon) throw errorCoupon
+
+        const { error: errorCliente } = await supabase
+          .from('clientes')
+          .update({ puntos: 0 })
+          .eq('id', scanCliente.id)
+
+        if (errorCliente) throw errorCliente
+
+        await supabase
+          .from('historial_puntos')
+          .insert({
+             cliente_id: scanCliente.id,
+             cantidad: scanCliente.puntos, 
+             motivo: 'resta'
+          });
+
+        if (activeBizIdVal) {
+          await supabase.from('tracking_events').insert({
+            business_id: activeBizIdVal,
+            cliente_id: scanCliente.id,
+            event_type: 'reward_redeemed',
+            metadata: { canal: 'mostrador', codigo_cupon: scanCoupon.codigo_cupon, puntos_canjeados: scanCliente.puntos }
+          })
+        }
+
+        if (typeof navigator !== 'undefined' && navigator.vibrate) {
+          navigator.vibrate([200, 100, 200, 100, 400])
+        }
+        
+        setScanMensaje({ 
+          tipo: 'exito', 
+          texto: '¡REGALO ENTREGADO Y CUPÓN CANJEADO CON ÉXITO!' 
+        })
+        
+        setTimeout(() => {
+          setScanCliente(null);
+          setScanCoupon(null);
+          setScanMensaje({ tipo: '', texto: '' });
+          cargarClientesYHistorial();
+        }, 2500)
+
+      } catch (err) {
+        console.error(err);
+        setScanMensaje({ tipo: 'error', texto: 'ERROR AL CANJEAR EL CUPÓN' })
+      } finally {
+        setScanCargando(false)
+      }
+      return
+    }
+
+    const maxStamps = sellosTotales
+    const esCanjeDePremio = scanCliente.puntos >= maxStamps;
+
+    try {
+      const nuevosPuntos = esCanjeDePremio ? 0 : scanCliente.puntos + 1;
+
+      const { error: errorCliente } = await supabase
+        .from('clientes')
+        .update({ puntos: nuevosPuntos })
+        .eq('id', scanCliente.id)
+
+      if (errorCliente) throw new Error('No se pudo actualizar el registro');
+
+      await supabase
+        .from('historial_puntos')
+        .insert({
+           cliente_id: scanCliente.id,
+           cantidad: esCanjeDePremio ? maxStamps : 1, 
+           motivo: esCanjeDePremio ? 'resta' : 'suma'
+        });
+
+      if (activeBizIdVal) {
+        await supabase.from('tracking_events').insert({
+          business_id: activeBizIdVal,
+          cliente_id: scanCliente.id,
+          event_type: esCanjeDePremio ? 'reward_redeemed' : 'approved_by_staff',
+          metadata: { canal: 'mostrador', puntos_anteriores: scanCliente.puntos }
+        })
+      }
+
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        navigator.vibrate(esCanjeDePremio ? [200, 100, 200, 100, 400] : [100, 50, 100])
+      }
+      
+      setScanMensaje({ 
+        tipo: 'exito', 
+        texto: esCanjeDePremio ? '¡PREMIO ENTREGADO!' : '¡SELLO AGREGADO!' 
+      })
+      
+      setTimeout(() => {
+        setScanCliente(null);
+        setScanMensaje({ tipo: '', texto: '' });
+        cargarClientesYHistorial();
+      }, 2500)
+
+    } catch (err) {
+      console.error(err);
+      setScanMensaje({ tipo: 'error', texto: 'ERROR AL PROCESAR' })
+    } finally {
+      setScanCargando(false)
+    }
+  }
+
+  const manejarAjusteSello = async (delta: number) => {
+    if (!scanCliente) return
+    setScanCargando(true)
+
+    const activeBizIdVal = business?.id || ''
+    const maxStamps = sellosTotales
+    const nuevosPuntos = Math.max(0, Math.min(maxStamps, scanCliente.puntos + delta))
+
+    try {
+      const { error: errorCliente } = await supabase
+        .from('clientes')
+        .update({ puntos: nuevosPuntos })
+        .eq('id', scanCliente.id)
+
+      if (errorCliente) throw new Error('No se pudo actualizar el registro');
+
+      await supabase
+        .from('historial_puntos')
+        .insert({
+           cliente_id: scanCliente.id,
+           cantidad: Math.abs(delta), 
+           motivo: delta > 0 ? 'suma' : 'resta'
+        });
+
+      if (activeBizIdVal) {
+        await supabase.from('tracking_events').insert({
+          business_id: activeBizIdVal,
+          cliente_id: scanCliente.id,
+          event_type: 'puntos_ajustados',
+          metadata: { canal: 'mostrador', delta, nuevosPuntos, puntos_anteriores: scanCliente.puntos }
+        })
+      }
+
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        navigator.vibrate([100, 50, 100])
+      }
+      
+      setScanMensaje({ 
+        tipo: 'exito', 
+        texto: delta > 0 ? '¡SELLO AGREGADO CON ÉXITO!' : '¡SELLO RETIRADO CON ÉXITO!' 
+      })
+      
+      setTimeout(() => {
+        setScanCliente((prev: any) => ({ ...prev, puntos: nuevosPuntos }))
+        setScanMensaje({ tipo: '', texto: '' });
+        cargarClientesYHistorial();
+      }, 1500)
+
+    } catch (err) {
+      console.error(err);
+      setScanMensaje({ tipo: 'error', texto: 'ERROR AL PROCESAR EL AJUSTE' })
+    } finally {
+      setScanCargando(false)
+    }
+  }
+
+  const cargarClientesYHistorial = async () => {
+    if (!business?.id) return
+    const { data: dataClientes } = await supabase
+      .from('clientes')
+      .select('*')
+      .eq('business_id', business.id)
+      .order('created_at', { ascending: false })
+    if (dataClientes) setClientes(dataClientes)
+
+    const { data: dataHistorial } = await supabase
+      .from('historial_puntos').select('*, clientes(nombre)')
+      .order('created_at', { ascending: false }).limit(60)
+    if (dataHistorial) setHistorial(dataHistorial)
+  }
 
 
   // Horarios Estilo LoyaltyClub (Lunes a Domingo)
@@ -2660,7 +3074,7 @@ export default function DashboardPage() {
   // 10 Standalone Navigation Tabs (Including first-class Catalogo de Productos)
   const TABS_MAIN = [
     { id: 'metricas',      label: 'Métricas',                  icon: LayoutDashboard },
-    { id: 'escaner',       label: 'Escáner / Registrar Sello', icon: QrCode,           href: '/escaner' },
+    { id: 'escaner',       label: 'Escáner / Registrar Sello', icon: QrCode },
     { id: 'configuracion', label: 'Configuración',              icon: Settings },
     { id: 'productos',     label: '🍔 Catálogo de Productos',   icon: UtensilsCrossed },
     { id: 'clientes',      label: '👥 Clientes',                icon: UserCheck },
@@ -2802,12 +3216,13 @@ export default function DashboardPage() {
           </div>
 
           <div className="flex items-center gap-2">
-            <Link href="/escaner">
-              <button className="border border-[#e4e4e7] text-[#52525b] hover:text-[#09090b] font-medium py-2 px-3 rounded-xl text-xs hover:bg-[#fafafa] transition-all flex items-center gap-1.5">
-                <QrCode className="w-4 h-4 text-[#dc2626]" />
-                <span className="hidden md:inline whitespace-nowrap">Lector QR</span>
-              </button>
-            </Link>
+            <button 
+              onClick={() => setPestaña('escaner')}
+              className="border border-[#e4e4e7] text-[#52525b] hover:text-[#09090b] font-medium py-2 px-3 rounded-xl text-xs hover:bg-[#fafafa] transition-all flex items-center gap-1.5"
+            >
+              <QrCode className="w-4 h-4 text-[#dc2626]" />
+              <span className="hidden md:inline whitespace-nowrap">Lector QR</span>
+            </button>
             <Link href="/registro">
               <button className="btn-primary py-2 px-3 text-xs flex items-center gap-1.5">
                 <UserPlus className="w-4 h-4" />
@@ -3252,7 +3667,418 @@ export default function DashboardPage() {
           )}
 
           {/* ══════════════════════════════════════════
-              PESTAÑA 2: CONFIGURACIÓN            </div>
+              PESTAÑA: ESCÁNER Y REGISTRO DE SELLO
+          ══════════════════════════════════════════ */}
+          {pestaña === 'escaner' && (
+            <div className="space-y-6 animate-fadeIn max-w-[480px] mx-auto relative z-10">
+              
+              {scanCargando && (
+                <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex flex-col items-center justify-center z-50 rounded-3xl">
+                  <div className="w-16 h-16 border-4 border-zinc-200 border-t-[#dc2626] rounded-full animate-spin"></div>
+                </div>
+              )}
+
+              {/* ESTADO 1: ESCÁNER INICIAL */}
+              {!scanCliente && !scanMensaje.texto && (
+                <div className="bg-white border border-[#e4e4e7] rounded-3xl p-6 sm:p-8 shadow-sm relative space-y-6">
+                  <h3 className="text-lg font-black text-[#09090b] tracking-tight text-center uppercase font-sans">Escáner de Socios</h3>
+                  
+                  {scanHasCamera !== false ? (
+                    <div className="relative w-full aspect-square bg-black rounded-2xl overflow-hidden border border-[#e4e4e7] shadow-inner">
+                      <div id="reader" className="w-full h-full object-cover"></div>
+                      
+                      {/* Esquinas de enfoque estilo Sci-Fi/Lujo */}
+                      <div className="absolute top-6 left-6 w-8 h-8 border-t-[4px] border-l-[4px] border-[#dc2626] rounded-tl-xl z-10 pointer-events-none"></div>
+                      <div className="absolute top-6 right-6 w-8 h-8 border-t-[4px] border-r-[4px] border-[#dc2626] rounded-tr-xl z-10 pointer-events-none"></div>
+                      <div className="absolute bottom-6 left-6 w-8 h-8 border-b-[4px] border-l-[4px] border-[#dc2626] rounded-bl-xl z-10 pointer-events-none"></div>
+                      <div className="absolute bottom-6 right-6 w-8 h-8 border-b-[4px] border-r-[4px] border-[#dc2626] rounded-br-xl z-10 pointer-events-none"></div>
+                    </div>
+                  ) : (
+                    <div className="w-full py-8 px-6 bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl text-center flex flex-col items-center justify-center gap-3 shadow-inner">
+                      <div className="text-4xl select-none">📷❌</div>
+                      <p className="text-sm font-bold">Cámara no detectada o sin permisos</p>
+                      <p className="text-xs text-amber-700">Por favor, usa el buscador manual de abajo para ingresar el teléfono o ID del socio.</p>
+                    </div>
+                  )}
+                  
+                  <div className="flex flex-col gap-3 w-full">
+                    <label className="text-[#71717a] text-[10px] uppercase font-bold tracking-[0.2em] text-center">
+                      Búsqueda Manual
+                    </label>
+                    <input 
+                      type="text" 
+                      value={scanInputManual}
+                      onChange={(e) => setScanInputManual(e.target.value)}
+                      onKeyDown={handleKeyDownBusqueda}
+                      placeholder="Teléfono o ID..."
+                      className="w-full bg-[#fafafa] border border-[#e4e4e7] rounded-xl px-4 py-3 focus:outline-none focus:border-[#dc2626] focus:bg-white transition-colors text-lg placeholder:text-[#a1a1aa] text-center font-mono text-[#09090b] shadow-inner"
+                    />
+                    <button 
+                      onClick={procesarBusquedaManual}
+                      className="btn-primary w-full mt-2"
+                    >
+                      Buscar Cliente
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ESTADO 2: MENSAJE DE ERROR */}
+              {scanMensaje.texto && !scanCliente && (
+                <div className="bg-white border border-[#e4e4e7] rounded-3xl p-6 sm:p-8 shadow-sm text-center flex flex-col items-center min-h-[360px] justify-center">
+                  {!scanRegistradoExito ? (
+                    <>
+                      <div className="text-6xl mb-6 select-none">⚠️</div>
+                      <h4 className="text-xs font-black text-red-500 uppercase tracking-widest mb-3 font-sans">
+                        Error de Búsqueda
+                      </h4>
+                      <p className="text-lg font-black uppercase text-[#09090b] mb-4 tracking-wider leading-relaxed px-2">
+                        {scanMensaje.texto}
+                      </p>
+                      
+                      {scanSearchedPhone ? (
+                        <div className="w-full space-y-4 border-t border-[#f4f4f5] pt-4 mt-2">
+                          <p className="text-xs font-bold text-zinc-700">
+                            Número detectado: <span className="font-mono text-zinc-900 bg-zinc-100 px-2 py-1 rounded">{scanSearchedPhone}</span>
+                          </p>
+                          <div className="space-y-2 text-left">
+                            <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block">Nombre del Cliente</label>
+                            <input
+                              type="text"
+                              value={scanNuevoClienteNombre}
+                              onChange={(e) => setScanNuevoClienteNombre(e.target.value)}
+                              placeholder="Ej: Juan Pérez"
+                              className="w-full bg-slate-50 border border-[#e4e4e7] rounded-xl px-4 py-3 focus:outline-none focus:border-[#dc2626] focus:bg-white text-sm text-[#09090b]"
+                            />
+                          </div>
+                          <button
+                            onClick={handleRegistroExpress}
+                            disabled={!scanNuevoClienteNombre.trim()}
+                            className="w-full bg-[#dc2626] hover:bg-[#b91c1c] disabled:opacity-50 text-white font-black text-xs py-3.5 rounded-xl uppercase tracking-wider shadow-md cursor-pointer transition-all"
+                          >
+                            ➕ Registrar y Crear Tarjeta VIP
+                          </button>
+                        </div>
+                      ) : null}
+
+                      <button 
+                        onClick={() => { setScanMensaje({ tipo: '', texto: '' }); setScanInputManual(''); setScanSearchedPhone(''); setScanNuevoClienteNombre('') }} 
+                        className="px-8 py-3.5 mt-6 bg-transparent border-2 border-[#dc2626] hover:bg-red-50/20 text-[#dc2626] rounded-2xl font-bold text-xs uppercase transition-all tracking-widest cursor-pointer shadow-sm active:scale-95"
+                      >
+                        Reintentar
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-6 shadow-md shadow-emerald-100">
+                        <span className="text-3xl">✓</span>
+                      </div>
+                      <h4 className="text-sm font-black text-emerald-600 uppercase tracking-widest mb-4 font-sans">
+                        Registro Exitoso
+                      </h4>
+                      <p className="text-sm text-zinc-600 mb-6 leading-relaxed">
+                        El socio <strong>{scanRegistradoExito.nombre}</strong> ha sido agregado con éxito.
+                      </p>
+                      
+                      {scanEnvioExitoMsg && (
+                        <div className="mb-4 p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-semibold leading-relaxed text-center shadow-sm">
+                          {scanEnvioExitoMsg}
+                        </div>
+                      )}
+
+                      <button
+                        disabled={scanEnviandoWhatsapp}
+                        onClick={async () => {
+                          setScanEnviandoWhatsapp(true)
+                          setScanEnvioExitoMsg('')
+                          try {
+                            const cleanTel = scanRegistradoExito.telefono
+                            const phoneParam = cleanTel.startsWith('52') ? cleanTel : '52' + cleanTel
+                            const origin = typeof window !== 'undefined' ? window.location.origin : ''
+                            const domain = typeof window !== 'undefined' && window.location.hostname.includes('loyaltyclub.mx') 
+                              ? `${slug}.loyaltyclub.mx` 
+                              : `${slug}.localhost:3000`
+                            const cardUrl = `http://${domain}/card/${scanRegistradoExito.id}`
+                            
+                            const textParam = `¡Hola! Te saluda el equipo de ${business?.nombre || 'Loyalty App'}. Te compartimos tu nueva Tarjeta Digital VIP de Cliente Frecuente. Acumula tus sellos y consulta nuestro menú aquí: ${cardUrl}`
+                            
+                            const response = await fetch('/api/whatsapp/send', {
+                              method: 'POST',
+                              headers: {
+                                'Content-Type': 'application/json',
+                              },
+                              body: JSON.stringify({
+                                clientPhone: phoneParam,
+                                message: textParam,
+                                tenantSlug: slug
+                              })
+                            })
+                            
+                            if (response.ok) {
+                              setScanEnvioExitoMsg('✅ Tarjeta digital VIP enviada con éxito desde la línea oficial del negocio.')
+                            } else {
+                              const errData = await response.json().catch(() => ({}))
+                              alert(`Error al enviar WhatsApp: ${errData.error || 'Error desconocido'}`)
+                            }
+                          } catch (error) {
+                            console.error('Error al enviar WhatsApp:', error)
+                            alert('Error de red al intentar enviar WhatsApp.')
+                          } finally {
+                            setScanEnviandoWhatsapp(false)
+                          }
+                        }}
+                        className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:opacity-75 text-white font-black text-xs py-4 px-6 rounded-xl uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 active:scale-95 transition-all cursor-pointer"
+                      >
+                        {scanEnviandoWhatsapp ? 'Enviando...' : '💬 Enviar Tarjeta por WhatsApp'}
+                      </button>
+
+                      <button 
+                        onClick={() => { 
+                          setScanMensaje({ tipo: '', texto: '' })
+                          setScanInputManual('')
+                          setScanSearchedPhone('')
+                          setScanNuevoClienteNombre('')
+                          setScanRegistradoExito(null)
+                        }} 
+                        className="mt-6 text-zinc-500 hover:text-zinc-800 text-[10px] font-bold uppercase tracking-widest cursor-pointer hover:underline"
+                      >
+                        Ir al Escáner
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* ESTADO 3: TARJETA VIP (LA QUE VE EL STAFF) */}
+              {scanCliente && (
+                <div className={`bg-white border border-[#e4e4e7] rounded-3xl p-6 sm:p-8 shadow-sm relative overflow-hidden transition-all duration-500 ${scanCliente.puntos >= sellosTotales ? 'border-amber-400 shadow-[0_0_30px_rgba(245,158,11,0.05)]' : ''}`}>
+                  
+                  {scanMensaje.texto && scanMensaje.tipo === 'exito' && (
+                    <div className="absolute inset-0 bg-white/95 backdrop-blur-md flex flex-col items-center justify-center z-50">
+                      <div className="w-20 h-20 bg-green-600 rounded-full flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(22,163,74,0.2)]">
+                          <span className="text-4xl text-white">✓</span>
+                      </div>
+                      <p className="text-xl font-black text-[#09090b] tracking-widest uppercase text-center px-6 leading-relaxed">{scanMensaje.texto}</p>
+                    </div>
+                  )}
+
+                  {/* Cabecera de la tarjeta del cliente */}
+                  <div className="w-full bg-[#fafafa] border border-[#e4e4e7] rounded-2xl py-6 px-6 flex flex-col items-center text-center mb-6 shadow-inner relative">
+                    <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent ${scanCliente.puntos >= sellosTotales ? 'via-amber-500' : 'via-[#dc2626]'} to-transparent opacity-70`}></div>
+                    <h2 className="text-[#09090b] text-2xl font-serif font-black italic tracking-wide mb-2 w-full truncate">
+                      {scanCliente.nombre}
+                    </h2>
+                    <p className="text-[#dc2626] text-xs tracking-[0.3em] font-mono font-bold">
+                      {scanCliente.telefono || 'ID-VIP'}
+                    </p>
+                  </div>
+                  
+                  <div className="flex flex-col items-center w-full mb-8">
+                    <div className="flex items-baseline gap-2 mb-4">
+                      <span className={`text-5xl font-black leading-none ${scanCliente.puntos >= sellosTotales ? 'text-green-600 drop-shadow-[0_0_20px_rgba(22,163,74,0.15)]' : 'text-amber-500 drop-shadow-[0_0_20px_rgba(245,158,11,0.15)]'}`}>
+                        {scanCliente.puntos}
+                      </span>
+                      <span className="text-2xl font-bold text-[#a1a1aa]">/ {sellosTotales}</span>
+                    </div>
+                    <p className="text-[9px] text-[#a1a1aa] font-bold uppercase tracking-[0.4em] mb-6">
+                      {scanCliente.puntos >= sellosTotales ? '¡PREMIO DESBLOQUEADO!' : 'Sellos Acumulados'}
+                    </p>
+
+                    {/* Matriz de Estrellas */}
+                    <div className="grid grid-cols-5 gap-y-4 gap-x-3 place-items-center w-full px-2">
+                      {[...Array(sellosTotales)].map((_, i) => (
+                        <div key={i} className="flex items-center justify-center">
+                          {i < scanCliente.puntos ? (
+                            <svg viewBox="0 0 24 24" className="w-8 h-8 text-amber-500 drop-shadow-[0_0_8px_rgba(245,158,11,0.2)] fill-current">
+                              <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" stroke="currentColor" strokeWidth="1" strokeLinejoin="round" />
+                            </svg>
+                          ) : (
+                            <svg viewBox="0 0 24 24" className="w-8 h-8 text-[#f4f4f5] fill-current">
+                              <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" stroke="#d4d4d8" strokeWidth="1" strokeLinejoin="round" />
+                            </svg>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Botones de Acción */}
+                  {scanCoupon ? (
+                    <button 
+                      onClick={manejarAccionVIP}
+                      disabled={scanCargando}
+                      className="w-full bg-gradient-to-r from-amber-500 to-amber-700 hover:from-amber-600 hover:to-amber-800 text-white py-4 rounded-xl font-black text-xs uppercase shadow-md active:scale-95 transition-all tracking-[0.1em] flex items-center justify-center gap-2"
+                    >
+                      🎁 CANJEAR CUPÓN: {scanCoupon.codigo_cupon}
+                    </button>
+                  ) : scanCliente.puntos >= sellosTotales ? (
+                    <div className="space-y-4 w-full">
+                      <button 
+                        onClick={manejarAccionVIP}
+                        disabled={scanCargando}
+                        className="w-full bg-gradient-to-r from-green-600 to-green-800 text-white py-4 rounded-xl font-black text-xs uppercase shadow-md active:scale-95 transition-all tracking-[0.2em] flex items-center justify-center gap-2"
+                      >
+                        🏆 CANJEAR PREMIO
+                      </button>
+                      <div className="flex gap-3">
+                        <button 
+                          onClick={() => manejarAjusteSello(-1)}
+                          disabled={scanCargando || scanCliente.puntos === 0}
+                          className="flex-1 bg-zinc-900 border border-zinc-800 hover:bg-zinc-850 text-red-400 font-bold py-3.5 rounded-xl text-xs uppercase tracking-wider transition-all disabled:opacity-40"
+                        >
+                          ➖ Quitar Sello
+                        </button>
+                        <button 
+                          onClick={() => manejarAjusteSello(1)}
+                          disabled={scanCargando || scanCliente.puntos >= sellosTotales}
+                          className="flex-1 bg-zinc-900 border border-zinc-800 hover:bg-zinc-850 text-green-400 font-bold py-3.5 rounded-xl text-xs uppercase tracking-wider transition-all disabled:opacity-40"
+                        >
+                          ➕ Sumar Sello
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-4 w-full">
+                      <button 
+                        onClick={() => manejarAjusteSello(1)}
+                        disabled={scanCargando}
+                        className="btn-primary w-full py-4 rounded-xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-md"
+                      >
+                        ➕ APLICAR SELLO
+                      </button>
+                      <div className="flex gap-3">
+                        <button 
+                          onClick={() => manejarAjusteSello(-1)}
+                          disabled={scanCargando || scanCliente.puntos === 0}
+                          className="flex-1 bg-[#121212] border border-zinc-850 hover:bg-zinc-800 text-red-400 hover:text-red-300 font-bold py-3 rounded-xl text-xs uppercase tracking-wider transition-all disabled:opacity-40 flex items-center justify-center gap-1"
+                        >
+                          ➖ Quitar Sello
+                        </button>
+                        <button 
+                          onClick={() => manejarAjusteSello(1)}
+                          disabled={scanCargando}
+                          className="flex-1 bg-[#121212] border border-zinc-850 hover:bg-zinc-800 text-green-400 hover:text-green-300 font-bold py-3 rounded-xl text-xs uppercase tracking-wider transition-all disabled:opacity-40 flex items-center justify-center gap-1"
+                        >
+                          ➕ Sello Extra
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Enviar Tarjeta por WhatsApp (Socio Encontrado) */}
+                  <div className="space-y-3 w-full mt-4 border-t border-[#f4f4f5] pt-4">
+                    {scanEnvioExitoMsg && (
+                      <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-semibold leading-relaxed text-center shadow-sm">
+                        {scanEnvioExitoMsg}
+                      </div>
+                    )}
+                    <button
+                      disabled={scanEnviandoWhatsapp}
+                      onClick={async () => {
+                        setScanEnviandoWhatsapp(true)
+                        setScanEnvioExitoMsg('')
+                        try {
+                          const cleanTel = scanCliente.telefono
+                          const phoneParam = cleanTel.startsWith('52') ? cleanTel : '52' + cleanTel
+                          const domain = typeof window !== 'undefined' && window.location.hostname.includes('loyaltyclub.mx') 
+                            ? `${slug}.loyaltyclub.mx` 
+                            : `${slug}.localhost:3000`
+                          const cardUrl = `http://${domain}/card/${scanCliente.id}`
+                          
+                          const textParam = `¡Hola! Te saluda el equipo de ${business?.nombre || 'Loyalty App'}. Te compartimos tu nueva Tarjeta Digital VIP de Cliente Frecuente. Acumula tus sellos y consulta nuestro menú aquí: ${cardUrl}`
+                          
+                          const response = await fetch('/api/whatsapp/send', {
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                              clientPhone: phoneParam,
+                              message: textParam,
+                              tenantSlug: slug
+                            })
+                          })
+                          
+                          if (response.ok) {
+                            setScanEnvioExitoMsg('✅ Tarjeta digital VIP enviada con éxito desde la línea oficial del negocio.')
+                          } else {
+                            const errData = await response.json().catch(() => ({}))
+                            alert(`Error al enviar WhatsApp: ${errData.error || 'Error desconocido'}`)
+                          }
+                        } catch (error) {
+                          console.error('Error al enviar WhatsApp:', error)
+                          alert('Error de red al intentar enviar WhatsApp.')
+                        } finally {
+                          setScanEnviandoWhatsapp(false)
+                        }
+                      }}
+                      className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:opacity-75 text-white font-black text-xs py-3 rounded-xl uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm active:scale-95 transition-all cursor-pointer"
+                    >
+                      {scanEnviandoWhatsapp ? 'Enviando...' : '💬 Enviar Tarjeta por WhatsApp'}
+                    </button>
+                  </div>
+                  
+                  <button 
+                    onClick={() => { setScanCliente(null); cargarClientesYHistorial(); }} 
+                    className="w-full mt-4 text-[#71717a] hover:text-[#dc2626] text-[10px] font-bold tracking-[0.3em] uppercase transition-colors py-2"
+                  >
+                    CERRAR PERFIL
+                  </button>
+                </div>
+              )}
+
+              {/* Inyección de estilos CSS encapsulados para Html5QrcodeScanner */}
+              <style dangerouslySetInnerHTML={{__html: `
+                #reader a { display: none !important; }
+                #reader__status_span { display: none !important; }
+                #reader div[style*="padding: 10px;"] { display: none !important; }
+                #reader { border: none !important; background: transparent !important; padding: 0 !important; width: 100% !important; }
+                
+                #reader__video_flow_container {
+                    width: 100% !important;
+                    height: 100% !important;
+                    background: transparent !important;
+                    border-radius: 1rem !important;
+                    overflow: hidden !important;
+                }
+                #reader video {
+                    width: 100% !important;
+                    height: 100% !important;
+                    object-fit: cover !important;
+                }
+
+                #reader button { 
+                  background: #dc2626 !important; 
+                  color: white !important; 
+                  border-radius: 0.75rem !important; 
+                  padding: 10px 20px !important; 
+                  font-family: inherit !important;
+                  font-weight: 800 !important; 
+                  font-size: 0.75rem !important;
+                  letter-spacing: 0.05em !important;
+                  text-transform: uppercase !important;
+                  border: none !important; 
+                  cursor: pointer !important;
+                  margin-top: 1rem !important;
+                  width: 90% !important;
+                  max-width: 260px !important;
+                }
+                
+                #reader select { 
+                  background: #ffffff !important; 
+                  color: #09090b !important; 
+                  border: 1px solid #e4e4e7 !important; 
+                  padding: 10px 12px !important; 
+                  border-radius: 0.75rem !important; 
+                  font-size: 0.8rem !important;
+                  outline: none !important;
+                  margin-top: 10px !important;
+                  margin-bottom: 8px !important;
+                  width: 90% !important;
+                  max-width: 260px !important;
+                }
+              `}} />
+            </div>
           )}
 
           {/* ══════════════════════════════════════════
@@ -5835,7 +6661,7 @@ export default function DashboardPage() {
         <div className="flex items-stretch justify-around h-16 safe-area-inset-bottom">
           {([
             { id: 'metricas',      label: 'Inicio',  icon: LayoutDashboard },
-            { id: 'escaner',       label: 'Escáner', icon: QrCode,    href: '/escaner' },
+            { id: 'escaner',       label: 'Escáner', icon: QrCode },
             { id: 'clientes',      label: 'Socios',  icon: UserCheck },
             { id: 'empleados',     label: 'Personal',icon: Users },
             { id: 'configuracion', label: 'Config',  icon: Settings },
