@@ -3703,133 +3703,7 @@ export default function DashboardPage() {
           {pestaña === 'productos' && (
             <div className="space-y-6 animate-fadeIn max-w-3xl">
               {/* MODAL GESTOR DE MODIFICADORES */}
-              {modificadorAEditar && productoAEditar && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                  <div className="bg-white border border-[#e4e4e7] rounded-3xl p-6 w-full max-w-lg shadow-2xl relative max-h-[85vh] overflow-y-auto text-[#09090b]">
-                    <button 
-                      onClick={() => { setModificadorAEditar(null); setProductoAEditar(null); }}
-                      className="absolute top-4 right-4 w-8 h-8 rounded-full bg-[#fafafa] hover:bg-[#f4f4f5] flex items-center justify-center text-[#71717a] transition-colors"
-                    >
-                      ✕
-                    </button>
-                    
-                    <div className="mb-4">
-                      <span className="text-[10px] bg-red-50 text-[#dc2626] font-black uppercase px-2.5 py-0.5 rounded-full">Modificadores</span>
-                      <h3 className="text-lg font-bold text-[#09090b] tracking-tight mt-1">
-                        Ajustes para: <span className="text-[#dc2626]">{productoAEditar.nombre}</span>
-                      </h3>
-                      <p className="text-xs text-[#71717a]">Crea grupos (ej: Salsas, Tamaño) y agrega opciones con precios adicionales.</p>
-                    </div>
 
-                    {/* Formulario nuevo modificador */}
-                    <div className="bg-[#fafafa] border border-[#e4e4e7] p-5 rounded-2xl space-y-4 mb-6">
-                      <h4 className="text-xs font-bold text-[#09090b] uppercase tracking-wider">➕ Crear Nuevo Grupo Modificador</h4>
-                      
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div>
-                          <label className={LBL}>Nombre del Grupo (ej: Elige tu Salsa)</label>
-                          <input type="text" value={nombreMod} onChange={e => setNombreMod(e.target.value)} className={IC + ' bg-white'} placeholder="Sabor / Salsa / Tamaño" />
-                        </div>
-                        <div className="flex items-center pt-5">
-                          <label className="flex items-center gap-2 text-xs font-semibold text-[#3f3f46] cursor-pointer">
-                            <input type="checkbox" checked={requeridoMod} onChange={e => setRequeridoMod(e.target.checked)} className="rounded border-[#e4e4e7] text-[#dc2626] focus:ring-[#dc2626]" />
-                            ¿Es obligatorio seleccionar?
-                          </label>
-                        </div>
-                      </div>
-
-                      {/* Agregar opciones en memoria */}
-                      <div className="border-t border-[#e4e4e7] pt-4 space-y-3">
-                        <p className="text-[10px] font-bold text-[#71717a] uppercase tracking-wider">Opciones del Grupo</p>
-                        
-                        {/* Listita en memoria */}
-                        {opcionesMod.length > 0 && (
-                          <div className="flex flex-wrap gap-2 py-1">
-                            {opcionesMod.map((op, idx) => (
-                              <span key={idx} className="inline-flex items-center gap-1.5 bg-white border border-[#e4e4e7] rounded-lg px-2.5 py-1 text-xs font-semibold text-[#09090b]">
-                                {op.nombre} (+${op.precio_extra} MXN)
-                                <button type="button" onClick={() => quitarOpcionMemoria(idx)} className="text-[#dc2626] hover:text-red-700 font-bold ml-1">✕</button>
-                              </span>
-                            ))}
-                          </div>
-                        )}
-
-                        <div className="flex gap-2 items-end">
-                          <div className="flex-1">
-                            <label className="text-[10px] text-[#71717a] font-bold mb-1 block">Nombre Opción</label>
-                            <input type="text" value={nuevaOpNombre} onChange={e => setNuevaOpNombre(e.target.value)} className={IC + ' bg-white text-xs'} placeholder="Fresa / Habanero / Grande" />
-                          </div>
-                          <div className="w-28">
-                            <label className="text-[10px] text-[#71717a] font-bold mb-1 block">Precio Extra</label>
-                            <input type="number" value={nuevaOpPrecio} onChange={e => setNuevaOpPrecio(e.target.value)} className={IC + ' bg-white text-xs'} placeholder="0" />
-                          </div>
-                          <button type="button" onClick={agregarOpcionMemoria} className="bg-[#09090b] hover:bg-zinc-800 text-white text-xs font-bold px-3 py-3.5 rounded-xl transition-all">
-                            ➕ Opción
-                          </button>
-                        </div>
-                      </div>
-
-                      <button
-                        onClick={guardarModificadorCompleto}
-                        disabled={guardandoMod || !nombreMod}
-                        className="w-full btn-primary text-xs font-black py-3 rounded-xl uppercase tracking-widest transition-all"
-                      >
-                        {guardandoMod ? 'Guardando...' : '💾 Guardar Grupo Completo'}
-                      </button>
-                    </div>
-
-                    {/* Grupos existentes */}
-                    <div className="space-y-3">
-                      <h4 className="text-xs font-bold text-[#09090b] uppercase tracking-wider">⚙️ Grupos Modificadores Configurados</h4>
-                      {(!productoAEditar.product_modifiers || productoAEditar.product_modifiers.length === 0) ? (
-                        <p className="text-xs text-[#a1a1aa] italic">Este producto no cuenta con modificadores aún.</p>
-                      ) : (
-                        <div className="space-y-3.5">
-                          {productoAEditar.product_modifiers.map((mod: any) => (
-                            <div key={mod.id} className="border border-[#e4e4e7] bg-[#fafafa] rounded-2xl p-4 flex justify-between items-start gap-4">
-                              <div className="space-y-1">
-                                <div className="flex items-center gap-2">
-                                  <h5 className="font-bold text-sm text-[#09090b]">{mod.nombre}</h5>
-                                  <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${mod.requerido ? 'bg-red-50 text-[#dc2626]' : 'bg-[#e4e4e7] text-[#52525b]'}`}>
-                                    {mod.requerido ? 'Requerido' : 'Opcional'}
-                                  </span>
-                                </div>
-                                <div className="flex flex-wrap gap-1.5 pt-1">
-                                  {mod.modifier_options?.map((opt: any) => (
-                                    <button
-                                      key={opt.id}
-                                      type="button"
-                                      onClick={() => toggleGlobalModifierDisponible(opt.nombre, opt.disponible ?? true)}
-                                      className={`text-[10px] font-bold px-2 py-1 rounded-lg border transition-all flex items-center gap-1.5 ${
-                                        (opt.disponible !== false)
-                                          ? 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100'
-                                          : 'bg-red-50 border-red-200 text-red-700 hover:bg-red-100'
-                                      }`}
-                                      title={`Click para cambiar disponibilidad global de "${opt.nombre}"`}
-                                    >
-                                      <span className={`w-1.5 h-1.5 rounded-full ${opt.disponible !== false ? 'bg-green-500' : 'bg-red-500'}`} />
-                                      {opt.nombre} (+${opt.precio_extra} MXN)
-                                      <span className="text-[8px] opacity-75 font-normal">
-                                        ({opt.disponible !== false ? 'Disponible' : 'Agotado'})
-                                      </span>
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                              <button
-                                onClick={() => borrarModificador(mod.id)}
-                                className="bg-red-50 border border-red-100 hover:bg-red-100 text-[#dc2626] font-bold p-2 rounded-xl transition-all shrink-0"
-                              >
-                                🗑️
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
 
               {/* CONTENEDOR PRINCIPAL */}
               <div className="bg-white border border-[#e4e4e7] p-6 rounded-2xl shadow-sm space-y-6">
@@ -4370,10 +4244,10 @@ export default function DashboardPage() {
                       </button>
                     </div>
 
-                    {/* MODAL PARA CREAR Y EDITAR PRODUCTO */}
+                    {/* MODAL PARA CREAR Y EDITAR PRODUCTO UNIFICADO */}
                     {isEditModalOpen && (
                       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                        <div className="bg-white border border-[#e4e4e7] rounded-3xl p-6 w-full max-w-xl shadow-2xl relative animate-fadeIn text-[#09090b] max-h-[90vh] overflow-y-auto">
+                        <div className="bg-white border border-[#e4e4e7] rounded-3xl p-6 w-full max-w-4xl shadow-2xl relative animate-fadeIn text-[#09090b] max-h-[90vh] overflow-y-auto">
                           {/* Botón Cerrar */}
                           <button 
                             onClick={() => {
@@ -4386,61 +4260,193 @@ export default function DashboardPage() {
                               setDisponibleProd(true);
                               setEsUpsellProd(false);
                               setGroupIdProd('');
+                              setModificadoresLocal([]);
+                              cancelarEdicionGrupoMod();
                             }}
                             className="absolute top-4 right-4 w-8 h-8 rounded-full bg-[#fafafa] hover:bg-[#f4f4f5] flex items-center justify-center transition-colors text-[#71717a]"
                           >
                             <span className="text-base">✕</span>
                           </button>
 
-                          <h3 className="text-lg font-black text-[#09090b] tracking-tight mb-4">
-                            {productoAEditar ? '✏️ Editar Producto' : '➕ Crear Producto'}
+                          <h3 className="text-lg font-black text-[#09090b] tracking-tight mb-6 border-b border-[#f4f4f5] pb-3">
+                            {productoAEditar ? '✏️ Editar Producto & Modificadores' : '➕ Crear Producto & Modificadores'}
                           </h3>
 
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-left">
-                            <div>
-                              <label className={LBL}>Nombre Producto *</label>
-                              <input type="text" value={nombreProd} onChange={e => setNombreProd(e.target.value)} className={IC + ' bg-white'} placeholder="Alitas 16 piezas, Hamburguesa Especial" />
-                            </div>
-                            <div>
-                              <label className={LBL}>Categoría vinculada *</label>
-                              <select value={groupIdProd} onChange={e => setGroupIdProd(e.target.value)} className={IC + ' bg-white font-bold'}>
-                                <option value="">-- Elige Categoría --</option>
-                                {menuGroups.map(g => (
-                                  <option key={g.id} value={g.id}>{g.nombre} ({g.tipo_menu})</option>
-                                ))}
-                              </select>
-                            </div>
-                            <div>
-                              <label className={LBL}>Precio unitario ($) *</label>
-                              <input type="number" value={precioProd} onChange={e => setPrecioProd(e.target.value)} className={IC + ' bg-white'} placeholder="180" />
-                            </div>
-                            <div>
-                              <label className={LBL}>Imagen del producto (URL o Subir archivo)</label>
-                              <div className="flex gap-2">
-                                <input type="text" value={imagenProdUrl} onChange={e => setImagenProdUrl(e.target.value)} className={IC + ' bg-white flex-1'} placeholder="https://..." />
-                                <label className="bg-[#09090b] hover:bg-zinc-800 text-white text-xs font-bold px-3 py-3 rounded-xl transition-all cursor-pointer flex items-center justify-center shrink-0">
-                                  {subiendoImgProd ? 'Subiendo...' : '📸 Subir'}
-                                  <input type="file" accept="image/*" hidden onChange={e => { if (e.target.files?.[0]) subirImagenProd(e.target.files[0]) }} />
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 text-left">
+                            
+                            {/* COLUMNA IZQUIERDA: INFORMACIÓN BÁSICA */}
+                            <div className="space-y-4">
+                              <h4 className="text-xs font-bold text-[#09090b] uppercase tracking-wider mb-2">📋 Información Básica</h4>
+                              
+                              <div>
+                                <label className={LBL}>Nombre Producto *</label>
+                                <input type="text" value={nombreProd} onChange={e => setNombreProd(e.target.value)} className={IC + ' bg-[#fafafa]'} placeholder="Alitas 16 piezas, Hamburguesa Especial" />
+                              </div>
+                              
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                  <label className={LBL}>Categoría vinculada *</label>
+                                  <select value={groupIdProd} onChange={e => setGroupIdProd(e.target.value)} className={IC + ' bg-[#fafafa] font-semibold'}>
+                                    <option value="">-- Elige Categoría --</option>
+                                    {menuGroups.map(g => (
+                                      <option key={g.id} value={g.id}>{g.nombre} ({g.tipo_menu})</option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className={LBL}>Precio unitario ($) *</label>
+                                  <input type="number" value={precioProd} onChange={e => setPrecioProd(e.target.value)} className={IC + ' bg-[#fafafa]'} placeholder="180" />
+                                </div>
+                              </div>
+
+                              <div>
+                                <label className={LBL}>Imagen del producto (URL o Subir archivo)</label>
+                                <div className="flex gap-2">
+                                  <input type="text" value={imagenProdUrl} onChange={e => setImagenProdUrl(e.target.value)} className={IC + ' bg-[#fafafa] flex-1'} placeholder="https://..." />
+                                  <label className="bg-[#09090b] hover:bg-zinc-800 text-white text-xs font-bold px-4 py-3 rounded-xl transition-all cursor-pointer flex items-center justify-center shrink-0">
+                                    {subiendoImgProd ? 'Subiendo...' : '📸 Subir'}
+                                    <input type="file" accept="image/*" hidden onChange={e => { if (e.target.files?.[0]) subirImagenProd(e.target.files[0]) }} />
+                                  </label>
+                                </div>
+                              </div>
+
+                              <div>
+                                <label className={LBL}>Descripción del Producto / Ingredientes</label>
+                                <textarea value={descProd} onChange={e => setDescProd(e.target.value)} className={IC + ' bg-[#fafafa] h-24 py-2 resize-none'} placeholder="Ingredientes, porciones, detalles..." />
+                              </div>
+
+                              <div className="bg-[#fafafa] border border-[#e4e4e7] p-4 rounded-2xl flex flex-col gap-3">
+                                <label className="flex items-center gap-2.5 text-xs font-semibold text-[#09090b] cursor-pointer">
+                                  <input type="checkbox" checked={disponibleProd} onChange={e => setDisponibleProd(e.target.checked)} className="rounded border-[#e4e4e7] text-[#dc2626] focus:ring-[#dc2626] w-4 h-4" />
+                                  ¿Disponible hoy? (Activar para mostrar en el menú)
+                                </label>
+                                <label className="flex items-center gap-2.5 text-xs font-semibold text-[#09090b] cursor-pointer">
+                                  <input type="checkbox" checked={esUpsellProd} onChange={e => setEsUpsellProd(e.target.checked)} className="rounded border-[#e4e4e7] text-[#dc2626] focus:ring-[#dc2626] w-4 h-4" />
+                                  ¿Ofrecer como sugerencia de Upsell al final de la compra?
                                 </label>
                               </div>
                             </div>
-                            <div className="sm:col-span-2">
-                              <label className={LBL}>Descripción del Producto / Ingredientes</label>
-                              <textarea value={descProd} onChange={e => setDescProd(e.target.value)} className={IC + ' bg-white h-20 py-2'} placeholder="Ingredientes, porciones, detalles..." />
-                            </div>
-                            <div className="flex items-center gap-6">
-                              <label className="flex items-center gap-2 text-xs font-semibold text-[#3f3f46] cursor-pointer">
-                                <input type="checkbox" checked={disponibleProd} onChange={e => setDisponibleProd(e.target.checked)} className="rounded border-[#e4e4e7] text-[#dc2626] focus:ring-[#dc2626]" />
-                                ¿Disponible hoy?
-                              </label>
-                              <label className="flex items-center gap-2 text-xs font-semibold text-[#3f3f46] cursor-pointer">
-                                <input type="checkbox" checked={esUpsellProd} onChange={e => setEsUpsellProd(e.target.checked)} className="rounded border-[#e4e4e7] text-[#dc2626] focus:ring-[#dc2626]" />
-                                ¿Ofrecer como Upsell al final?
-                              </label>
+
+                            {/* COLUMNA DERECHA: GESTIÓN DE MODIFICADORES */}
+                            <div className="space-y-4 border-t lg:border-t-0 lg:border-l lg:pl-8 border-[#e4e4e7] pt-6 lg:pt-0">
+                              <div className="flex justify-between items-center">
+                                <h4 className="text-xs font-bold text-[#09090b] uppercase tracking-wider">⚙️ Modificadores del Producto</h4>
+                                
+                                {/* Selector de Precarga */}
+                                {gruposClonables.length > 0 && (
+                                  <select 
+                                    onChange={(e) => {
+                                      const val = e.target.value
+                                      if (!val) return
+                                      const grp = gruposClonables.find(g => g.nombre === val)
+                                      if (grp) clonarGrupoModificador(grp)
+                                      e.target.value = ""
+                                    }}
+                                    className="text-[10px] bg-red-50 border border-red-100 hover:bg-red-100 font-bold px-2 py-1.5 rounded-lg text-[#dc2626] transition-all max-w-[200px]"
+                                  >
+                                    <option value="">📋 Clonar Existente</option>
+                                    {gruposClonables.map((g, i) => (
+                                      <option key={i} value={g.nombre}>{g.nombre}</option>
+                                    ))}
+                                  </select>
+                                )}
+                              </div>
+
+                              {/* Grupos agregados */}
+                              {modificadoresLocal.length > 0 && (
+                                <div className="space-y-2 max-h-[20vh] overflow-y-auto pr-1">
+                                  {modificadoresLocal.map((m, idx) => (
+                                    <div key={idx} className={`flex justify-between items-center p-3 rounded-xl border transition-all text-xs ${editingModIdx === idx ? 'bg-red-50/50 border-[#dc2626]' : 'bg-[#fafafa] border-[#e4e4e7]'}`}>
+                                      <div className="min-w-0">
+                                        <div className="flex items-center gap-1.5">
+                                          <p className="font-bold text-[#09090b] truncate">{m.nombre}</p>
+                                          {m.requerido && <span className="text-[8px] bg-red-50 text-[#dc2626] font-extrabold uppercase px-1.5 py-0.5 rounded">Obligatorio</span>}
+                                        </div>
+                                        <p className="text-[9px] text-[#71717a] mt-0.5">
+                                          Incluye: {m.incluidos} · Max: {m.maximo_permitido || 'Ilimitado'} · Op: {m.modifier_options?.map((o: any) => o.nombre).join(', ') || 'Sin opciones'}
+                                        </p>
+                                      </div>
+                                      <div className="flex gap-2 shrink-0 ml-2">
+                                        <button type="button" onClick={() => cargarGrupoParaEditar(idx)} className="text-[10px] border border-[#e4e4e7] bg-white text-[#52525b] hover:bg-[#fafafa] font-bold px-2 py-1 rounded-lg">Editar</button>
+                                        <button type="button" onClick={() => eliminarGrupoLocal(idx)} className="text-[10px] bg-red-50 text-[#dc2626] hover:bg-red-100 font-bold px-2 py-1 rounded-lg">✕</button>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
+                              {/* Hot Editor de Modificadores */}
+                              <div className="bg-[#fafafa] border border-[#e4e4e7] p-4 rounded-2xl space-y-3">
+                                <h5 className="text-[10px] font-black text-[#09090b] uppercase tracking-widest border-b border-[#e4e4e7] pb-1.5">
+                                  {editingModIdx !== null ? '✏️ Editando Grupo Modificador' : '➕ Agregar Nuevo Grupo Modificador'}
+                                </h5>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                  <div>
+                                    <label className="text-[10px] text-[#71717a] font-bold mb-1 block">Nombre del Grupo</label>
+                                    <input type="text" value={modNombreLocal} onChange={e => setModNombreLocal(e.target.value)} className="input-clean text-xs w-full bg-white border border-[#e4e4e7] rounded-lg px-3 py-2 text-[#09090b] focus:border-[#dc2626]" placeholder="Ej: Elige tu salsa" />
+                                  </div>
+                                  <div className="flex items-center pt-4 sm:pt-5">
+                                    <label className="flex items-center gap-2 text-xs font-semibold text-[#3f3f46] cursor-pointer">
+                                      <input type="checkbox" checked={modRequeridoLocal} onChange={e => setModRequeridoLocal(e.target.checked)} className="rounded border-[#e4e4e7] text-[#dc2626] focus:ring-[#dc2626]" />
+                                      ¿Es obligatorio?
+                                    </label>
+                                  </div>
+                                  <div>
+                                    <label className="text-[10px] text-[#71717a] font-bold mb-1 block">Cantidad incluidos en precio base</label>
+                                    <input type="number" min="0" value={modIncluidosLocal} onChange={e => setModIncluidosLocal(e.target.value)} className="input-clean text-xs w-full bg-white border border-[#e4e4e7] rounded-lg px-3 py-2 text-[#09090b] focus:border-[#dc2626]" />
+                                  </div>
+                                  <div>
+                                    <label className="text-[10px] text-[#71717a] font-bold mb-1 block">Máximos permitidos (Vacío = Ilimitado)</label>
+                                    <input type="number" min="1" value={modMaximoLocal} onChange={e => setModMaximoLocal(e.target.value)} className="input-clean text-xs w-full bg-white border border-[#e4e4e7] rounded-lg px-3 py-2 text-[#09090b] focus:border-[#dc2626]" placeholder="Ilimitado" />
+                                  </div>
+                                </div>
+
+                                {/* Opciones en caliente */}
+                                <div className="border-t border-[#e4e4e7] pt-3 space-y-2">
+                                  <p className="text-[10px] font-bold text-[#71717a] uppercase tracking-wider">Opciones de Selección</p>
+                                  
+                                  {opcionesModLocal.length > 0 && (
+                                    <div className="flex flex-wrap gap-1.5 max-h-[10vh] overflow-y-auto py-1">
+                                      {opcionesModLocal.map((op, i) => (
+                                        <span key={i} className="inline-flex items-center gap-1.5 bg-white border border-[#e4e4e7] rounded-lg px-2 py-0.5 text-[10px] font-semibold text-[#09090b]">
+                                          {op.nombre} (+${op.precio_extra} MXN)
+                                          <button type="button" onClick={() => quitarOpcionLocal(i)} className="text-[#dc2626] hover:text-red-700 font-bold">✕</button>
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+
+                                  <div className="flex gap-2 items-end">
+                                    <div className="flex-1">
+                                      <label className="text-[9px] text-[#71717a] font-bold mb-0.5 block">Nombre Opción</label>
+                                      <input type="text" value={nuevaOpNombreLocal} onChange={e => setNuevaOpNombreLocal(e.target.value)} className="input-clean text-xs w-full bg-white border border-[#e4e4e7] rounded-lg px-2.5 py-1.5 text-[#09090b] focus:border-[#dc2626]" placeholder="BBQ, Buffalo, etc." />
+                                    </div>
+                                    <div className="w-20">
+                                      <label className="text-[9px] text-[#71717a] font-bold mb-0.5 block">Precio Extra</label>
+                                      <input type="number" min="0" value={nuevaOpPrecioLocal} onChange={e => setNuevaOpPrecioLocal(e.target.value)} className="input-clean text-xs w-full bg-white border border-[#e4e4e7] rounded-lg px-2.5 py-1.5 text-[#09090b] focus:border-[#dc2626]" />
+                                    </div>
+                                    <button type="button" onClick={agregarOpcionLocal} className="bg-[#09090b] hover:bg-zinc-800 text-white text-xs font-bold px-3 py-2.5 rounded-xl transition-all shrink-0">
+                                      ＋ Agregar
+                                    </button>
+                                  </div>
+                                </div>
+
+                                <div className="flex gap-2 pt-2 border-t border-[#e4e4e7]">
+                                  <button type="button" onClick={guardarGrupoLocal} className="flex-1 bg-[#09090b] hover:bg-zinc-800 text-white text-xs font-bold py-2 rounded-xl transition-all">
+                                    {editingModIdx !== null ? '💾 Guardar Cambios de Grupo' : '➕ Confirmar Grupo'}
+                                  </button>
+                                  {editingModIdx !== null && (
+                                    <button type="button" onClick={cancelarEdicionGrupoMod} className="border border-[#e4e4e7] text-[#52525b] hover:bg-white text-xs font-bold py-2 px-3 rounded-xl transition-all">
+                                      Cancelar
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
                             </div>
                           </div>
 
-                          <div className="flex gap-3 border-t border-[#e4e4e7] pt-4 mt-4">
+                          <div className="flex gap-3 border-t border-[#e4e4e7] pt-4 mt-6">
                             <button 
                               onClick={() => {
                                 setIsEditModalOpen(false);
@@ -4452,13 +4458,15 @@ export default function DashboardPage() {
                                 setDisponibleProd(true);
                                 setEsUpsellProd(false);
                                 setGroupIdProd('');
+                                setModificadoresLocal([]);
+                                cancelarEdicionGrupoMod();
                               }} 
-                              className="flex-1 border border-[#e4e4e7] text-[#52525b] hover:bg-[#fafafa] py-3 rounded-xl font-bold transition-all text-xs"
+                              className="flex-1 border border-[#e4e4e7] text-[#52525b] hover:bg-[#fafafa] py-3.5 rounded-xl font-bold transition-all text-xs"
                             >
-                              Cancelar
+                              Cancelar y Salir
                             </button>
-                            <button onClick={guardarProducto} disabled={guardandoProd || !nombreProd || !precioProd || !groupIdProd} className="flex-1 btn-primary py-3 rounded-xl text-xs font-black uppercase tracking-widest">
-                              {guardandoProd ? 'Guardando...' : '💾 Guardar Producto'}
+                            <button onClick={guardarProducto} disabled={guardandoProd || !nombreProd || !precioProd || !groupIdProd} className="flex-1 btn-primary py-3.5 rounded-xl text-xs font-black uppercase tracking-widest">
+                              {guardandoProd ? 'Guardando...' : '💾 Guardar Producto & Configuración'}
                             </button>
                           </div>
                         </div>
@@ -5820,139 +5828,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* MODAL GESTOR DE MODIFICADORES RENDERED AT ROOT TO AVOID SCROLL BUG */}
-      {modificadorAEditar && productoAEditar && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white border border-[#e4e4e7] rounded-3xl p-6 w-full max-w-lg shadow-2xl relative max-h-[85vh] overflow-y-auto text-[#09090b] animate-slideUp">
-            <button 
-              onClick={() => { setModificadorAEditar(null); setProductoAEditar(null); }}
-              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-[#fafafa] hover:bg-[#f4f4f5] flex items-center justify-center text-[#71717a] transition-colors"
-            >
-              ✕
-            </button>
-            
-            <div className="mb-4">
-              <span className="text-[10px] bg-red-50 text-[#dc2626] font-black uppercase px-2.5 py-0.5 rounded-full">Modificadores</span>
-              <h3 className="text-lg font-bold text-[#09090b] tracking-tight mt-1">
-                Ajustes para: <span className="text-[#dc2626]">{productoAEditar.nombre}</span>
-              </h3>
-              <p className="text-xs text-[#71717a]">Crea grupos (ej: Salsas, Tamaño) y agrega opciones con precios adicionales.</p>
-            </div>
 
-            {/* Formulario nuevo modificador */}
-            <div className="bg-[#fafafa] border border-[#e4e4e7] p-5 rounded-2xl space-y-4 mb-6">
-              <h4 className="text-xs font-bold text-[#09090b] uppercase tracking-wider">➕ Crear Nuevo Grupo Modificador</h4>
-              
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className={LBL}>Nombre del Grupo (ej: Elige tu Salsa)</label>
-                  <input type="text" value={nombreMod} onChange={e => setNombreMod(e.target.value)} className={IC + ' bg-white'} placeholder="Sabor / Salsa / Tamaño" />
-                </div>
-                <div className="flex items-center pt-5">
-                  <label className="flex items-center gap-2 text-xs font-semibold text-[#3f3f46] cursor-pointer">
-                    <input type="checkbox" checked={requeridoMod} onChange={e => setRequeridoMod(e.target.checked)} className="rounded border-[#e4e4e7] text-[#dc2626] focus:ring-[#dc2626]" />
-                    ¿Es obligatorio seleccionar?
-                  </label>
-                </div>
-              </div>
-
-              {/* Opciones */}
-              <div className="border-t border-[#e4e4e7] pt-4 space-y-3">
-                <span className="text-[10px] font-bold text-[#71717a] uppercase tracking-wider">Opciones del Grupo</span>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
-                  <div className="sm:col-span-2">
-                    <label className="text-[9px] font-semibold text-[#71717a] uppercase mb-1 block">Nombre Opción</label>
-                    <input type="text" value={nuevaOpNombre} onChange={e => setNuevaOpNombre(e.target.value)} className={IC + ' bg-white'} placeholder="Fresa / Habanero / Grande" />
-                  </div>
-                  <div>
-                    <label className="text-[9px] font-semibold text-[#71717a] uppercase mb-1 block">Precio Extra</label>
-                    <div className="flex gap-1.5 items-center">
-                      <input type="number" value={nuevaOpPrecio} onChange={e => setNuevaOpPrecio(e.target.value)} className={IC + ' bg-white text-center'} placeholder="0" />
-                      <button
-                        type="button"
-                        onClick={agregarOpcionMemoria}
-                        className="bg-[#09090b] text-white hover:bg-zinc-800 font-bold p-3 rounded-xl transition-all shadow-sm"
-                      >
-                        ➕
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {opcionesMod.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 pt-2">
-                    {opcionesMod.map((opt, idx) => (
-                      <span key={idx} className="text-[10px] bg-white border border-[#e4e4e7] text-[#52525b] font-medium px-2 py-0.5 rounded-lg flex items-center gap-1 shadow-sm">
-                        {opt.nombre} (+${opt.precio_extra} MXN)
-                        <button type="button" onClick={() => quitarOpcionMemoria(idx)} className="text-[#dc2626] hover:text-red-700 font-bold ml-1">✕</button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <button
-                type="button"
-                onClick={guardarModificadorCompleto}
-                disabled={guardandoMod}
-                className="w-full bg-[#dc2626] hover:bg-[#b91c1c] text-white font-bold py-3 rounded-xl text-xs uppercase tracking-wider transition-all disabled:opacity-50"
-              >
-                {guardandoMod ? 'Guardando...' : '💾 Guardar Grupo Completo'}
-              </button>
-            </div>
-
-            {/* Grupos existentes */}
-            <div className="space-y-3">
-              <h4 className="text-xs font-bold text-[#09090b] uppercase tracking-wider">⚙️ Grupos Modificadores Configurados</h4>
-              {(!productoAEditar.product_modifiers || productoAEditar.product_modifiers.length === 0) ? (
-                <p className="text-xs text-[#a1a1aa] italic">Este producto no cuenta con modificadores aún.</p>
-              ) : (
-                <div className="space-y-3.5">
-                  {productoAEditar.product_modifiers.map((mod: any) => (
-                    <div key={mod.id} className="border border-[#e4e4e7] bg-[#fafafa] rounded-2xl p-4 flex justify-between items-start gap-4">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <h5 className="font-bold text-sm text-[#09090b]">{mod.nombre}</h5>
-                          <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${mod.requerido ? 'bg-red-50 text-[#dc2626]' : 'bg-[#e4e4e7] text-[#52525b]'}`}>
-                            {mod.requerido ? 'Requerido' : 'Opcional'}
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap gap-1.5 pt-1">
-                          {mod.modifier_options?.map((opt: any) => (
-                            <button
-                              key={opt.id}
-                              type="button"
-                              onClick={() => toggleGlobalModifierDisponible(opt.nombre, opt.disponible ?? true)}
-                              className={`text-[10px] font-bold px-2 py-1 rounded-lg border transition-all flex items-center gap-1.5 ${
-                                (opt.disponible !== false)
-                                  ? 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100'
-                                  : 'bg-red-50 border-red-200 text-red-700 hover:bg-red-100'
-                              }`}
-                              title={`Click para cambiar disponibilidad global de "${opt.nombre}"`}
-                            >
-                              <span className={`w-1.5 h-1.5 rounded-full ${opt.disponible !== false ? 'bg-green-500' : 'bg-red-500'}`} />
-                              {opt.nombre} (+${opt.precio_extra} MXN)
-                              <span className="text-[8px] opacity-75 font-normal">
-                                ({opt.disponible !== false ? 'Disponible' : 'Agotado'})
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => borrarModificador(mod.id)}
-                        className="bg-red-50 border border-red-100 hover:bg-red-100 text-[#dc2626] font-bold p-2 rounded-xl transition-all shrink-0"
-                      >
-                        🗑️
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── BOTTOM APP BAR (Solo móvil < 768px) ── */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-[#e4e4e7] shadow-[0_-4px_24px_rgba(0,0,0,0.06)]">

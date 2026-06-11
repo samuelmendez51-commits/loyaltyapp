@@ -21,8 +21,8 @@ interface MenuProduct {
   suspension_tipo?: string
   suspension_hasta?: string
 }
-interface ModifierGroup { id: string; nombre: string; requerido: boolean; modifier_options: ModifierOption[] }
-interface ModifierOption { id: string; nombre: string; precio_extra: number }
+interface ModifierGroup { id: string; nombre: string; requerido: boolean; incluidos?: number; maximo_permitido?: number | null; modifier_options: ModifierOption[] }
+interface ModifierOption { id: string; nombre: string; precio_extra: number; disponible?: boolean }
 interface CartItem { product: MenuProduct; cantidad: number; selecciones: Record<string, any>; subtotal: number; comentarios?: string }
 interface LoyaltyReward { id: string; sello_requerido: number; nombre: string; descripcion: string; tipo: string }
 
@@ -527,44 +527,70 @@ export default function MenuPublico({ params }: { params: Promise<{ slug: string
   }
 
   const seleccionarOpcion = (mod: ModifierGroup, opt: ModifierOption) => {
-    const maxSabores = obtenerMaxSabores(productoSeleccionadoMod!)
-    const esSabor = esGrupoSabores(mod.nombre)
+    const maxConfigurado = mod.maximo_permitido !== undefined && mod.maximo_permitido !== null ? mod.maximo_permitido : null
+    const esMultiple = maxConfigurado !== null ? maxConfigurado > 1 : (esGrupoSabores(mod.nombre) && obtenerMaxSabores(productoSeleccionadoMod!) > 1)
+    const limiteMax = maxConfigurado !== null ? maxConfigurado : (esGrupoSabores(mod.nombre) ? obtenerMaxSabores(productoSeleccionadoMod!) : 1)
 
-    if (esSabor && maxSabores > 1) {
-      // Selección múltiple para sabores de alitas
+    if (esMultiple) {
       const actuales: ModifierOption[] = Array.isArray(seleccionesMod[mod.id])
         ? seleccionesMod[mod.id]
         : (seleccionesMod[mod.id] ? [seleccionesMod[mod.id]] : [])
 
       const yaSeleccionado = actuales.some(item => item.id === opt.id)
       if (yaSeleccionado) {
-        // Permitir deseleccionar solo si no es la única opción requerida o tiene más seleccionados
         if (actuales.length > 1 || !mod.requerido) {
           const nuevos = actuales.filter(item => item.id !== opt.id)
           setSeleccionesMod(prev => ({ ...prev, [mod.id]: nuevos }))
         }
       } else {
-        if (actuales.length < maxSabores) {
+        if (actuales.length < limiteMax) {
           const nuevos = [...actuales, opt]
           setSeleccionesMod(prev => ({ ...prev, [mod.id]: nuevos }))
         } else {
-          alert(`Solo puedes seleccionar hasta ${maxSabores} sabores para esta orden de alitas.`)
+          alert(`Solo puedes seleccionar hasta ${limiteMax} opciones para "${mod.nombre}".`)
         }
       }
     } else {
-      // Selección normal (radio button)
-      setSeleccionesMod(prev => ({ ...prev, [mod.id]: opt }))
+      const seleccionadoActual = seleccionesMod[mod.id]?.id === opt.id
+      if (seleccionadoActual && !mod.requerido) {
+        setSeleccionesMod(prev => {
+          const cop = { ...prev }
+          delete cop[mod.id]
+          return cop
+        })
+      } else {
+        setSeleccionesMod(prev => ({ ...prev, [mod.id]: opt }))
+      }
     }
   }
 
-  const agregarAlCarritoDirecto = (product: MenuProduct, selecciones: Record<string, any>) => {
-    const precioExtra = Object.values(selecciones).reduce((sum, opt) => {
+  const calcularPrecioUnitario = (product: MenuProduct, selecciones: Record<string, any>) => {
+    const precioExtra = Object.entries(selecciones).reduce((sum, [modId, opt]) => {
+      if (modId === 'salsa-aparte') return sum;
+      
+      const modGroup = product.product_modifiers?.find(m => m.id === modId)
+      const incluidos = Number(modGroup?.incluidos) || 0
+      
       if (Array.isArray(opt)) {
-        return sum + opt.reduce((s, o) => s + (Number(o.precio_extra) || 0), 0)
+        if (incluidos > 0) {
+          const sortedOpts = [...opt].sort((a, b) => (Number(a.precio_extra) || 0) - (Number(b.precio_extra) || 0))
+          return sum + sortedOpts.reduce((s, o, index) => {
+            if (index < incluidos) return s
+            return s + (Number(o.precio_extra) || 0)
+          }, 0)
+        } else {
+          return sum + opt.reduce((s, o) => s + (Number(o.precio_extra) || 0), 0)
+        }
+      } else {
+        if (incluidos >= 1) return sum
+        return sum + (Number(opt?.precio_extra) || 0)
       }
-      return sum + (Number(opt?.precio_extra) || 0)
     }, 0)
-    const precioUnitario = Number(product.precio) + precioExtra
+    return Number(product.precio) + precioExtra
+  }
+
+  const agregarAlCarritoDirecto = (product: MenuProduct, selecciones: Record<string, any>) => {
+    const precioUnitario = calcularPrecioUnitario(product, selecciones)
     
     setCart(prev => {
       const existente = prev.find(item => {
@@ -633,13 +659,7 @@ export default function MenuPublico({ params }: { params: Promise<{ slug: string
       if (item.cantidad <= 1) {
         return prev.filter((_, idx) => idx !== index)
       }
-      const precioExtra = Object.values(item.selecciones).reduce((sum, opt) => {
-        if (Array.isArray(opt)) {
-          return sum + opt.reduce((s, o) => s + (Number(o.precio_extra) || 0), 0)
-        }
-        return sum + (Number(opt?.precio_extra) || 0)
-      }, 0)
-      const precioUnitario = Number(item.product.precio) + precioExtra
+      const precioUnitario = calcularPrecioUnitario(item.product, item.selecciones)
       
       return prev.map((it, idx) => idx === index
         ? { ...it, cantidad: it.cantidad - 1, subtotal: (it.cantidad - 1) * precioUnitario }
@@ -1895,6 +1915,10 @@ _Pedido procesado a través de LoyaltyClub VIP_`
                 const maxSabores = obtenerMaxSabores(productoSeleccionadoMod)
                 const esSabor = esGrupoSabores(mod.nombre)
                 
+                const maxConfigurado = mod.maximo_permitido !== undefined && mod.maximo_permitido !== null ? mod.maximo_permitido : null
+                const esMultiple = maxConfigurado !== null ? maxConfigurado > 1 : (esSabor && maxSabores > 1)
+                const limiteMax = maxConfigurado !== null ? maxConfigurado : (esSabor ? maxSabores : 1)
+
                 // Inyectar la opción virtual "Naturales (Sin Salsa)" si es un modificador de sabores
                 const modifierOptionsFinal = [...(mod.modifier_options || [])].filter(o => o.disponible !== false)
                 if (esSabor && !modifierOptionsFinal.some(o => o.nombre.toLowerCase().includes('natural'))) {
@@ -1910,8 +1934,8 @@ _Pedido procesado a través de LoyaltyClub VIP_`
                     <div className="flex justify-between items-center border-b border-[#f4f4f5] pb-2">
                       <div>
                         <p className="text-sm font-black text-[#09090b] uppercase tracking-wider">{mod.nombre}</p>
-                        {esSabor && maxSabores > 1 && (
-                          <p className="text-[10px] text-[#dc2626] font-semibold">Selecciona hasta {maxSabores} sabores</p>
+                        {esMultiple && (
+                          <p className="text-[10px] text-[#dc2626] font-semibold">Selecciona hasta {limiteMax} opciones</p>
                         )}
                       </div>
                       {mod.requerido && (
@@ -1922,7 +1946,7 @@ _Pedido procesado a través de LoyaltyClub VIP_`
                     <div className="space-y-2">
                       {modifierOptionsFinal.map(opt => {
                         let seleccionado = false
-                        if (esSabor && maxSabores > 1) {
+                        if (esMultiple) {
                           const actuales = seleccionesMod[mod.id] || []
                           seleccionado = Array.isArray(actuales)
                             ? actuales.some((item: any) => item.id === opt.id)
@@ -1943,13 +1967,13 @@ _Pedido procesado a través de LoyaltyClub VIP_`
                           >
                             <div className="flex items-center gap-3">
                               <div className={`w-5 h-5 border flex items-center justify-center ${
-                                esSabor && maxSabores > 1 ? 'rounded-lg' : 'rounded-full'
+                                esMultiple ? 'rounded-lg' : 'rounded-full'
                               } ${
                                 seleccionado ? 'border-[#dc2626] bg-[#dc2626]/10' : 'border-[#e4e4e7]'
                               }`}>
                                 {seleccionado && (
                                   <div className={`bg-[#dc2626] ${
-                                    esSabor && maxSabores > 1 ? 'w-2.5 h-2.5 rounded-sm' : 'w-2.5 h-2.5 rounded-full'
+                                    esMultiple ? 'w-2.5 h-2.5 rounded-sm' : 'w-2.5 h-2.5 rounded-full'
                                   }`} />
                                 )}
                               </div>

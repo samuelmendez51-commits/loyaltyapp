@@ -169,9 +169,9 @@ export default function EscanerTrabajadores() {
       if (esUUID) {
         query = query.eq('id', criterioLimpio);
       } else {
-        const cleanDigits = criterioLimpio.replace(/\D/g, '')
+        const cleanDigits = (criterioLimpio || "").replace(/\D/g, '')
         const last10 = cleanDigits.slice(-10)
-        const telNormalizado = last10.length === 10 ? `+52${last10}` : criterioLimpio
+        const telNormalizado = last10.length === 10 ? `+52${last10}` : (criterioLimpio || '')
         query = query.eq('telefono', telNormalizado);
       }
 
