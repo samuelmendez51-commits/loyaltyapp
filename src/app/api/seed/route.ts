@@ -131,7 +131,7 @@ export async function GET() {
 
     return NextResponse.json({
       success: true,
-      mensaje: '¡Base de datos LoyaltyApp simulada correctamente! Yareli Lozano (10 sellos), Juan Pérez (4 sellos) y María Rodríguez (8 sellos) creados junto con premios e historial.',
+      mensaje: '¡Base de datos LoyaltyClub simulada correctamente! Yareli Lozano (10 sellos), Juan Pérez (4 sellos) y María Rodríguez (8 sellos) creados junto con premios e historial.',
       negocio: business,
       premios: rewards,
       clientes: clientes

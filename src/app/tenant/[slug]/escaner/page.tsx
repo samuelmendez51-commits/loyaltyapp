@@ -30,11 +30,33 @@ export default function EscanerTrabajadores() {
   const [registradoExito, setRegistradoExito] = useState<any>(null)
   const [enviandoWhatsapp, setEnviandoWhatsapp] = useState(false)
   const [envioExitoMsg, setEnvioExitoMsg] = useState('')
+  const [hasCamera, setHasCamera] = useState<boolean | null>(null)
 
   // ── Tenant: slug extraído del subdominio vía rewrite del middleware ──────────
   const slug = (useParams().slug as string) || ''
 
   const sellosTotales = programaActivo?.total_estampillas || business?.max_sellos || 10
+
+  // Efecto: verificar si el dispositivo tiene cámara
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+      navigator.mediaDevices.enumerateDevices()
+        .then(devices => {
+          const videoDevices = devices.filter(device => device.kind === 'videoinput')
+          if (videoDevices.length === 0) {
+            setHasCamera(false)
+          } else {
+            setHasCamera(true)
+          }
+        })
+        .catch(err => {
+          console.warn('Error al enumerar dispositivos de video, usando fallback de cámara activa:', err)
+          setHasCamera(true)
+        })
+    } else {
+      setHasCamera(false)
+    }
+  }, [])
 
   // Efecto 1: cargar negocio por slug del subdominio (inyectado por el middleware)
   useEffect(() => {
@@ -58,8 +80,9 @@ export default function EscanerTrabajadores() {
     })
   }, [slug])
 
-  // Efecto 2: inicializar escáner QR (solo al montar el componente)
+  // Efecto 2: inicializar escáner QR (solo al montar el componente y si hay cámara)
   useEffect(() => {
+    if (hasCamera === false) return
 
     const scanner = new Html5QrcodeScanner(
       "reader", 
@@ -77,12 +100,17 @@ export default function EscanerTrabajadores() {
       }
     }
 
-    scanner.render(onScanSuccess, (error) => { })
+    try {
+      scanner.render(onScanSuccess, (error) => { })
+    } catch (e) {
+      console.error("Fallo al iniciar render del escáner:", e)
+      setHasCamera(false)
+    }
 
     return () => {
       scanner.clear().catch(err => console.error("Error al limpiar recursos:", err))
     }
-  }, [])
+  }, [hasCamera])
 
   const buscarCliente = async (criterio: string) => {
     if (!criterio) return
@@ -93,7 +121,7 @@ export default function EscanerTrabajadores() {
     try {
       const decoded = atob(criterio.trim())
       const parsed = JSON.parse(decoded)
-      if ((parsed.seguro === 'LOYALTYAPP-VIP-CANJE' || parsed.seguro === 'LOYALTYCLUB-VIP-CANJE') && parsed.cliente_id) {
+      if ((parsed.seguro === 'LOYALTYCLUB-VIP-CANJE' || parsed.seguro === 'LOYALTYCLUB-VIP-CANJE') && parsed.cliente_id) {
         criterioLimpio = parsed.cliente_id
         alert(`🏆 ¡Pase QR Cifrado VIP Validado!\nSocio: ${parsed.nombre}\nFidelidad: ${parsed.puntos}/${sellosTotales} sellos.\nListo para canjear premio mayor.`);
       }
@@ -448,15 +476,23 @@ export default function EscanerTrabajadores() {
         {/* ESTADO 1: ESCÁNER */}
         {!cliente && !mensaje.texto && (
           <div className="card-glass p-8 relative">
-            <div className="relative w-full aspect-square bg-black rounded-2xl overflow-hidden mb-8 border border-[var(--border-subtle)] shadow-inner">
-              <div id="reader" className="w-full h-full object-cover"></div>
-              
-              {/* Esquinas de enfoque estilo Sci-Fi/Lujo */}
-              <div className="absolute top-6 left-6 w-8 h-8 border-t-[4px] border-l-[4px] border-[var(--brand-red)] rounded-tl-xl z-10 pointer-events-none"></div>
-              <div className="absolute top-6 right-6 w-8 h-8 border-t-[4px] border-r-[4px] border-[var(--brand-red)] rounded-tr-xl z-10 pointer-events-none"></div>
-              <div className="absolute bottom-6 left-6 w-8 h-8 border-b-[4px] border-l-[4px] border-[var(--brand-red)] rounded-bl-xl z-10 pointer-events-none"></div>
-              <div className="absolute bottom-6 right-6 w-8 h-8 border-b-[4px] border-r-[4px] border-[var(--brand-red)] rounded-br-xl z-10 pointer-events-none"></div>
-            </div>
+            {hasCamera !== false ? (
+              <div className="relative w-full aspect-square bg-black rounded-2xl overflow-hidden mb-8 border border-[var(--border-subtle)] shadow-inner">
+                <div id="reader" className="w-full h-full object-cover"></div>
+                
+                {/* Esquinas de enfoque estilo Sci-Fi/Lujo */}
+                <div className="absolute top-6 left-6 w-8 h-8 border-t-[4px] border-l-[4px] border-[var(--brand-red)] rounded-tl-xl z-10 pointer-events-none"></div>
+                <div className="absolute top-6 right-6 w-8 h-8 border-t-[4px] border-r-[4px] border-[var(--brand-red)] rounded-tr-xl z-10 pointer-events-none"></div>
+                <div className="absolute bottom-6 left-6 w-8 h-8 border-b-[4px] border-l-[4px] border-[var(--brand-red)] rounded-bl-xl z-10 pointer-events-none"></div>
+                <div className="absolute bottom-6 right-6 w-8 h-8 border-b-[4px] border-r-[4px] border-[var(--brand-red)] rounded-br-xl z-10 pointer-events-none"></div>
+              </div>
+            ) : (
+              <div className="w-full mb-8 py-8 px-6 bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl text-center flex flex-col items-center justify-center gap-3 shadow-inner">
+                <div className="text-4xl select-none">📷❌</div>
+                <p className="text-sm font-bold">Cámara no detectada o sin permisos</p>
+                <p className="text-xs text-amber-700">Por favor, usa el buscador manual de abajo para ingresar el teléfono o ID del socio.</p>
+              </div>
+            )}
             
             <div className="flex flex-col gap-4 w-full">
               <label className="text-[#71717a] text-[10px] uppercase font-bold tracking-[0.2em] text-center">
@@ -718,6 +754,59 @@ export default function EscanerTrabajadores() {
                 </div>
               </div>
             )}
+
+            {/* Enviar Tarjeta por WhatsApp (Socio Encontrado) */}
+            <div className="space-y-4 w-full mt-6 border-t border-zinc-100 pt-6">
+              {envioExitoMsg && (
+                <div className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-semibold leading-relaxed text-center shadow-sm">
+                  {envioExitoMsg}
+                </div>
+              )}
+              <button
+                disabled={enviandoWhatsapp}
+                onClick={async () => {
+                  setEnviandoWhatsapp(true)
+                  setEnvioExitoMsg('')
+                  try {
+                    const cleanTel = cliente.telefono
+                    const phoneParam = cleanTel.startsWith('52') ? cleanTel : '52' + cleanTel
+                    const domain = typeof window !== 'undefined' && window.location.hostname.includes('loyaltyclub.mx') 
+                      ? `${slug}.loyaltyclub.mx` 
+                      : `${slug}.localhost:3000`
+                    const cardUrl = `http://${domain}/card/${cliente.id}`
+                    
+                    const textParam = `¡Hola! Te saluda el equipo de ${business?.nombre || 'Loyalty App'}. Te compartimos tu nueva Tarjeta Digital VIP de Cliente Frecuente. Acumula tus sellos y consulta nuestro menú aquí: ${cardUrl}`
+                    
+                    const response = await fetch('/api/whatsapp/send', {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                      },
+                      body: JSON.stringify({
+                        clientPhone: phoneParam,
+                        message: textParam,
+                        tenantSlug: slug
+                      })
+                    })
+                    
+                    if (response.ok) {
+                      setEnvioExitoMsg('✅ Tarjeta digital VIP enviada con éxito desde la línea oficial del negocio.')
+                    } else {
+                      const errData = await response.json().catch(() => ({}))
+                      alert(`Error al enviar mensaje: ${errData.error || 'Error desconocido'}`)
+                    }
+                  } catch (error) {
+                    console.error('Error al enviar WhatsApp:', error)
+                    alert('Error de red al intentar enviar WhatsApp.')
+                  } finally {
+                    setEnviandoWhatsapp(false)
+                  }
+                }}
+                className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:opacity-75 text-white font-black text-xs py-4 px-6 rounded-xl uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 active:scale-95 transition-all cursor-pointer"
+              >
+                {enviandoWhatsapp ? 'Enviando...' : '💬 Enviar Tarjeta por WhatsApp'}
+              </button>
+            </div>
             
             <button 
               onClick={() => { setCliente(null); window.location.reload(); }} 

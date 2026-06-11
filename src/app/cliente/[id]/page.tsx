@@ -257,7 +257,7 @@ function RuletaVIP({
  
     // 3. Abrir WhatsApp con mensaje simplificado sin IDs extensos
     const tel = '52' + (business?.telefono_whatsapp || '').replace(/\D/g, '').slice(-10)
-    const msg = `¡Hola! Quiero cobrar mi premio ganado en la Ruleta LoyaltyApp: ${premioGanado.nombre}`
+    const msg = `¡Hola! Quiero cobrar mi premio ganado en la Ruleta LoyaltyClub: ${premioGanado.nombre}`
     const url = `https://wa.me/${tel}?text=${encodeURIComponent(msg)}`
     window.open(url, '_blank')
     onCerrar()
@@ -314,7 +314,7 @@ function RuletaVIP({
               <h3 className="text-2xl font-bold text-[#09090b] tracking-tight mb-2">{premioGanado.nombre}</h3>
               <div className="bg-[#fafafa] border border-[#e4e4e7] rounded-2xl p-4 mb-5">
                 <p className="text-xs text-[#71717a]">Premio ganado en la Ruleta VIP de</p>
-                <p className="font-bold text-[#09090b]">{business?.nombre || 'LoyaltyApp'}</p>
+                <p className="font-bold text-[#09090b]">{business?.nombre || 'LoyaltyClub'}</p>
                 <p className="text-[10px] text-[#a1a1aa] font-mono mt-1">ID: {cliente.id.substring(0, 12)}</p>
               </div>
               <button
@@ -1086,7 +1086,7 @@ ${itemsText}
 -----------------------------------
 *TOTAL:* $${totalCarrito.toLocaleString()} MXN
 -----------------------------------
-_Pedido procesado a través de LoyaltyApp VIP_`
+_Pedido procesado a través de LoyaltyClub VIP_`
 
     return encodeURIComponent(msg)
   }
@@ -1285,14 +1285,14 @@ _Pedido procesado a través de LoyaltyApp VIP_`
             <div className="w-12 h-12 rounded-2xl overflow-hidden border border-[#e4e4e7] shadow-sm bg-white shrink-0">
               <img
                 src={business?.logo_url || '/logo.png'}
-                alt={business?.nombre || 'LoyaltyApp'}
+                alt={business?.nombre || 'LoyaltyClub'}
                 className="w-full h-full object-cover"
                 onError={(e) => { (e.target as HTMLImageElement).src = '/logo.png' }}
               />
             </div>
             <div>
               <p className="text-xs text-[#71717a] font-medium">Club de Fidelización</p>
-              <h1 className="text-base font-bold text-[#09090b] tracking-tight">{business?.nombre || 'LoyaltyApp'}</h1>
+              <h1 className="text-base font-bold text-[#09090b] tracking-tight">{business?.nombre || 'LoyaltyClub'}</h1>
             </div>
           </div>
 
@@ -1565,14 +1565,14 @@ _Pedido procesado a través de LoyaltyApp VIP_`
             <div className="w-12 h-12 rounded-2xl overflow-hidden border border-[#e4e4e7] shadow-sm bg-white shrink-0">
               <img
                 src={business?.logo_url || '/logo.png'}
-                alt={business?.nombre || 'LoyaltyApp'}
+                alt={business?.nombre || 'LoyaltyClub'}
                 className="w-full h-full object-cover"
                 onError={(e) => { (e.target as HTMLImageElement).src = '/logo.png' }}
               />
             </div>
             <div>
               <p className="text-xs text-[#71717a] font-medium">Carta & Club VIP</p>
-              <h1 className="text-base font-bold text-[#09090b] tracking-tight">{business?.nombre || 'LoyaltyApp'}</h1>
+              <h1 className="text-base font-bold text-[#09090b] tracking-tight">{business?.nombre || 'LoyaltyClub'}</h1>
             </div>
           </div>
 
@@ -1957,14 +1957,14 @@ _Pedido procesado a través de LoyaltyApp VIP_`
             <div className="w-12 h-12 rounded-2xl overflow-hidden border border-[#e4e4e7] shadow-sm bg-white shrink-0">
               <img
                 src={business?.logo_url || '/logo.png'}
-                alt={business?.nombre || 'LoyaltyApp'}
+                alt={business?.nombre || 'LoyaltyClub'}
                 className="w-full h-full object-cover"
                 onError={(e) => { (e.target as HTMLImageElement).src = '/logo.png' }}
               />
             </div>
             <div>
               <p className="text-xs text-[#71717a] font-medium">📍 Nuestra Ubicación</p>
-              <h1 className="text-base font-bold text-[#09090b] tracking-tight">{business?.nombre || 'LoyaltyApp'}</h1>
+              <h1 className="text-base font-bold text-[#09090b] tracking-tight">{business?.nombre || 'LoyaltyClub'}</h1>
             </div>
           </div>
 
@@ -2018,14 +2018,14 @@ _Pedido procesado a través de LoyaltyApp VIP_`
             <div className="w-12 h-12 rounded-2xl overflow-hidden border border-[#e4e4e7] shadow-sm bg-white shrink-0">
               <img
                 src={business?.logo_url || '/logo.png'}
-                alt={business?.nombre || 'LoyaltyApp'}
+                alt={business?.nombre || 'LoyaltyClub'}
                 className="w-full h-full object-cover"
                 onError={(e) => { (e.target as HTMLImageElement).src = '/logo.png' }}
               />
             </div>
             <div>
               <p className="text-xs text-[#71717a] font-medium">⏰ Horarios & Contacto</p>
-              <h1 className="text-base font-bold text-[#09090b] tracking-tight">{business?.nombre || 'LoyaltyApp'}</h1>
+              <h1 className="text-base font-bold text-[#09090b] tracking-tight">{business?.nombre || 'LoyaltyClub'}</h1>
             </div>
           </div>
 
@@ -2097,14 +2097,14 @@ _Pedido procesado a través de LoyaltyApp VIP_`
             <div className="w-12 h-12 rounded-2xl overflow-hidden border border-[#e4e4e7] shadow-sm bg-white shrink-0">
               <img
                 src={business?.logo_url || '/logo.png'}
-                alt={business?.nombre || 'LoyaltyApp'}
+                alt={business?.nombre || 'LoyaltyClub'}
                 className="w-full h-full object-cover"
                 onError={(e) => { (e.target as HTMLImageElement).src = '/logo.png' }}
               />
             </div>
             <div>
               <p className="text-xs text-[#71717a] font-medium">🌐 Redes Sociales</p>
-              <h1 className="text-base font-bold text-[#09090b] tracking-tight">{business?.nombre || 'LoyaltyApp'}</h1>
+              <h1 className="text-base font-bold text-[#09090b] tracking-tight">{business?.nombre || 'LoyaltyClub'}</h1>
             </div>
           </div>
 

@@ -1,5 +1,5 @@
 -- =============================================
--- LOYALTYAPP — MIGRACIÓN COMPLETA ENTERPRISE
+-- LOYALTYCLUB — MIGRACIÓN COMPLETA ENTERPRISE
 -- Ejecutar en Supabase SQL Editor
 -- Proyecto: hjaeireljkcvjnigfhzb
 -- =============================================

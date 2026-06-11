@@ -23,7 +23,7 @@ interface MenuProduct {
 }
 interface ModifierGroup { id: string; nombre: string; requerido: boolean; modifier_options: ModifierOption[] }
 interface ModifierOption { id: string; nombre: string; precio_extra: number }
-interface CartItem { product: MenuProduct; cantidad: number; selecciones: Record<string, any>; subtotal: number }
+interface CartItem { product: MenuProduct; cantidad: number; selecciones: Record<string, any>; subtotal: number; comentarios?: string }
 interface LoyaltyReward { id: string; sello_requerido: number; nombre: string; descripcion: string; tipo: string }
 
 // ──────────────────────────────────────────────────────────────────
@@ -76,6 +76,42 @@ export default function MenuPublico({ params }: { params: Promise<{ slug: string
   const [telefonoAutocompletar, setTelefonoAutocompletar] = useState('')
   const [mostrandoAutocompletar, setMostrandoAutocompletar] = useState(false)
   const [buscandoAutocompletar, setBuscandoAutocompletar] = useState(false)
+  const [comentariosItem, setComentariosItem] = useState('')
+  const [mostrarRegistroSocioBoton, setMostrarRegistroSocioBoton] = useState(false)
+
+  const autocompletarDesdeLocalStorage = () => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('loyaltyclub_client_data')
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored)
+          setForm({
+            nombre: parsed.nombre || '',
+            telefono: parsed.telefono || '',
+            calle: parsed.calle || '',
+            numero: parsed.numero || '',
+            colonia: parsed.colonia || '',
+            referencia: parsed.referencia || ''
+          })
+          alert('✅ ¡Datos autocompletados con éxito desde tu historial local!')
+          setMostrandoAutocompletar(false)
+          setMostrarRegistroSocioBoton(false)
+          return true
+        } catch (e) {
+          console.error('Error parsing localStorage client data:', e)
+        }
+      }
+    }
+    return false
+  }
+
+  const presionarAutocompletar = () => {
+    const success = autocompletarDesdeLocalStorage()
+    if (!success) {
+      setMostrandoAutocompletar(true)
+      alert('🔍 No encontramos historial en este dispositivo. Ingresa tu teléfono abajo para buscar en el sistema.')
+    }
+  }
 
   const ejecutarAutocompletado = async () => {
     const telClean = telefonoAutocompletar.trim()
@@ -84,6 +120,7 @@ export default function MenuPublico({ params }: { params: Promise<{ slug: string
       return
     }
     setBuscandoAutocompletar(true)
+    setMostrarRegistroSocioBoton(false)
     try {
       const { data: cliente, error: cliErr } = await supabase
         .from('clientes')
@@ -98,7 +135,7 @@ export default function MenuPublico({ params }: { params: Promise<{ slug: string
       const { data: orders, error: orderErr } = await supabase
         .from('orders')
         .select('*')
-        .eq('telefono', telClean)
+        .eq('telefono_cliente', telClean)
         .order('created_at', { ascending: false })
         .limit(1)
 
@@ -109,18 +146,27 @@ export default function MenuPublico({ params }: { params: Promise<{ slug: string
       const ultimaOrden = orders?.[0]
 
       if (cliente || ultimaOrden) {
+        let col = ultimaOrden?.colonia || cliente?.colonia || ''
+        let ref = ultimaOrden?.referencia || cliente?.referencia || ''
+        if (col.includes(' (Ref: ')) {
+          const parts = col.split(' (Ref: ')
+          col = parts[0]
+          ref = parts[1].replace(/\)$/, '')
+        }
+
         setForm({
-          nombre: cliente?.nombre || ultimaOrden?.nombre || '',
+          nombre: cliente?.nombre || ultimaOrden?.nombre_cliente || '',
           telefono: telClean,
-          calle: ultimaOrden?.calle || '',
-          numero: ultimaOrden?.numero || '',
-          colonia: ultimaOrden?.colonia || '',
-          referencia: ''
+          calle: ultimaOrden?.calle || cliente?.calle || '',
+          numero: ultimaOrden?.numero || cliente?.numero || '',
+          colonia: col,
+          referencia: ref
         })
         alert('✅ ¡Datos autocompletados con éxito! Por favor revisa y confirma si son correctos.')
         setMostrandoAutocompletar(false)
+        setMostrarRegistroSocioBoton(false)
       } else {
-        alert('🔍 No encontramos registros con ese número de teléfono. Puedes registrarte ingresando tus datos abajo.')
+        setMostrarRegistroSocioBoton(true)
       }
     } catch (e: any) {
       alert('Error en autocompletado: ' + e.message)
@@ -461,9 +507,10 @@ export default function MenuPublico({ params }: { params: Promise<{ slug: string
   }
 
   const presionarAgregar = (product: MenuProduct) => {
+    setProductoSeleccionadoMod(product)
+    setComentariosItem('')
+    const iniciales: Record<string, any> = {}
     if (product.product_modifiers && product.product_modifiers.length > 0) {
-      setProductoSeleccionadoMod(product)
-      const iniciales: Record<string, any> = {}
       product.product_modifiers.forEach(mod => {
         if (mod.modifier_options && mod.modifier_options.length > 0) {
           const esSabor = esGrupoSabores(mod.nombre)
@@ -475,10 +522,8 @@ export default function MenuPublico({ params }: { params: Promise<{ slug: string
           }
         }
       })
-      setSeleccionesMod(iniciales)
-    } else {
-      agregarAlCarritoDirecto(product, {})
     }
+    setSeleccionesMod(iniciales)
   }
 
   const seleccionarOpcion = (mod: ModifierGroup, opt: ModifierOption) => {
@@ -524,10 +569,12 @@ export default function MenuPublico({ params }: { params: Promise<{ slug: string
     setCart(prev => {
       const existente = prev.find(item => {
         if (item.product.id !== product.id) return false
-        const keys1 = Object.keys(item.selecciones)
-        const keys2 = Object.keys(selecciones)
+        if ((item.comentarios || '') !== (comentariosItem || '')) return false
+        
+        const keys1 = Object.keys(item.selecciones).filter(k => k !== 'salsa-aparte')
+        const keys2 = Object.keys(selecciones).filter(k => k !== 'salsa-aparte')
         if (keys1.length !== keys2.length) return false
-        return keys1.every(k => {
+        const modMatch = keys1.every(k => {
           const opt1 = item.selecciones[k]
           const opt2 = selecciones[k]
           if (Array.isArray(opt1) && Array.isArray(opt2)) {
@@ -536,19 +583,28 @@ export default function MenuPublico({ params }: { params: Promise<{ slug: string
           }
           return opt1?.id === opt2?.id
         })
+        if (!modMatch) return false
+        if (item.selecciones['salsa-aparte'] !== selecciones['salsa-aparte']) return false
+        return true
       })
 
       if (existente) {
         return prev.map(item => {
-          const matched = item.product.id === product.id && Object.keys(item.selecciones).every(k => {
-            const opt1 = item.selecciones[k]
-            const opt2 = selecciones[k]
-            if (Array.isArray(opt1) && Array.isArray(opt2)) {
-              if (opt1.length !== opt2.length) return false
-              return opt1.every(o1 => opt2.some(o2 => o2.id === o1.id))
-            }
-            return opt1?.id === opt2?.id
-          })
+          const keys1 = Object.keys(item.selecciones).filter(k => k !== 'salsa-aparte')
+          const keys2 = Object.keys(selecciones).filter(k => k !== 'salsa-aparte')
+          const matched = item.product.id === product.id &&
+            item.selecciones['salsa-aparte'] === selecciones['salsa-aparte'] &&
+            (item.comentarios || '') === (comentariosItem || '') &&
+            keys1.length === keys2.length &&
+            keys1.every(k => {
+              const opt1 = item.selecciones[k]
+              const opt2 = selecciones[k]
+              if (Array.isArray(opt1) && Array.isArray(opt2)) {
+                if (opt1.length !== opt2.length) return false
+                return opt1.every(o1 => opt2.some(o2 => o2.id === o1.id))
+              }
+              return opt1?.id === opt2?.id
+            })
           if (matched) {
             const nuevaCant = item.cantidad + 1
             return { ...item, cantidad: nuevaCant, subtotal: nuevaCant * precioUnitario }
@@ -557,11 +613,12 @@ export default function MenuPublico({ params }: { params: Promise<{ slug: string
         })
       }
       
-      return [...prev, { product, cantidad: 1, selecciones, subtotal: precioUnitario }]
+      return [...prev, { product, cantidad: 1, selecciones, subtotal: precioUnitario, comentarios: comentariosItem }]
     })
     
     setProductoSeleccionadoMod(null)
     setSeleccionesMod({})
+    setComentariosItem('')
   }
 
   const agregarAlCarrito = (product: MenuProduct) => {
@@ -622,6 +679,9 @@ export default function MenuPublico({ params }: { params: Promise<{ slug: string
         }
         return o ? ` (+ ${o.nombre})` : ''
       })
+      if (i.comentarios && i.comentarios.trim()) {
+        modTextList.push(` (Nota: ${i.comentarios})`)
+      }
       const modText = modTextList.join('')
       return `• ${i.cantidad}x ${i.product.nombre}${modText} - $${i.subtotal.toLocaleString()} MXN`
     }).join('\n')
@@ -646,7 +706,7 @@ ${itemsText}
 -----------------------------------
 *TOTAL:* $${totalCarrito.toLocaleString()} MXN
 -----------------------------------
-_Pedido procesado a través de LoyaltyApp VIP_`
+_Pedido procesado a través de LoyaltyClub VIP_`
 
     return encodeURIComponent(msg)
   }
@@ -713,7 +773,11 @@ _Pedido procesado a través de LoyaltyApp VIP_`
           lat_entrega: tipoMenu === 'delivery' ? coordenadasPin?.lat || null : null,
           lng_entrega: tipoMenu === 'delivery' ? coordenadasPin?.lng || null : null,
           metodo_pago: metodoPago,
-          pago_verificado: metodoPago === 'efectivo'
+          pago_verificado: metodoPago === 'efectivo',
+          comentarios_preparacion: cart
+            .filter(i => i.comentarios && i.comentarios.trim())
+            .map(i => `${i.cantidad}x ${i.product.nombre}: ${i.comentarios}`)
+            .join(' | ')
         })
       })
 
@@ -736,6 +800,23 @@ _Pedido procesado a través de LoyaltyApp VIP_`
 
     setOrderId(order.id)
     setEnviando(false)
+
+    // Save client data to LocalStorage
+    if (typeof window !== 'undefined') {
+      try {
+        const dataToSave = {
+          nombre: form.nombre,
+          telefono: form.telefono,
+          calle: form.calle,
+          numero: form.numero,
+          colonia: form.colonia,
+          referencia: form.referencia
+        }
+        localStorage.setItem('loyaltyclub_client_data', JSON.stringify(dataToSave))
+      } catch (err) {
+        console.error('Error saving data to localStorage:', err)
+      }
+    }
 
     const puntosNuevos = (clienteExistente?.puntos || 0) + (logoSelloGranted ? 1 : 0)
     if (puntosNuevos >= (business.max_sellos || 10)) setConfeti(true)
@@ -802,22 +883,50 @@ _Pedido procesado a través de LoyaltyApp VIP_`
     const last10 = cleanDigits.slice(-10)
     const telNormalizado = last10.length === 10 ? `+52${last10}` : form.telefono
 
-    const { data: nuevoCliente } = await supabase.from('clientes').insert({
-      nombre: form.nombre || null,
-      telefono: telNormalizado,
-      puntos: 0,
-      business_id: business.id,
-    }).select().single()
+    let idPrograma = null
+    try {
+      const { data: prog } = await supabase
+        .from('programas_fidelidad')
+        .select('id')
+        .eq('business_id', business.id)
+        .eq('activo', true)
+        .maybeSingle()
+      if (prog) idPrograma = prog.id
+    } catch (err) {
+      console.warn('Error fetching active program for linking:', err)
+    }
 
-    if (nuevoCliente) {
+    const { data: nuevoCliente, error: upsertErr } = await supabase
+      .from('clientes')
+      .upsert({
+        business_id: business.id,
+        telefono: telNormalizado,
+        nombre: form.nombre || null,
+        calle: form.calle || null,
+        numero: form.numero || null,
+        colonia: form.colonia || null,
+        referencia: form.referencia || null,
+      }, {
+        onConflict: 'business_id,telefono'
+      })
+      .select()
+      .single()
+
+    if (upsertErr) {
+      console.error('Error during upsert of new VIP socio:', upsertErr)
+    }
+
+    const clienteFinal = nuevoCliente || null
+
+    if (clienteFinal) {
       await supabase.from('tracking_events').insert({
         business_id: business.id,
-        cliente_id: nuevoCliente.id,
+        cliente_id: clienteFinal.id,
         event_type: 'vip_joined',
-        metadata: { canal: tipoMenu },
+        metadata: { canal: tipoMenu, programa_id: idPrograma },
       })
-      setClienteExistente(nuevoCliente)
-      await crearPedido(nuevoCliente.id, true)
+      setClienteExistente(clienteFinal)
+      await crearPedido(clienteFinal.id, true)
     } else {
       await crearPedido(null, true)
     }
@@ -1071,15 +1180,18 @@ _Pedido procesado a través de LoyaltyApp VIP_`
                   </button>
                   <p className="font-bold text-sm text-[#09090b]">{item.cantidad}x {item.product.nombre}</p>
                 </div>
-                {Object.keys(item.selecciones).length > 0 && (
-                  <p className="text-[11px] text-[#52525b] mt-0.5 leading-relaxed pl-6">
-                    {Object.entries(item.selecciones).map(([key, o]: [string, any]) => {
-                      if (key === 'salsa-aparte') return o ? '🥣 Salsa Aparte' : ''
-                      if (Array.isArray(o)) {
-                        return o.map(subOpt => `• ${subOpt.nombre}`).join(', ')
-                      }
-                      return `• ${o?.nombre || ''}`
-                    }).filter(Boolean).join(', ')}
+                {((Object.keys(item.selecciones).length > 0) || (item.comentarios && item.comentarios.trim())) && (
+                  <p className="text-[11px] text-[#52525b] mt-0.5 leading-relaxed pl-6 font-medium">
+                    {[
+                      Object.entries(item.selecciones).map(([key, o]: [string, any]) => {
+                        if (key === 'salsa-aparte') return o ? '🥣 Salsa Aparte' : ''
+                        if (Array.isArray(o)) {
+                          return o.map(subOpt => `• ${subOpt.nombre}`).join(', ')
+                        }
+                        return `• ${o?.nombre || ''}`
+                      }).filter(Boolean).join(', '),
+                      item.comentarios && item.comentarios.trim() ? `💬 Prep: ${item.comentarios}` : ''
+                    ].filter(Boolean).join(' | ')}
                   </p>
                 )}
               </div>
@@ -1101,13 +1213,24 @@ _Pedido procesado a través de LoyaltyApp VIP_`
         <div className="bg-[#fafafa] border border-[#e4e4e7] rounded-2xl p-4 space-y-3 shadow-xs">
           <div className="flex justify-between items-center">
             <span className="text-xs font-black text-[#09090b]">🔑 ¿Ya tienes cuenta?</span>
-            <button
-              type="button"
-              onClick={() => setMostrandoAutocompletar(!mostrandoAutocompletar)}
-              className="text-[11px] bg-[#09090b] hover:bg-zinc-800 text-white font-extrabold px-3 py-1.5 rounded-xl transition-all"
-            >
-              {mostrandoAutocompletar ? 'Cancelar' : 'Autocompletar mis datos'}
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={presionarAutocompletar}
+                className="text-[11px] bg-[#09090b] hover:bg-zinc-800 text-white font-extrabold px-3 py-1.5 rounded-xl transition-all"
+              >
+                Autocompletar mis datos
+              </button>
+              {mostrandoAutocompletar && (
+                <button
+                  type="button"
+                  onClick={() => setMostrandoAutocompletar(false)}
+                  className="text-[11px] bg-gray-200 text-gray-700 font-bold px-2 py-1 rounded-xl"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
           </div>
           {mostrandoAutocompletar && (
             <div className="space-y-3 pt-1 border-t border-[#e4e4e7] animate-fadeIn">
@@ -1129,6 +1252,79 @@ _Pedido procesado a través de LoyaltyApp VIP_`
                   {buscandoAutocompletar ? 'Buscando...' : 'Buscar'}
                 </button>
               </div>
+              {mostrarRegistroSocioBoton && (
+                <div className="pt-2 animate-fadeIn">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const cleanDigits = (telefonoAutocompletar || '').replace(/\D/g, '')
+                      const last10 = cleanDigits.slice(-10)
+                      const telNormalizado = last10.length === 10 ? `+52${last10}` : telefonoAutocompletar
+                      setForm(prev => ({ ...prev, telefono: telNormalizado }))
+                      
+                      let nombreCliente = form.nombre.trim()
+                      if (!nombreCliente) {
+                        nombreCliente = prompt('Para registrarte como socio nuevo, por favor ingresa tu nombre completo:') || ''
+                        if (!nombreCliente.trim()) {
+                          alert('El nombre es obligatorio para registrarse como socio.')
+                          return
+                        }
+                        setForm(prev => ({ ...prev, nombre: nombreCliente }))
+                      }
+                      
+                      setEnviando(true)
+                      try {
+                        let idPrograma = null
+                        const { data: prog } = await supabase
+                          .from('programas_fidelidad')
+                          .select('id')
+                          .eq('business_id', business.id)
+                          .eq('activo', true)
+                          .maybeSingle()
+                        if (prog) idPrograma = prog.id
+
+                        const { data: nuevoCliente, error: upsertErr } = await supabase
+                          .from('clientes')
+                          .upsert({
+                            business_id: business.id,
+                            telefono: telNormalizado,
+                            nombre: nombreCliente,
+                            calle: form.calle || null,
+                            numero: form.numero || null,
+                            colonia: form.colonia || null,
+                            referencia: form.referencia || null,
+                          }, {
+                            onConflict: 'business_id,telefono'
+                          })
+                          .select()
+                          .single()
+
+                        if (upsertErr) throw upsertErr
+
+                        if (nuevoCliente) {
+                          await supabase.from('tracking_events').insert({
+                            business_id: business.id,
+                            cliente_id: nuevoCliente.id,
+                            event_type: 'vip_joined',
+                            metadata: { canal: tipoMenu, programa_id: idPrograma },
+                          })
+                          setClienteExistente(nuevoCliente)
+                          alert('🎉 ¡Registro Exitoso! Te has registrado como Socio Nuevo y estás listo para acumular sellos.')
+                          setMostrandoAutocompletar(false)
+                          setMostrarRegistroSocioBoton(false)
+                        }
+                      } catch (e: any) {
+                        alert('Error al registrar: ' + e.message)
+                      } finally {
+                        setEnviando(false)
+                      }
+                    }}
+                    className="w-full bg-[#dc2626] hover:bg-[#b91c1c] text-white text-[11px] font-black py-2.5 px-4 rounded-xl transition-all text-center flex items-center justify-center gap-1.5 shadow-sm uppercase tracking-wider"
+                  >
+                    ⭐ No encontramos tu número. ¡Registrarme como Socio Nuevo aquí!
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1379,7 +1575,7 @@ _Pedido procesado a través de LoyaltyApp VIP_`
 
 
 
-              {/* Lista de productos agrupada (Rappi-style) */}
+              {/* Lista de productos agrupada (LoyaltyClub-style) */}
               <div className="p-4 space-y-8 pb-32">
                 {grupos.length === 0 && (
                   <div className="text-center py-16 text-[#a1a1aa]">
@@ -1415,26 +1611,30 @@ _Pedido procesado a través de LoyaltyApp VIP_`
                             const totalAgregado = cart.filter(item => item.product.id === product.id).reduce((sum, item) => sum + item.cantidad, 0)
                             
                             return (
-                              <div key={product.id} className="bg-white border border-[#e4e4e7] rounded-2xl p-4 flex gap-4 hover:border-[#d4d4d8] hover:shadow-md transition-all">
+                              <div 
+                                key={product.id} 
+                                onClick={() => presionarAgregar(product)}
+                                className="bg-white border border-[#e4e4e7] rounded-2xl p-4 flex gap-4 hover:border-[#d4d4d8] hover:shadow-md transition-all cursor-pointer text-left"
+                              >
                                 <div className="flex-1">
                                   <h3 className="font-bold text-[#09090b] text-sm sm:text-base flex flex-wrap items-center gap-1.5">
                                     {product.nombre}
-                                    {tieneModificadores && totalAgregado > 0 && (
+                                    {totalAgregado > 0 && (
                                       <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-[#fef2f2] text-[#dc2626] border border-red-100 shrink-0 animate-fadeIn">
                                         {totalAgregado} agregado{totalAgregado !== 1 ? 's' : ''}
                                       </span>
                                     )}
                                   </h3>
-                                  {product.descripcion && <p className="text-[#52525b] text-xs mt-1 line-clamp-2">{product.descripcion}</p>}
+                                  {product.descripcion && <p className="text-[#52525b] text-xs mt-1 leading-normal whitespace-pre-wrap">{product.descripcion}</p>}
                                   <p className="text-[#dc2626] font-black text-sm mt-2">${product.precio.toLocaleString()} MXN</p>
                                 </div>
                                 {product.imagen_url && (
                                   <img src={product.imagen_url} alt={product.nombre} className="w-20 h-20 rounded-xl object-cover flex-shrink-0" />
                                 )}
-                                <div className="flex flex-col items-center justify-center gap-2">
+                                <div className="flex flex-col items-center justify-center gap-2" onClick={(e) => e.stopPropagation()}>
                                   {tieneModificadores ? (
                                     <button
-                                      onClick={() => agregarAlCarrito(product)}
+                                      onClick={() => presionarAgregar(product)}
                                       className="px-3.5 py-1.5 rounded-lg bg-[#dc2626] text-white font-extrabold text-xs flex items-center justify-center gap-1 hover:bg-[#b91c1c] transition-all active:scale-95 shadow-sm"
                                     >
                                       + Agregar
@@ -1444,12 +1644,12 @@ _Pedido procesado a través de LoyaltyApp VIP_`
                                       <button onClick={() => quitarDelCarrito(product.id)}
                                         className="w-7 h-7 rounded-lg bg-[#f4f4f5] text-[#52525b] font-bold text-lg flex items-center justify-center hover:bg-[#e4e4e7] transition-colors">−</button>
                                       <span className="text-[#09090b] font-black w-4 text-center text-sm">{enCarrito.cantidad}</span>
-                                      <button onClick={() => agregarAlCarrito(product)}
+                                      <button onClick={() => presionarAgregar(product)}
                                         className="w-7 h-7 rounded-lg bg-[#dc2626] text-white font-bold text-lg flex items-center justify-center hover:bg-[#b91c1c] transition-colors">+</button>
                                     </div>
                                   ) : (
                                     <button
-                                      onClick={() => agregarAlCarrito(product)}
+                                      onClick={() => presionarAgregar(product)}
                                       className="w-8 h-8 rounded-lg bg-[#dc2626] text-white font-bold text-lg flex items-center justify-center hover:bg-[#b91c1c] transition-all active:scale-95 shadow-md"
                                     >+</button>
                                   )}
@@ -1682,9 +1882,9 @@ _Pedido procesado a través de LoyaltyApp VIP_`
               {productoSeleccionadoMod.imagen_url && (
                 <img src={productoSeleccionadoMod.imagen_url} alt="" className="w-16 h-16 rounded-xl object-cover shrink-0" />
               )}
-              <div>
+              <div className="flex-1 min-w-0">
                 <h3 className="text-lg font-black text-[#09090b] tracking-tight">{productoSeleccionadoMod.nombre}</h3>
-                <p className="text-[#52525b] text-xs mt-1 leading-relaxed">{productoSeleccionadoMod.descripcion}</p>
+                <p className="text-[#52525b] text-xs mt-1 leading-relaxed whitespace-pre-wrap">{productoSeleccionadoMod.descripcion}</p>
                 <p className="text-[#dc2626] font-black text-sm mt-2">${productoSeleccionadoMod.precio.toLocaleString()} MXN</p>
               </div>
             </div>
@@ -1696,7 +1896,7 @@ _Pedido procesado a través de LoyaltyApp VIP_`
                 const esSabor = esGrupoSabores(mod.nombre)
                 
                 // Inyectar la opción virtual "Naturales (Sin Salsa)" si es un modificador de sabores
-                const modifierOptionsFinal = [...(mod.modifier_options || [])]
+                const modifierOptionsFinal = [...(mod.modifier_options || [])].filter(o => o.disponible !== false)
                 if (esSabor && !modifierOptionsFinal.some(o => o.nombre.toLowerCase().includes('natural'))) {
                   modifierOptionsFinal.push({
                     id: 'natural-opt-virtual',
@@ -1792,6 +1992,18 @@ _Pedido procesado a través de LoyaltyApp VIP_`
                   </div>
                 )
               })}
+              
+              {/* Comentarios de preparación / Alergias */}
+              <div className="space-y-2 mt-4 border-t border-[#f4f4f5] pt-4">
+                <label className="text-xs text-[#52525b] uppercase tracking-widest font-semibold block">Comentarios de preparación / Alergias</label>
+                <textarea
+                  value={comentariosItem}
+                  onChange={e => setComentariosItem(e.target.value)}
+                  placeholder="Ej: sin cebolla, salsa aparte"
+                  rows={2}
+                  className="w-full bg-[#fafafa] border border-[#e4e4e7] rounded-xl px-4 py-3 text-[#09090b] text-sm focus:outline-none focus:border-[#dc2626] transition-colors resize-none"
+                />
+              </div>
             </div>
 
             {/* Footer modal */}

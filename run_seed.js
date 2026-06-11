@@ -7,7 +7,7 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 async function seed() {
   try {
-    console.log("🌱 Iniciando siembra de datos LoyaltyApp...")
+    console.log("🌱 Iniciando siembra de datos LoyaltyClub...")
 
     // 1. Obtener o crear el negocio La Burrería
     let { data: business } = await supabase

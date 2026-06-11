@@ -16,7 +16,8 @@ import {
   PieChart as PieIcon, BarChart3 as BarIcon, PhoneCall,
   Smartphone, Radio, Pencil, Send,
   Star, Gift, CreditCard, ChevronDown, X, Check as CheckIcon,
-  AlertCircle, Coffee, Cake, IceCream2, Copy, ExternalLink, Truck, Navigation, WifiOff
+  AlertCircle, Coffee, Cake, IceCream2, Copy, ExternalLink, Truck, Navigation, WifiOff,
+  Eye, EyeOff
 } from 'lucide-react'
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
@@ -414,7 +415,12 @@ export default function DashboardPage() {
   const [categoriasExpandidas, setCategoriasExpandidas] = useState<Record<string, boolean>>({})
   const [subPestañaCatalog, setSubPestañaCatalog] = useState<'categorias' | 'productos'>('productos')
 
-  // Horarios Estilo Rappi (Lunes a Domingo)
+  // Estado para visibilidad de PIN de empleados
+  const [pinesVisibles, setPinesVisibles] = useState<Record<string, boolean>>({})
+  const togglePinVisible = (id: string) => setPinesVisibles(prev => ({ ...prev, [id]: !prev[id] }))
+
+
+  // Horarios Estilo LoyaltyClub (Lunes a Domingo)
   const [horariosSemanales, setHorariosSemanales] = useState<any[]>([
     { dia_text: 'Lunes', abierto: true, apertura: '14:00', cierre: '22:00' },
     { dia_text: 'Martes', abierto: true, apertura: '14:00', cierre: '22:00' },
@@ -494,7 +500,7 @@ export default function DashboardPage() {
   const [activoGrupo, setActivoGrupo] = useState(true)
   const [guardandoGrupo, setGuardandoGrupo] = useState(false)
 
-  // Estados interactivos para Categorías estilo Rappi
+  // Estados interactivos para Categorías estilo LoyaltyClub
   const [menuCategoriaAbierto, setMenuCategoriaAbierto] = useState<string | null>(null)
   const [categoriaAEditarModal, setCategoriaAEditarModal] = useState<any | null>(null)
 
@@ -799,8 +805,20 @@ export default function DashboardPage() {
   const [premioRapido, setPremioRapido] = useState<string | null>(null)
   const [premioNombreCustom, setPremioNombreCustom] = useState('')
   const [premioSellos, setPremioSellos] = useState<string>('3')
-  const [premioSellosOtro, setPremioSellosOtro] = useState('')
   const [programaIdActivo, setProgramaIdActivo] = useState<string>('')
+  
+  // Nuevos estados para CRM Interno (Agregar Socio) y Ruleta por nivel de programa
+  const [mostrarAgregarSocioModal, setMostrarAgregarSocioModal] = useState(false)
+  const [nuevoSocioForm, setNuevoSocioForm] = useState({
+    nombre: '',
+    telefono: '',
+    calle: '',
+    numero: '',
+    colonia: '',
+    referencia: ''
+  })
+  const [guardandoNuevoSocio, setGuardandoNuevoSocio] = useState(false)
+  const [programaRuletaId, setProgramaRuletaId] = useState<string>('')
 
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null)
 
@@ -1326,6 +1344,9 @@ export default function DashboardPage() {
       
       if (!error && configData && configData.ruleta_config) {
         setRuletaConfig(configData.ruleta_config)
+        if (configData.ruleta_config.program_id) {
+          setProgramaRuletaId(configData.ruleta_config.program_id)
+        }
       }
     } catch (err) {
       console.warn("La columna ruleta_config no está disponible en la base de datos.", err)
@@ -1345,6 +1366,21 @@ export default function DashboardPage() {
     } catch (err) {
       console.warn("La columna monto_minimo_ruleta no está disponible en la base de datos.", err)
     }
+
+    // 4. Cargar de forma defensiva program_id por si la columna ya fue agregada
+    try {
+      const { data: progIdData, error } = await supabase
+        .from('businesses')
+        .select('program_id' as any)
+        .eq('id', bId)
+        .maybeSingle()
+      
+      if (!error && progIdData && (progIdData as any).program_id) {
+        setProgramaRuletaId((progIdData as any).program_id)
+      }
+    } catch (err) {
+      console.warn("La columna program_id no está disponible en businesses en la base de datos.", err)
+    }
   }
 
   // ── guardarPremiosRuleta ──────────────────────────────────────────────────────
@@ -1360,14 +1396,18 @@ export default function DashboardPage() {
         return
       }
 
-      // Intentar actualizar todo incluyendo ruleta_config y monto_minimo_ruleta
+      // Intentar actualizar todo incluyendo ruleta_config, monto_minimo_ruleta y program_id
       const { error } = await supabase
         .from('businesses')
         .update({
           premios_ruleta: arrPremios,
           reiniciar_sellos_ruleta: reiniciarSellosAuto,
-          ruleta_config: ruletaConfig,
-          monto_minimo_ruleta: parseFloat(montoMinimoRuleta) || 0
+          ruleta_config: {
+            ...ruletaConfig,
+            program_id: programaRuletaId || null
+          },
+          monto_minimo_ruleta: parseFloat(montoMinimoRuleta) || 0,
+          program_id: programaRuletaId || null
         } as any)
         .eq('id', businessId)
       
@@ -1376,15 +1416,19 @@ export default function DashboardPage() {
       cargarDatos()
     } catch (e: any) {
       console.error(e)
-      // Si la columna ruleta_config o monto_minimo_ruleta no existe en DB, guardar al menos la configuración básica
-      if (e.message?.includes('ruleta_config') || e.message?.includes('monto_minimo_ruleta') || e.message?.includes('column "')) {
+      // Si la columna ruleta_config o monto_minimo_ruleta o program_id no existe en DB, guardar al menos la configuración básica
+      if (e.message?.includes('ruleta_config') || e.message?.includes('monto_minimo_ruleta') || e.message?.includes('program_id') || e.message?.includes('column "')) {
         try {
           const { error: errRetry } = await supabase
             .from('businesses')
             .update({
               premios_ruleta: premiosPrincipal.map(p => p.trim()).filter(Boolean),
-              reiniciar_sellos_ruleta: reiniciarSellosAuto
-            })
+              reiniciar_sellos_ruleta: reiniciarSellosAuto,
+              ruleta_config: {
+                ...ruletaConfig,
+                program_id: programaRuletaId || null
+              }
+            } as any)
             .eq('id', businessId)
           if (errRetry) throw errRetry
           alert('✅ Configuración básica de Ruleta guardada con éxito.\n\n⚠️ NOTA: Los rangos intermedios y el monto mínimo no se guardaron porque las columnas no existen en la base de datos de Supabase. Por favor ejecuta la migración SQL.')
@@ -1585,7 +1629,7 @@ export default function DashboardPage() {
   const probarWhatsApp = () => {
     if (!whatsappNegocio) return alert('Ingresa primero el número de WhatsApp')
     const cleanTel = '52' + whatsappNegocio.replace(/\D/g, '').slice(-10)
-    const msg = `*LoyaltyApp* 📲\n¡Tu conexión está activa! Sistema de notificaciones listo.`
+    const msg = `*LoyaltyClub* 📲\n¡Tu conexión está activa! Sistema de notificaciones listo.`
     window.open(`https://wa.me/${cleanTel}?text=${encodeURIComponent(msg)}`, '_blank')
   }
 
@@ -2104,6 +2148,61 @@ export default function DashboardPage() {
     }
   }
 
+  const toggleGlobalModifierDisponible = async (optionName: string, currentVal: boolean) => {
+    const newVal = !currentVal
+    const businessId = activeBizId || getCookieVal('session_business_id') || business?.id
+    if (!businessId) return
+
+    const productIds = menuProducts.map(p => p.id)
+    if (productIds.length === 0) return
+
+    try {
+      // 1. Obtener todos los product_modifiers vinculados a los productos del negocio
+      const { data: mods, error: modsErr } = await supabase
+        .from('product_modifiers')
+        .select('id')
+        .in('product_id', productIds)
+
+      if (modsErr || !mods || mods.length === 0) {
+        console.error('Error fetching modifiers:', modsErr)
+        return
+      }
+
+      const modIds = mods.map(m => m.id)
+
+      // 2. Actualizar todas las modifier_options con el mismo nombre y modifier_id en modIds
+      const { error: optErr } = await supabase
+        .from('modifier_options')
+        .update({ disponible: newVal })
+        .eq('nombre', optionName)
+        .in('modifier_id', modIds)
+
+      if (optErr) {
+        alert('Error al actualizar modificador global: ' + optErr.message)
+        return
+      }
+
+      alert(`✅ Ingrediente "${optionName}" marcado como ${newVal ? 'Disponible' : 'Agotado'} en todo el menú`)
+
+      // 3. Recargar el menú
+      await cargarDatosMenu(businessId)
+
+      // 4. Actualizar el producto en edición para refrescar la UI del modal
+      if (productoAEditar) {
+        const { data: updatedProd } = await supabase
+          .from('menu_products')
+          .select('*, product_modifiers(*, modifier_options(*))')
+          .eq('id', productoAEditar.id)
+          .single()
+        if (updatedProd) {
+          setProductoAEditar(updatedProd)
+        }
+      }
+    } catch (err: any) {
+      console.error('Error toggling global modifier:', err)
+    }
+  }
+
   // ── Helpers para Edición de Programas ──────────────────────────────────────────
   const abrirEditarPrograma = (prog: any) => {
     setProgramaAEditar(prog)
@@ -2361,6 +2460,108 @@ export default function DashboardPage() {
     }
   }
 
+  const handleAgregarSocioSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const businessId = getCookieVal('session_business_id') || business?.id
+    if (!businessId) {
+      alert('Error: No se detectó el ID del negocio.')
+      return
+    }
+
+    const cleanDigits = nuevoSocioForm.telefono.replace(/\D/g, '')
+    const last10 = cleanDigits.slice(-10)
+    if (last10.length !== 10) {
+      alert('Por favor ingresa un teléfono válido de 10 dígitos.')
+      return
+    }
+    const telNormalizado = `+52${last10}`
+
+    if (!nuevoSocioForm.nombre.trim()) {
+      alert('Por favor ingresa el nombre del socio.')
+      return
+    }
+
+    setGuardandoNuevoSocio(true)
+
+    try {
+      // Find the active program of the business to link it
+      let activeProgramId = null
+      try {
+        const { data: prog } = await supabase
+          .from('programas_fidelidad')
+          .select('id')
+          .eq('business_id', businessId)
+          .eq('activo', true)
+          .maybeSingle()
+        if (prog) activeProgramId = prog.id
+      } catch (err) {
+        console.warn('Error fetching active program:', err)
+      }
+
+      // Upsert client
+      const { data: clientData, error: upsertErr } = await supabase
+        .from('clientes')
+        .upsert({
+          business_id: businessId,
+          telefono: telNormalizado,
+          nombre: nuevoSocioForm.nombre.trim(),
+          calle: nuevoSocioForm.calle.trim() || null,
+          numero: nuevoSocioForm.numero.trim() || null,
+          colonia: nuevoSocioForm.colonia.trim() || null,
+          referencia: nuevoSocioForm.referencia.trim() || null,
+          programa_id: activeProgramId
+        }, {
+          onConflict: 'business_id,telefono'
+        })
+        .select()
+        .single()
+
+      if (upsertErr) throw upsertErr
+
+      // Link client via tracking event
+      if (clientData) {
+        await supabase.from('tracking_events').insert({
+          business_id: businessId,
+          cliente_id: clientData.id,
+          event_type: 'vip_joined',
+          metadata: { canal: 'dashboard_crm', programa_id: activeProgramId }
+        })
+      }
+
+      alert('🎉 Socio registrado/actualizado con éxito.')
+      setMostrarAgregarSocioModal(false)
+      setNuevoSocioForm({
+        nombre: '',
+        telefono: '',
+        calle: '',
+        numero: '',
+        colonia: '',
+        referencia: ''
+      })
+      cargarDatos() // Reload clients list
+    } catch (error: any) {
+      console.error('Error al registrar socio:', error)
+      alert('Error al registrar socio: ' + error.message)
+    } finally {
+      setGuardandoNuevoSocio(false)
+    }
+  }
+
+  const eliminarPrograma = async (id: string) => {
+    if (!confirm('¿Estás seguro de desactivar (borrado lógico) este programa de lealtad?')) return
+    try {
+      const { error } = await supabase
+        .from('programas_fidelidad')
+        .update({ activo: false })
+        .eq('id', id)
+      if (error) throw error
+      alert('✅ Programa desactivado con éxito.')
+      cargarDatos()
+    } catch (e: any) {
+      alert('Error al desactivar programa: ' + e.message)
+    }
+  }
+
   const abrirEditarCliente = (c: Cliente) => {
     setClienteAEditar(c)
     setEditCliNombre(c.nombre || '')
@@ -2419,7 +2620,7 @@ export default function DashboardPage() {
     })
     const link = document.createElement('a')
     link.setAttribute('href', encodeURI(csv))
-    link.setAttribute('download', `LoyaltyApp-${business?.slug || 'comercio'}.csv`)
+    link.setAttribute('download', `LoyaltyClub-${business?.slug || 'comercio'}.csv`)
     document.body.appendChild(link); link.click(); document.body.removeChild(link)
   }
 
@@ -2504,7 +2705,7 @@ export default function DashboardPage() {
                 <Star className="w-4 h-4 text-white fill-white" />
               </div>
               {sidebarExpanded && (
-                <span className="font-bold text-[#09090b] text-sm tracking-tight truncate">LoyaltyApp</span>
+                <span className="font-bold text-[#09090b] text-sm tracking-tight truncate">LoyaltyClub</span>
               )}
             </div>
             <button onClick={() => setSidebarExpanded(!sidebarExpanded)} className="text-[#a1a1aa] hover:text-[#52525b] transition-colors shrink-0">
@@ -2557,7 +2758,7 @@ export default function DashboardPage() {
             </button>
           )}
           {sidebarExpanded && (
-            <p className="text-center text-[#a1a1aa] text-[10px] mt-2">LoyaltyApp Enterprise v14</p>
+            <p className="text-center text-[#a1a1aa] text-[10px] mt-2">LoyaltyClub Enterprise v14</p>
           )}
         </div>
       </aside>
@@ -2569,7 +2770,7 @@ export default function DashboardPage() {
         <header className="h-16 border-b border-[#e4e4e7] bg-white sticky top-0 z-20 px-6 flex items-center justify-between shadow-[0_1px_0_#e4e4e7]">
           <div className="min-w-0">
             <h1 className="text-base font-bold text-[#09090b] truncate flex items-center gap-2">
-              <span>{business?.nombre || 'LoyaltyApp'}</span>
+              <span>{business?.nombre || 'LoyaltyClub'}</span>
               <span className="hidden sm:inline ml-2 text-xs font-normal text-[#a1a1aa]">Panel de Control</span>
             </h1>
           </div>
@@ -2801,9 +3002,20 @@ export default function DashboardPage() {
           ══════════════════════════════════════════ */}
           {pestaña === 'clientes' && (
             <div className="space-y-6 animate-fadeIn max-w-3xl">
-              <div className="bg-white border border-[#e4e4e7] p-6 rounded-2xl shadow-sm space-y-2">
-                <h3 className="font-bold text-[#09090b]">👥 Clientes & CRM</h3>
-                <p className="text-xs text-[#71717a]">Visualiza e importa los socios de tu club de lealtad en un panel CRM unificado.</p>
+              <div className="bg-white border border-[#e4e4e7] p-6 rounded-2xl shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div className="space-y-1">
+                  <h3 className="font-bold text-[#09090b] flex items-center gap-2">
+                    <UserCheck className="w-5 h-5 text-[#dc2626]" />
+                    👥 Clientes & CRM
+                  </h3>
+                  <p className="text-xs text-[#71717a]">Visualiza, registra e importa los socios de tu club de lealtad en un panel CRM unificado.</p>
+                </div>
+                <button
+                  onClick={() => setMostrarAgregarSocioModal(true)}
+                  className="btn-primary py-2.5 px-4 text-xs flex items-center gap-1.5 self-start sm:self-auto shrink-0 shadow-sm"
+                >
+                  <Plus className="w-4 h-4" /> Agregar Socio
+                </button>
               </div>
 
               {/* ── IMPORTADOR MASIVO CSV ── */}
@@ -2918,6 +3130,124 @@ export default function DashboardPage() {
                   </div>
                 )}
               </div>
+
+              {/* Configuración de Auditoría */}
+              <div className="bg-white border border-[#e4e4e7] rounded-2xl p-6 shadow-sm space-y-4">
+                <div>
+                  <h3 className="text-sm font-bold text-[#09090b]">Configuración de Auditoría</h3>
+                  <p className="text-xs text-[#71717a] mt-0.5">Controla las políticas de validación para sellos otorgados de forma manual</p>
+                </div>
+                <label className="flex items-center gap-3 bg-[#fafafa] border border-[#e4e4e7] rounded-xl p-4 cursor-pointer hover:bg-[#f4f4f5] transition-all">
+                  <input
+                    type="checkbox"
+                    checked={requiereMotivoSello}
+                    onChange={e => toggleAuditoriaMotivo(e.target.checked)}
+                    className="w-5 h-5 accent-[#dc2626] rounded cursor-pointer"
+                  />
+                  <div>
+                    <p className="text-sm font-bold text-[#09090b]">Explicación obligatoria en sellos manuales (Auditoría)</p>
+                    <p className="text-[11px] text-[#71717a] mt-0.5">Si se activa, los empleados deberán obligatoriamente escribir una razón en el motivo de auditoría al agregar o quitar sellos.</p>
+                  </div>
+                </label>
+              </div>
+
+              {/* VIP Clients Table */}
+              <div className="bg-white border border-[#e4e4e7] rounded-2xl overflow-hidden shadow-sm">
+                <div className="p-5 border-b border-[#e4e4e7]">
+                  <h3 className="text-sm font-bold text-[#09090b]">Tabla de Clientes VIP</h3>
+                  <p className="text-xs text-[#71717a] mt-0.5">Haz clic sobre un cliente para ver su perfil y enviarle alertas directas</p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-[#fafafa] border-b border-[#e4e4e7]">
+                      <tr>
+                        {['Socio VIP', 'Estado', 'Progreso de Sellos', 'Acciones'].map(h => (
+                          <th key={h} className="px-6 py-4 text-left text-xs font-semibold text-[#71717a] uppercase tracking-wide whitespace-nowrap">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#f4f4f5]">
+                      {clientesVIP.map(c => {
+                        const sospechoso = sociosSospechosos[c.id]
+                        return (
+                          <tr key={c.id} className="hover:bg-[#fafafa] transition-colors group cursor-pointer" onClick={() => setClienteSeleccionadoModal(c)}>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="font-semibold text-[#09090b] group-hover:text-[#dc2626] transition-colors">{c.nombre}</div>
+                              <div className="text-xs text-[#a1a1aa] font-mono mt-0.5">{c.telefono || 'Sin tel.'}</div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              {sospechoso ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-red-100 border border-red-200 text-red-600">
+                                  <AlertTriangle className="w-3 h-3" /> Sospechoso
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-green-100 border border-green-200 text-green-700">
+                                  <Check className="w-3 h-3" /> Verificado
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex items-center gap-3">
+                                <div className="w-24 h-1.5 bg-[#f4f4f5] rounded-full overflow-hidden">
+                                  <div className="h-full bg-[#dc2626] rounded-full" style={{ width: `${Math.min((c.puntos / Number(maxStamps)) * 100, 100)}%` }} />
+                                </div>
+                                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${c.puntos >= Number(maxStamps) ? 'bg-amber-100 text-amber-700' : 'bg-[#f4f4f5] text-[#71717a]'}`}>
+                                  {c.puntos}/{maxStamps} ★
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex gap-2">
+                                <button onClick={() => abrirModalAjuste(c.id, c.nombre, c.puntos, 'resta')} className="w-8 h-8 rounded-lg border border-[#e4e4e7] hover:bg-[#fafafa] text-[#52525b] transition-colors flex items-center justify-center font-bold">−</button>
+                                <button onClick={() => abrirModalAjuste(c.id, c.nombre, c.puntos, 'suma')} className="w-8 h-8 rounded-lg bg-[#fef2f2] border border-[#fecaca] text-[#dc2626] hover:bg-red-50 transition-colors flex items-center justify-center font-bold">+</button>
+                                <button onClick={() => abrirEditarCliente(c)} className="w-8 h-8 rounded-lg border border-[#e4e4e7] hover:bg-[#fafafa] text-[#52525b] hover:text-[#dc2626] transition-colors flex items-center justify-center">
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                                <button onClick={() => eliminarCliente(c.id)} className="w-8 h-8 rounded-lg border border-[#e4e4e7] hover:bg-red-50 hover:border-red-200 text-[#a1a1aa] hover:text-red-500 transition-colors flex items-center justify-center">
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Auditoría */}
+              <div className="bg-white border border-[#e4e4e7] rounded-2xl overflow-hidden shadow-sm">
+                <div className="p-5 border-b border-[#e4e4e7]">
+                  <h3 className="text-sm font-bold text-[#09090b]">Auditoría de Movimientos</h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-[#fafafa] border-b border-[#e4e4e7]">
+                      <tr>
+                        {['Socio', 'Tipo', 'Cantidad', 'Descripción', 'Fecha'].map(h => (
+                          <th key={h} className="px-5 py-3 text-left text-xs font-semibold text-[#71717a] uppercase tracking-wide whitespace-nowrap">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#f4f4f5]">
+                      {historial.slice(0, 15).map(h => (
+                        <tr key={h.id} className="hover:bg-[#fafafa] transition-colors">
+                          <td className="px-5 py-3 font-medium text-[#09090b] whitespace-nowrap">{h.clientes?.nombre || 'Socio'}</td>
+                          <td className="px-5 py-3 whitespace-nowrap">
+                            <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${(h.motivo || h.tipo_movimiento) === 'suma' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                              {h.motivo || h.tipo_movimiento || 'ajuste'}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3 font-mono font-bold text-amber-600 whitespace-nowrap">{h.cantidad} ★</td>
+                          <td className="px-5 py-3 text-[#71717a] max-w-xs truncate">{h.descripcion || ((h.motivo || h.tipo_movimiento) === 'suma' ? 'Sello registrado' : 'Sello retirado/canjeado')}</td>
+                          <td className="px-5 py-3 text-[#a1a1aa] font-mono text-xs whitespace-nowrap">{new Date(h.created_at).toLocaleString('es-MX')}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           )}
 
@@ -2926,7 +3256,7 @@ export default function DashboardPage() {
           )}
 
           {/* ══════════════════════════════════════════
-              PESTAÑA 2: CONFIGURACIÓN (Rappi Style)
+              PESTAÑA 2: CONFIGURACIÓN (LoyaltyClub Style)
           ══════════════════════════════════════════ */}
           {pestaña === 'configuracion' && (
             <div className="space-y-6 animate-fadeIn max-w-3xl">
@@ -3048,10 +3378,10 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {/* Horarios de Servicio Estilo Rappi */}
+              {/* Horarios de Servicio (Lunes a Domingo) */}
               <div className="bg-white border border-[#e4e4e7] p-6 rounded-2xl shadow-sm space-y-6">
                 <div>
-                  <h3 className="font-bold text-[#09090b] mb-1">Horarios de Servicio Estilo Rappi</h3>
+                  <h3 className="font-bold text-[#09090b] mb-1">Horarios de Servicio</h3>
                   <p className="text-xs text-[#71717a]">Configura de forma individual e independiente el horario de apertura y cierre para cada día de la semana.</p>
                 </div>
 
@@ -3466,9 +3796,23 @@ export default function DashboardPage() {
                                 </div>
                                 <div className="flex flex-wrap gap-1.5 pt-1">
                                   {mod.modifier_options?.map((opt: any) => (
-                                    <span key={opt.id} className="text-[10px] bg-white border border-[#e4e4e7] text-[#52525b] font-medium px-2 py-0.5 rounded-lg">
+                                    <button
+                                      key={opt.id}
+                                      type="button"
+                                      onClick={() => toggleGlobalModifierDisponible(opt.nombre, opt.disponible ?? true)}
+                                      className={`text-[10px] font-bold px-2 py-1 rounded-lg border transition-all flex items-center gap-1.5 ${
+                                        (opt.disponible !== false)
+                                          ? 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100'
+                                          : 'bg-red-50 border-red-200 text-red-700 hover:bg-red-100'
+                                      }`}
+                                      title={`Click para cambiar disponibilidad global de "${opt.nombre}"`}
+                                    >
+                                      <span className={`w-1.5 h-1.5 rounded-full ${opt.disponible !== false ? 'bg-green-500' : 'bg-red-500'}`} />
                                       {opt.nombre} (+${opt.precio_extra} MXN)
-                                    </span>
+                                      <span className="text-[8px] opacity-75 font-normal">
+                                        ({opt.disponible !== false ? 'Disponible' : 'Agotado'})
+                                      </span>
+                                    </button>
                                   ))}
                                 </div>
                               </div>
@@ -3677,7 +4021,7 @@ export default function DashboardPage() {
                       </button>
                     </div>
 
-                    {/* Lista estilo Rappi / Tarjetas */}
+                    {/* Lista estilo LoyaltyClub / Tarjetas */}
                     <div className="space-y-3.5">
                       {menuGroups.length === 0 ? (
                         <div className="border border-[#e4e4e7] rounded-3xl p-12 text-center bg-white shadow-sm">
@@ -4353,9 +4697,9 @@ export default function DashboardPage() {
                   )}
                 </div>
 
-                {programas.length > 0 && !mostrarCrearPrograma && (
+                {programas.filter((p: any) => p.activo).length > 0 && !mostrarCrearPrograma && (
                   <div className="space-y-3">
-                    {programas.map((prog: any) => (
+                    {programas.filter((p: any) => p.activo).map((prog: any) => (
                       <div key={prog.id} className="bg-[#fafafa] border border-[#e4e4e7] p-4 rounded-xl flex items-center justify-between hover:border-amber-200 transition-colors">
                         <div>
                           <div className="flex items-center gap-2 mb-1">
@@ -4380,6 +4724,9 @@ export default function DashboardPage() {
                         <div className="flex gap-2">
                           <button onClick={() => abrirEditarPrograma(prog)} className="w-8 h-8 rounded-lg border border-[#e4e4e7] hover:bg-[#fafafa] text-[#52525b] hover:text-[#dc2626] transition-colors flex items-center justify-center" title="Editar Programa">
                             <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button onClick={() => eliminarPrograma(prog.id)} className="w-8 h-8 rounded-lg border border-[#e4e4e7] hover:bg-red-50 hover:border-red-200 text-[#a1a1aa] hover:text-red-500 transition-colors flex items-center justify-center" title="Eliminar Programa">
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </div>
@@ -4732,125 +5079,6 @@ export default function DashboardPage() {
                   </div>
                 )}
               </div>
-
-
-              {/* Configuración de Auditoría */}
-              <div className="bg-white border border-[#e4e4e7] rounded-2xl p-6 shadow-sm space-y-4">
-                <div>
-                  <h3 className="text-sm font-bold text-[#09090b]">Configuración de Auditoría</h3>
-                  <p className="text-xs text-[#71717a] mt-0.5">Controla las políticas de validación para sellos otorgados de forma manual</p>
-                </div>
-                <label className="flex items-center gap-3 bg-[#fafafa] border border-[#e4e4e7] rounded-xl p-4 cursor-pointer hover:bg-[#f4f4f5] transition-all">
-                  <input
-                    type="checkbox"
-                    checked={requiereMotivoSello}
-                    onChange={e => toggleAuditoriaMotivo(e.target.checked)}
-                    className="w-5 h-5 accent-[#dc2626] rounded cursor-pointer"
-                  />
-                  <div>
-                    <p className="text-sm font-bold text-[#09090b]">Explicación obligatoria en sellos manuales (Auditoría)</p>
-                    <p className="text-[11px] text-[#71717a] mt-0.5">Si se activa, los empleados deberán obligatoriamente escribir una razón en el motivo de auditoría al agregar o quitar sellos.</p>
-                  </div>
-                </label>
-              </div>
-
-              {/* VIP Clients Table */}
-              <div className="bg-white border border-[#e4e4e7] rounded-2xl overflow-hidden shadow-sm">
-                <div className="p-5 border-b border-[#e4e4e7]">
-                  <h3 className="text-sm font-bold text-[#09090b]">Tabla de Clientes VIP</h3>
-                  <p className="text-xs text-[#71717a] mt-0.5">Haz clic sobre un cliente para ver su perfil y enviarle alertas directas</p>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-[#fafafa] border-b border-[#e4e4e7]">
-                      <tr>
-                        {['Socio VIP', 'Estado', 'Progreso de Sellos', 'Acciones'].map(h => (
-                          <th key={h} className="px-6 py-4 text-left text-xs font-semibold text-[#71717a] uppercase tracking-wide whitespace-nowrap">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#f4f4f5]">
-                      {clientesVIP.map(c => {
-                        const sospechoso = sociosSospechosos[c.id]
-                        return (
-                          <tr key={c.id} className="hover:bg-[#fafafa] transition-colors group cursor-pointer" onClick={() => setClienteSeleccionadoModal(c)}>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="font-semibold text-[#09090b] group-hover:text-[#dc2626] transition-colors">{c.nombre}</div>
-                              <div className="text-xs text-[#a1a1aa] font-mono mt-0.5">{c.telefono || 'Sin tel.'}</div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              {sospechoso ? (
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-red-100 border border-red-200 text-red-600">
-                                  <AlertTriangle className="w-3 h-3" /> Sospechoso
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-green-100 border border-green-200 text-green-700">
-                                  <Check className="w-3 h-3" /> Verificado
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex items-center gap-3">
-                                <div className="w-24 h-1.5 bg-[#f4f4f5] rounded-full overflow-hidden">
-                                  <div className="h-full bg-[#dc2626] rounded-full" style={{ width: `${Math.min((c.puntos / Number(maxStamps)) * 100, 100)}%` }} />
-                                </div>
-                                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${c.puntos >= Number(maxStamps) ? 'bg-amber-100 text-amber-700' : 'bg-[#f4f4f5] text-[#71717a]'}`}>
-                                  {c.puntos}/{maxStamps} ★
-                                </span>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                              <div className="flex gap-2">
-                                <button onClick={() => abrirModalAjuste(c.id, c.nombre, c.puntos, 'resta')} className="w-8 h-8 rounded-lg border border-[#e4e4e7] hover:bg-[#fafafa] text-[#52525b] transition-colors flex items-center justify-center font-bold">−</button>
-                                <button onClick={() => abrirModalAjuste(c.id, c.nombre, c.puntos, 'suma')} className="w-8 h-8 rounded-lg bg-[#fef2f2] border border-[#fecaca] text-[#dc2626] hover:bg-red-50 transition-colors flex items-center justify-center font-bold">+</button>
-                                <button onClick={() => abrirEditarCliente(c)} className="w-8 h-8 rounded-lg border border-[#e4e4e7] hover:bg-[#fafafa] text-[#52525b] hover:text-[#dc2626] transition-colors flex items-center justify-center">
-                                  <Pencil className="w-3.5 h-3.5" />
-                                </button>
-                                <button onClick={() => eliminarCliente(c.id)} className="w-8 h-8 rounded-lg border border-[#e4e4e7] hover:bg-red-50 hover:border-red-200 text-[#a1a1aa] hover:text-red-500 transition-colors flex items-center justify-center">
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Auditoría */}
-              <div className="bg-white border border-[#e4e4e7] rounded-2xl overflow-hidden shadow-sm">
-                <div className="p-5 border-b border-[#e4e4e7]">
-                  <h3 className="text-sm font-bold text-[#09090b]">Auditoría de Movimientos</h3>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-[#fafafa] border-b border-[#e4e4e7]">
-                      <tr>
-                        {['Socio', 'Tipo', 'Cantidad', 'Descripción', 'Fecha'].map(h => (
-                          <th key={h} className="px-5 py-3 text-left text-xs font-semibold text-[#71717a] uppercase tracking-wide whitespace-nowrap">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#f4f4f5]">
-                      {historial.slice(0, 15).map(h => (
-                        <tr key={h.id} className="hover:bg-[#fafafa] transition-colors">
-                          <td className="px-5 py-3 font-medium text-[#09090b] whitespace-nowrap">{h.clientes?.nombre || 'Socio'}</td>
-                          <td className="px-5 py-3 whitespace-nowrap">
-                            <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${(h.motivo || h.tipo_movimiento) === 'suma' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
-                              {h.motivo || h.tipo_movimiento || 'ajuste'}
-                            </span>
-                          </td>
-                          <td className="px-5 py-3 font-mono font-bold text-amber-600 whitespace-nowrap">{h.cantidad} ★</td>
-                          <td className="px-5 py-3 text-[#71717a] max-w-xs truncate">{h.descripcion || ((h.motivo || h.tipo_movimiento) === 'suma' ? 'Sello registrado' : 'Sello retirado/canjeado')}</td>
-                          <td className="px-5 py-3 text-[#a1a1aa] font-mono text-xs whitespace-nowrap">{new Date(h.created_at).toLocaleString('es-MX')}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
             </div>
           )}
 
@@ -4915,6 +5143,25 @@ export default function DashboardPage() {
                       />
                     </div>
                   ))}
+                </div>
+
+                <div className="border-t border-[#f4f4f5] pt-4">
+                  <label className={LBL}>Programa de Fidelidad Asociado (Nivel / Segmento)</label>
+                  <select
+                    value={programaRuletaId}
+                    onChange={e => setProgramaRuletaId(e.target.value)}
+                    className={IC}
+                  >
+                    <option value="">-- Sin programa asociado (Ruleta General) --</option>
+                    {programas.filter((p: any) => p.activo).map((prog: any) => (
+                      <option key={prog.id} value={prog.id}>
+                        {prog.nombre_club} ({prog.tipo_programa === 'estampillas' ? 'Estampillas' : prog.tipo_programa === 'niveles' ? 'Visitas' : 'Regalo'})
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-[#71717a] mt-1 mb-4">
+                    Asocia esta ruleta con un nivel de programa específico. Solo los clientes pertenecientes a este programa verán esta ruleta al cumplir sus sellos.
+                  </p>
                 </div>
 
                 <div className="border-t border-[#f4f4f5] pt-4">
@@ -5215,14 +5462,28 @@ export default function DashboardPage() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {empleados.map(emp => (
                       <div key={emp.id} className="bg-[#fafafa] border border-[#e4e4e7] rounded-xl p-4 flex justify-between items-center">
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                           <p className="font-semibold text-sm text-[#09090b] truncate">{emp.nombre}</p>
-                          <p className="text-xs text-[#a1a1aa] font-mono mt-0.5 truncate">{emp.email || 'PIN: Activo'}</p>
-                          <span className={`inline-block mt-1.5 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${emp.rol === 'admin_comercio' ? 'bg-purple-100 text-purple-700' : 'bg-[#f4f4f5] text-[#71717a]'}`}>
+                          <p className="text-xs text-[#a1a1aa] font-mono mt-0.5 truncate">{emp.email || '—'}</p>
+                          {/* PIN visible con toggle */}
+                          <div className="flex items-center gap-1 mt-1">
+                            <span className="text-[10px] font-semibold text-[#71717a] uppercase tracking-wide">PIN:</span>
+                            <span className="text-xs font-mono text-[#09090b] tracking-widest">
+                              {pinesVisibles[emp.id] ? (emp.pin || '••••') : '••••'}
+                            </span>
+                            <button
+                              onClick={() => togglePinVisible(emp.id)}
+                              className="w-5 h-5 flex items-center justify-center text-[#a1a1aa] hover:text-[#52525b] transition-colors"
+                              title={pinesVisibles[emp.id] ? 'Ocultar PIN' : 'Revelar PIN'}
+                            >
+                              {pinesVisibles[emp.id] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                            </button>
+                          </div>
+                          <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${emp.rol === 'admin_comercio' ? 'bg-purple-100 text-purple-700' : 'bg-[#f4f4f5] text-[#71717a]'}`}>
                             {emp.rol === 'admin_comercio' ? 'Admin' : 'Cajero'}
                           </span>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 shrink-0 ml-2">
                           {/* Lápiz para Editar */}
                           <button
                             onClick={() => abrirEditarEmpleado(emp)}
@@ -5251,6 +5512,112 @@ export default function DashboardPage() {
 
         </main>
       </div>
+
+      {/* ── MODAL: AGREGAR SOCIO INTERNO ── */}
+      {mostrarAgregarSocioModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl p-6 border border-[#e4e4e7] animate-slideUp">
+            <div className="flex justify-between items-center mb-4 border-b border-[#f4f4f5] pb-3">
+              <h3 className="font-bold text-base text-[#09090b]">Registrar Nuevo Socio VIP</h3>
+              <button
+                onClick={() => setMostrarAgregarSocioModal(false)}
+                className="w-7 h-7 rounded-full bg-[#fafafa] flex items-center justify-center hover:bg-[#f4f4f5]"
+              >
+                <X className="w-4 h-4 text-[#71717a]" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAgregarSocioSubmit} className="space-y-4 text-left">
+              <div>
+                <label className="text-[10px] text-[#71717a] font-bold uppercase tracking-wider block mb-1">Nombre Completo *</label>
+                <input
+                  type="text"
+                  required
+                  value={nuevoSocioForm.nombre}
+                  onChange={e => setNuevoSocioForm(prev => ({ ...prev, nombre: e.target.value }))}
+                  className="w-full bg-[#fafafa] border border-[#e4e4e7] rounded-xl px-4 py-2.5 focus:outline-none focus:border-[#dc2626] focus:bg-white text-sm text-[#09090b]"
+                  placeholder="Ej: Juan Pérez"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] text-[#71717a] font-bold uppercase tracking-wider block mb-1">Número de Teléfono (10 dígitos) *</label>
+                <input
+                  type="tel"
+                  required
+                  value={nuevoSocioForm.telefono}
+                  onChange={e => setNuevoSocioForm(prev => ({ ...prev, telefono: e.target.value }))}
+                  className="w-full bg-[#fafafa] border border-[#e4e4e7] rounded-xl px-4 py-2.5 focus:outline-none focus:border-[#dc2626] focus:bg-white text-sm text-[#09090b]"
+                  placeholder="Ej: 4521049625"
+                />
+              </div>
+
+              <div className="border-t border-[#f4f4f5] pt-3">
+                <p className="text-xs font-bold text-[#09090b] mb-2">Dirección Completa (Opcional)</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2">
+                    <label className="text-[9px] text-[#71717a] font-bold uppercase tracking-wider block mb-1">Calle</label>
+                    <input
+                      type="text"
+                      value={nuevoSocioForm.calle}
+                      onChange={e => setNuevoSocioForm(prev => ({ ...prev, calle: e.target.value }))}
+                      className="w-full bg-[#fafafa] border border-[#e4e4e7] rounded-xl px-3 py-2 focus:outline-none focus:border-[#dc2626] focus:bg-white text-xs text-[#09090b]"
+                      placeholder="Calle o avenida"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[9px] text-[#71717a] font-bold uppercase tracking-wider block mb-1">Número</label>
+                    <input
+                      type="text"
+                      value={nuevoSocioForm.numero}
+                      onChange={e => setNuevoSocioForm(prev => ({ ...prev, numero: e.target.value }))}
+                      className="w-full bg-[#fafafa] border border-[#e4e4e7] rounded-xl px-3 py-2 focus:outline-none focus:border-[#dc2626] focus:bg-white text-xs text-[#09090b]"
+                      placeholder="Ext/Int"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[9px] text-[#71717a] font-bold uppercase tracking-wider block mb-1">Colonia</label>
+                    <input
+                      type="text"
+                      value={nuevoSocioForm.colonia}
+                      onChange={e => setNuevoSocioForm(prev => ({ ...prev, colonia: e.target.value }))}
+                      className="w-full bg-[#fafafa] border border-[#e4e4e7] rounded-xl px-3 py-2 focus:outline-none focus:border-[#dc2626] focus:bg-white text-xs text-[#09090b]"
+                      placeholder="Colonia/Sector"
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="text-[9px] text-[#71717a] font-bold uppercase tracking-wider block mb-1">Referencias de Entrega</label>
+                    <input
+                      type="text"
+                      value={nuevoSocioForm.referencia}
+                      onChange={e => setNuevoSocioForm(prev => ({ ...prev, referencia: e.target.value }))}
+                      className="w-full bg-[#fafafa] border border-[#e4e4e7] rounded-xl px-3 py-2 focus:outline-none focus:border-[#dc2626] focus:bg-white text-xs text-[#09090b]"
+                      placeholder="Ej: Fachada roja, portón blanco..."
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-3 border-t border-[#f4f4f5]">
+                <button
+                  type="button"
+                  onClick={() => setMostrarAgregarSocioModal(false)}
+                  className="flex-1 border border-[#e4e4e7] py-2.5 rounded-xl text-xs font-bold text-[#52525b] hover:bg-[#fafafa]"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={guardandoNuevoSocio}
+                  className="flex-1 bg-[#dc2626] hover:bg-[#b91c1c] text-white py-2.5 rounded-xl text-xs font-bold transition-all disabled:opacity-50"
+                >
+                  {guardandoNuevoSocio ? 'Registrando...' : 'Registrar Socio'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* ── MODAL: DETALLE CLIENTE / VIP PERFIL DRAWER ── */}
       {clienteSeleccionadoModal && (
@@ -5552,9 +5919,23 @@ export default function DashboardPage() {
                         </div>
                         <div className="flex flex-wrap gap-1.5 pt-1">
                           {mod.modifier_options?.map((opt: any) => (
-                            <span key={opt.id} className="text-[10px] bg-white border border-[#e4e4e7] text-[#52525b] font-medium px-2 py-0.5 rounded-lg">
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => toggleGlobalModifierDisponible(opt.nombre, opt.disponible ?? true)}
+                              className={`text-[10px] font-bold px-2 py-1 rounded-lg border transition-all flex items-center gap-1.5 ${
+                                (opt.disponible !== false)
+                                  ? 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100'
+                                  : 'bg-red-50 border-red-200 text-red-700 hover:bg-red-100'
+                              }`}
+                              title={`Click para cambiar disponibilidad global de "${opt.nombre}"`}
+                            >
+                              <span className={`w-1.5 h-1.5 rounded-full ${opt.disponible !== false ? 'bg-green-500' : 'bg-red-500'}`} />
                               {opt.nombre} (+${opt.precio_extra} MXN)
-                            </span>
+                              <span className="text-[8px] opacity-75 font-normal">
+                                ({opt.disponible !== false ? 'Disponible' : 'Agotado'})
+                              </span>
+                            </button>
                           ))}
                         </div>
                       </div>

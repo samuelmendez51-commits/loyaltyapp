@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const secret = new TextEncoder().encode(process.env.SESSION_SECRET || 'fallback-secret-loyaltyapp')
+    const secret = new TextEncoder().encode(process.env.SESSION_SECRET || 'fallback-secret-loyaltyclub')
     const { payload } = await jwtVerify(token, secret)
 
     const { userId, userNombre, businessId, slug } = payload as any

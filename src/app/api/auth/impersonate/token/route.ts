@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 2. Firmar token JWT con validez corta (60 segundos)
-    const secret = new TextEncoder().encode(process.env.SESSION_SECRET || 'fallback-secret-loyaltyapp')
+    const secret = new TextEncoder().encode(process.env.SESSION_SECRET || 'fallback-secret-loyaltyclub')
     const token = await new SignJWT({ userId, userNombre, businessId, slug })
       .setProtectedHeader({ alg: 'HS256' })
       .setIssuedAt()

@@ -141,7 +141,7 @@ export default function TenantTerminalPage() {
       document.body.appendChild(iframe)
     }
 
-    const tenantName = tenant?.tenant_name || 'LoyaltyApp'
+    const tenantName = tenant?.tenant_name || 'LoyaltyClub'
     const widthStyle = size === '80mm' ? '72mm' : '48mm'
     const fontSize = size === '80mm' ? '12px' : '10px'
     const borderChar = size === '80mm' ? '='.repeat(42) : '='.repeat(32)
@@ -238,7 +238,7 @@ export default function TenantTerminalPage() {
         <div class="divider">${borderChar}</div>
         
         <div class="text-center" style="margin-top: 15px; font-size: 9px; color: #555;">
-          LoyaltyApp POS System
+          LoyaltyClub POS System
         </div>
         
         <script>

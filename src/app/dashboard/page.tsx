@@ -13,7 +13,7 @@ import {
   PieChart as PieIcon, BarChart3 as BarIcon, PhoneCall,
   Smartphone, Radio, Pencil, Send,
   Star, Gift, CreditCard, ChevronDown, X, Check as CheckIcon,
-  AlertCircle, Coffee, Cake, IceCream2
+  AlertCircle, Coffee, Cake, IceCream2, Eye, EyeOff
 } from 'lucide-react'
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
@@ -156,7 +156,7 @@ export default function DashboardPage() {
   const [subiendoBanner, setSubiendoBanner] = useState(false)
 
 
-  // Horarios Estilo Rappi (Lunes a Domingo)
+  // Horarios Estilo LoyaltyClub (Lunes a Domingo)
   const [horariosSemanales, setHorariosSemanales] = useState<any[]>([
     { dia_text: 'Lunes', abierto: true, apertura: '14:00', cierre: '22:00' },
     { dia_text: 'Martes', abierto: true, apertura: '14:00', cierre: '22:00' },
@@ -230,12 +230,66 @@ export default function DashboardPage() {
   const [editEmpPin, setEditEmpPin] = useState('')
   const [editEmpRol, setEditEmpRol] = useState('empleado')
   const [guardandoEdicionEmp, setGuardandoEdicionEmp] = useState(false)
+  // PIN visibility per employee (map of id -> boolean)
+  const [pinesVisibles, setPinesVisibles] = useState<Record<string, boolean>>({})
+  const togglePinVisible = (id: string) => setPinesVisibles(prev => ({ ...prev, [id]: !prev[id] }))
 
   // ── LEALTAD: Crear Tarjetas ─────────────────────────────────────────────────
   const [programas, setProgramas] = useState<any[]>([])
   const [mostrarCrearPrograma, setMostrarCrearPrograma] = useState(false)
   const [tipoSeleccionado, setTipoSeleccionado] = useState<'estampillas' | 'gift_card' | 'niveles' | null>(null)
   const [pasoLealtad, setPasoLealtad] = useState<'selector' | 'config' | 'recompensas'>('selector')
+  const [eliminandoPrograma, setEliminandoPrograma] = useState<string | null>(null)
+
+  // ── MODAL: AGREGAR SOCIO INTERNO ─────────────────────────────────────────────
+  const [modalAgregarSocio, setModalAgregarSocio] = useState(false)
+  const [nuevoSocioNombre, setNuevoSocioNombre] = useState('')
+  const [nuevoSocioTelefono, setNuevoSocioTelefono] = useState('')
+  const [nuevoSocioEmail, setNuevoSocioEmail] = useState('')
+  const [nuevoSocioCalle, setNuevoSocioCalle] = useState('')
+  const [nuevoSocioNumero, setNuevoSocioNumero] = useState('')
+  const [nuevoSocioColonia, setNuevoSocioColonia] = useState('')
+  const [guardandoNuevoSocio, setGuardandoNuevoSocio] = useState(false)
+
+  const agregarSocioInterno = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!business) return
+    const telClean = nuevoSocioTelefono.replace(/\D/g, '')
+    if (telClean.length !== 10) {
+      alert('El teléfono debe tener 10 dígitos.')
+      return
+    }
+    setGuardandoNuevoSocio(true)
+    try {
+      const { data, error } = await supabase
+        .from('clientes')
+        .upsert([{
+          nombre: nuevoSocioNombre.trim(),
+          telefono: telClean,
+          email: nuevoSocioEmail.trim() || null,
+          calle: nuevoSocioCalle.trim() || null,
+          numero: nuevoSocioNumero.trim() || null,
+          colonia: nuevoSocioColonia.trim() || null,
+          puntos: 0,
+          business_id: business.id,
+        }], { onConflict: 'telefono', ignoreDuplicates: false })
+        .select()
+      if (error) throw error
+      alert(`✅ Socio "${nuevoSocioNombre}" agregado al club correctamente.`)
+      setModalAgregarSocio(false)
+      setNuevoSocioNombre('')
+      setNuevoSocioTelefono('')
+      setNuevoSocioEmail('')
+      setNuevoSocioCalle('')
+      setNuevoSocioNumero('')
+      setNuevoSocioColonia('')
+      cargarDatos()
+    } catch (err: any) {
+      alert('Error al agregar socio: ' + err.message)
+    } finally {
+      setGuardandoNuevoSocio(false)
+    }
+  }
 
   // Config Estampillas
   const [nombreClub, setNombreClub] = useState('')
@@ -786,7 +840,7 @@ export default function DashboardPage() {
   const probarWhatsApp = () => {
     if (!whatsappNegocio) return alert('Ingresa primero el número de WhatsApp')
     const cleanTel = '52' + whatsappNegocio.replace(/\D/g, '').slice(-10)
-    const msg = `*LoyaltyApp* 📲\n¡Tu conexión está activa! Sistema de notificaciones listo.`
+    const msg = `*LoyaltyClub* 📲\n¡Tu conexión está activa! Sistema de notificaciones listo.`
     window.open(`https://wa.me/${cleanTel}?text=${encodeURIComponent(msg)}`, '_blank')
   }
 
@@ -996,6 +1050,23 @@ export default function DashboardPage() {
     setRecompensas(prev => prev.filter((_, i) => i !== idx))
   }
 
+  const eliminarPrograma = async (id: string) => {
+    if (!confirm('¿Seguro que deseas desactivar este programa? Los socios existentes no perderán sus sellos.')) return
+    setEliminandoPrograma(id)
+    try {
+      const { error } = await supabase
+        .from('programas_fidelidad')
+        .update({ activo: false })
+        .eq('id', id)
+      if (error) throw error
+      setProgramas(prev => prev.filter(p => p.id !== id))
+    } catch (err: any) {
+      alert('Error al desactivar programa: ' + err.message)
+    } finally {
+      setEliminandoPrograma(null)
+    }
+  }
+
   const finalizarPrograma = () => {
     setMostrarCrearPrograma(false)
     setPasoLealtad('selector')
@@ -1046,7 +1117,7 @@ export default function DashboardPage() {
     })
     const link = document.createElement('a')
     link.setAttribute('href', encodeURI(csv))
-    link.setAttribute('download', `LoyaltyApp-${business?.slug || 'comercio'}.csv`)
+    link.setAttribute('download', `LoyaltyClub-${business?.slug || 'comercio'}.csv`)
     document.body.appendChild(link); link.click(); document.body.removeChild(link)
   }
 
@@ -1126,7 +1197,7 @@ export default function DashboardPage() {
                 <Star className="w-4 h-4 text-white fill-white" />
               </div>
               {sidebarExpanded && (
-                <span className="font-bold text-[#09090b] text-sm tracking-tight truncate">LoyaltyApp</span>
+                <span className="font-bold text-[#09090b] text-sm tracking-tight truncate">LoyaltyClub</span>
               )}
             </div>
             <button onClick={() => setSidebarExpanded(!sidebarExpanded)} className="text-[#a1a1aa] hover:text-[#52525b] transition-colors shrink-0">
@@ -1169,7 +1240,7 @@ export default function DashboardPage() {
             </button>
           )}
           {sidebarExpanded && (
-            <p className="text-center text-[#a1a1aa] text-[10px] mt-2">LoyaltyApp Enterprise v14</p>
+            <p className="text-center text-[#a1a1aa] text-[10px] mt-2">LoyaltyClub Enterprise v14</p>
           )}
         </div>
       </aside>
@@ -1181,7 +1252,7 @@ export default function DashboardPage() {
         <header className="h-16 border-b border-[#e4e4e7] bg-white sticky top-0 z-20 px-6 flex items-center justify-between shadow-[0_1px_0_#e4e4e7]">
           <div className="min-w-0">
             <h1 className="text-base font-bold text-[#09090b] truncate">
-              {business?.nombre || 'LoyaltyApp'}
+              {business?.nombre || 'LoyaltyClub'}
               <span className="ml-2 text-xs font-normal text-[#a1a1aa]">Panel de Control</span>
             </h1>
           </div>
@@ -1273,7 +1344,7 @@ export default function DashboardPage() {
                     <FileSpreadsheet className="w-4 h-4 text-green-500" /> Exportar CSV
                   </button>
                 </div>
-                <div className="w-full h-64">
+                <div style={{ width: '100%', height: 280, minHeight: 280 }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={obtenerDatosVentas()}>
                       <XAxis dataKey="name" stroke="#a1a1aa" fontSize={11} tickLine={false} axisLine={false} />
@@ -1288,9 +1359,17 @@ export default function DashboardPage() {
 
               {/* VIP Clients Table */}
               <div className="bg-white border border-[#e4e4e7] rounded-2xl overflow-hidden shadow-sm">
-                <div className="p-5 border-b border-[#e4e4e7]">
-                  <h3 className="text-sm font-bold text-[#09090b]">Tabla de Clientes VIP</h3>
-                  <p className="text-xs text-[#71717a] mt-0.5">Haz clic sobre un cliente para ver su perfil y enviarle alertas directas</p>
+                <div className="p-5 border-b border-[#e4e4e7] flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-bold text-[#09090b]">Tabla de Clientes VIP</h3>
+                    <p className="text-xs text-[#71717a] mt-0.5">Haz clic sobre un cliente para ver su perfil y enviarle alertas directas</p>
+                  </div>
+                  <button
+                    onClick={() => setModalAgregarSocio(true)}
+                    className="btn-primary py-2 px-3 text-xs flex items-center gap-1.5"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" /> Agregar Socio
+                  </button>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
@@ -1384,7 +1463,7 @@ export default function DashboardPage() {
           )}
 
           {/* ══════════════════════════════════════════
-              PESTAÑA 2: CONFIGURACIÓN (Rappi Style)
+              PESTAÑA 2: CONFIGURACIÓN (LoyaltyClub Style)
           ══════════════════════════════════════════ */}
           {pestaña === 'configuracion' && (
             <div className="space-y-6 animate-fadeIn max-w-3xl">
@@ -1481,10 +1560,10 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {/* Horarios de Servicio Estilo Rappi */}
+              {/* Horarios de Servicio (Lunes a Domingo) */}
               <div className="bg-white border border-[#e4e4e7] p-6 rounded-2xl shadow-sm space-y-6">
                 <div>
-                  <h3 className="font-bold text-[#09090b] mb-1">Horarios de Servicio Estilo Rappi</h3>
+                  <h3 className="font-bold text-[#09090b] mb-1">Horarios de Servicio</h3>
                   <p className="text-xs text-[#71717a]">Configura de forma individual e independiente el horario de apertura y cierre para cada día de la semana.</p>
                 </div>
 
@@ -1969,6 +2048,17 @@ export default function DashboardPage() {
                           <p className="font-semibold text-sm text-[#09090b]">{prog.nombre_club}</p>
                           <p className="text-xs text-[#71717a] mt-0.5">{prog.total_estampillas} sellos requeridos · Máx {prog.estampillas_max_dia} al día</p>
                         </div>
+                        <button
+                          onClick={() => eliminarPrograma(prog.id)}
+                          disabled={eliminandoPrograma === prog.id}
+                          title="Desactivar programa"
+                          className="w-8 h-8 rounded-lg border border-[#e4e4e7] hover:bg-red-50 hover:border-red-200 text-[#a1a1aa] hover:text-red-500 flex items-center justify-center transition-colors shrink-0 disabled:opacity-50"
+                        >
+                          {eliminandoPrograma === prog.id
+                            ? <span className="w-3.5 h-3.5 border border-current border-t-transparent rounded-full animate-spin" />
+                            : <Trash2 className="w-3.5 h-3.5" />
+                          }
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -2242,14 +2332,28 @@ export default function DashboardPage() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {empleados.map(emp => (
                       <div key={emp.id} className="bg-[#fafafa] border border-[#e4e4e7] rounded-xl p-4 flex justify-between items-center">
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                           <p className="font-semibold text-sm text-[#09090b] truncate">{emp.nombre}</p>
-                          <p className="text-xs text-[#a1a1aa] font-mono mt-0.5 truncate">{emp.email || 'PIN: Activo'}</p>
-                          <span className={`inline-block mt-1.5 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${emp.rol === 'admin_comercio' ? 'bg-purple-100 text-purple-700' : 'bg-[#f4f4f5] text-[#71717a]'}`}>
+                          <p className="text-xs text-[#a1a1aa] font-mono mt-0.5 truncate">{emp.email || '—'}</p>
+                          {/* PIN visible con toggle */}
+                          <div className="flex items-center gap-1 mt-1">
+                            <span className="text-[10px] font-semibold text-[#71717a] uppercase tracking-wide">PIN:</span>
+                            <span className="text-xs font-mono text-[#09090b] tracking-widest">
+                              {pinesVisibles[emp.id] ? (emp.pin || '••••') : '••••'}
+                            </span>
+                            <button
+                              onClick={() => togglePinVisible(emp.id)}
+                              className="w-5 h-5 flex items-center justify-center text-[#a1a1aa] hover:text-[#52525b] transition-colors"
+                              title={pinesVisibles[emp.id] ? 'Ocultar PIN' : 'Revelar PIN'}
+                            >
+                              {pinesVisibles[emp.id] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                            </button>
+                          </div>
+                          <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${emp.rol === 'admin_comercio' ? 'bg-purple-100 text-purple-700' : 'bg-[#f4f4f5] text-[#71717a]'}`}>
                             {emp.rol === 'admin_comercio' ? 'Admin' : 'Cajero'}
                           </span>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 shrink-0 ml-2">
                           {/* Lápiz para Editar */}
                           <button
                             onClick={() => abrirEditarEmpleado(emp)}
@@ -2257,7 +2361,7 @@ export default function DashboardPage() {
                           >
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
-                          <button onClick={() => eliminarEmpleado(emp.id)} className="w-8 h-8 rounded-lg border border-[#e4e4e7] hover:bg-red-50 hover:border-red-200 text-[#a1a1aa] hover:text-red-500 flex items-center justify-center transition-colors shrink-0">
+                          <button onClick={() => eliminarEmpleado(emp.id)} className="w-8 h-8 rounded-lg border border-[#e4e4e7] hover:bg-red-50 hover:border-red-200 text-[#a1a1aa] hover:text-red-500 flex items-center justify-center transition-colors">
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
@@ -2271,6 +2375,57 @@ export default function DashboardPage() {
 
         </main>
       </div>
+
+      {/* ── MODAL: AGREGAR SOCIO INTERNO ── */}
+      {modalAgregarSocio && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl p-6 border border-[#e4e4e7] animate-slideUp">
+            <div className="flex justify-between items-center mb-4 border-b border-[#f4f4f5] pb-3">
+              <div>
+                <h3 className="font-bold text-[#09090b]">Agregar Nuevo Socio</h3>
+                <p className="text-xs text-[#71717a] mt-0.5">Registro interno sin redirigir al portal</p>
+              </div>
+              <button onClick={() => setModalAgregarSocio(false)} className="w-7 h-7 bg-[#fafafa] rounded-full flex items-center justify-center hover:bg-[#f4f4f5]">
+                <X className="w-4 h-4 text-[#71717a]" />
+              </button>
+            </div>
+            <form onSubmit={agregarSocioInterno} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide mb-1">Nombre Completo *</label>
+                  <input type="text" value={nuevoSocioNombre} onChange={e => setNuevoSocioNombre(e.target.value)} required className="input-clean w-full" placeholder="Juan Pérez García" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide mb-1">Teléfono (10 dígitos) *</label>
+                  <input type="tel" value={nuevoSocioTelefono} onChange={e => setNuevoSocioTelefono(e.target.value.replace(/\D/g, '').slice(0,10))} maxLength={10} required className="input-clean w-full" placeholder="4521234567" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide mb-1">Email</label>
+                  <input type="email" value={nuevoSocioEmail} onChange={e => setNuevoSocioEmail(e.target.value)} className="input-clean w-full" placeholder="correo@ejemplo.com" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide mb-1">Calle</label>
+                  <input type="text" value={nuevoSocioCalle} onChange={e => setNuevoSocioCalle(e.target.value)} className="input-clean w-full" placeholder="Av. Juárez" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide mb-1">Número</label>
+                  <input type="text" value={nuevoSocioNumero} onChange={e => setNuevoSocioNumero(e.target.value)} className="input-clean w-full" placeholder="123" />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-semibold text-[#3f3f46] uppercase tracking-wide mb-1">Colonia</label>
+                  <input type="text" value={nuevoSocioColonia} onChange={e => setNuevoSocioColonia(e.target.value)} className="input-clean w-full" placeholder="Centro" />
+                </div>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setModalAgregarSocio(false)} className="flex-1 border border-[#e4e4e7] py-2.5 rounded-xl text-sm font-semibold text-[#52525b] hover:bg-[#fafafa]">Cancelar</button>
+                <button type="submit" disabled={guardandoNuevoSocio} className="flex-1 btn-primary py-2.5 text-sm">
+                  {guardandoNuevoSocio ? 'Guardando...' : '+ Agregar al Club'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* ── MODAL: DETALLE CLIENTE / VIP PERFIL DRAWER ── */}
       {clienteSeleccionadoModal && (

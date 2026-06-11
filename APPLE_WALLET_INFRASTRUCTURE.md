@@ -109,7 +109,7 @@ Esta es la implementación definitiva del endpoint en Next.js. El controlador re
 6. **Validación Joi 100% Exitosa:** Omitimos la llave vacía `logoText` que causaba rechazos en consola y estructuramos el QR bajo el arreglo moderno `barcodes` (plural).
 
 ```typescript
-// file:///c:/proyecto/loyaltyapp/src/app/api/wallet/apple/route.ts
+// file:///c:/proyecto/loyaltyclub/src/app/api/wallet/apple/route.ts
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import fs from 'fs'

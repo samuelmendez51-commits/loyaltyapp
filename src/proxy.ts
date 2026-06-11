@@ -1,64 +1,119 @@
-// src/proxy.ts — Middleware Multi-Tenancy LoyaltyClub
-// Arquitectura de 3 Niveles de Acceso por Subdominio
+// src/proxy.ts — LoyaltyClub Multi-Tenant Security Gateway (Next.js Proxy)
+// ─────────────────────────────────────────────────────────────────────────────
+// ARQUITECTURA DE SEGURIDAD EN 3 NIVELES:
+//   NIVEL 1 — admin.*              → Superadmin panel (PIN raíz)
+//   NIVEL 2 — [slug].partners.*   → Staff (admin_comercio / empleado)
+//   NIVEL 3 — [slug].*            → Portal público del cliente VIP
+//
+// BLINDAJE CROSS-TENANT:
+//   En rutas protegidas (/dashboard, /escaner, /ajustes), si el usuario
+//   tiene rol 'admin_comercio' o 'empleado', se verifica ESTRICTAMENTE que
+//   el slug del subdominio coincida con la cookie 'session_business_slug'.
+//   Cualquier intento de saltar a otro tenant es rechazado y redirigido
+//   al subdominio authorized de la cookie o al login para limpiar sesión.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
+// ─────────────────────────────────────────────────────────────────────────────
+// TIPOS
+// ─────────────────────────────────────────────────────────────────────────────
 interface ParsedDomain {
   slug: string | null
   isPartner: boolean
   isAdmin: boolean
+  isBiker: boolean
+  isProduction: boolean
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// UTILIDAD: Clasificador de subdominio
+// CONSTANTES
+// ─────────────────────────────────────────────────────────────────────────────
+const PROD_BASE = 'loyaltyclub.mx'
+const DEV_BASE = 'localhost'
+
+/** Rutas que nunca deben interceptarse (assets, API, internals) */
+const BYPASS_PREFIXES = [
+  '/_next',
+  '/api',
+  '/tenant',
+  '/favicon.ico',
+  '/manifest.json',
+  '/manifest-bikers.json',
+  '/service-worker.js',
+]
+
+const STATIC_EXT = /\.(png|jpg|jpeg|gif|svg|webp|ico|woff|woff2|ttf|otf|mp4|json|txt|xml|map)$/i
+
+/** Roles que pertenecen al staff del comercio (NO superadmin, NO cliente) */
+const STAFF_ROLES = new Set(['admin_comercio', 'empleado', 'cajero'])
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UTILIDAD: parsear hostname y clasificar el subdominio
 // ─────────────────────────────────────────────────────────────────────────────
 function parseHostname(hostname: string): ParsedDomain {
-  const host = hostname.split(':')[0]
+  // Eliminar el puerto si viene incluido (p.ej. localhost:3000)
+  const host = hostname.split(':')[0].toLowerCase()
 
-  // NIVEL 1: admin.loyaltyclub.mx | admin.localhost
-  if (host === 'admin.loyaltyclub.mx' || host === 'admin.localhost') {
-    return { slug: null, isPartner: false, isAdmin: true }
+  const isProduction = host.endsWith(`.${PROD_BASE}`) || host === PROD_BASE
+
+  // ── Admin panel ──────────────────────────────────────────────────────────
+  if (host === `admin.${PROD_BASE}` || host === `admin.${DEV_BASE}`) {
+    return { slug: null, isPartner: false, isAdmin: true, isBiker: false, isProduction }
   }
 
-  // Producción: *.partners.loyaltyclub.mx
-  if (host.endsWith('.partners.loyaltyclub.mx')) {
-    const slug = host.slice(0, -'.partners.loyaltyclub.mx'.length)
-    if (slug) {
-      return { slug, isPartner: true, isAdmin: false }
-    }
+  // ── Bikers (portal de flota) — producción ───────────────────────────────
+  if (host === `bikers.partners.${PROD_BASE}` || host.startsWith('bikers.partners.')) {
+    return { slug: 'bikers', isPartner: true, isAdmin: false, isBiker: true, isProduction }
   }
 
-  // Producción: *.loyaltyclub.mx
-  if (host.endsWith('.loyaltyclub.mx')) {
-    const slug = host.slice(0, -'.loyaltyclub.mx'.length)
+  // ── Bikers — desarrollo ──────────────────────────────────────────────────
+  if (host === `bikers.partners.${DEV_BASE}` || host === `bikers.${DEV_BASE}`) {
+    return { slug: 'bikers', isPartner: false, isAdmin: false, isBiker: true, isProduction: false }
+  }
+
+  // ── Partner (staff) — producción: [slug].partners.loyaltyclub.mx ────────
+  const partnerProdSuffix = `.partners.${PROD_BASE}`
+  if (host.endsWith(partnerProdSuffix)) {
+    const slug = host.slice(0, -partnerProdSuffix.length)
     if (slug && slug !== 'www') {
-      return { slug, isPartner: false, isAdmin: false }
+      return { slug, isPartner: true, isAdmin: false, isBiker: false, isProduction: true }
     }
   }
 
-  // Desarrollo local: *.partners.localhost
-  if (host.endsWith('.partners.localhost')) {
-    const slug = host.slice(0, -'.partners.localhost'.length)
-    if (slug) {
-      return { slug, isPartner: true, isAdmin: false }
-    }
-  }
-
-  // Desarrollo local: *.localhost
-  if (host.endsWith('.localhost')) {
-    const slug = host.slice(0, -'.localhost'.length)
+  // ── Partner (staff) — desarrollo: [slug].partners.localhost ─────────────
+  const partnerDevSuffix = `.partners.${DEV_BASE}`
+  if (host.endsWith(partnerDevSuffix)) {
+    const slug = host.slice(0, -partnerDevSuffix.length)
     if (slug && slug !== 'www') {
-      return { slug, isPartner: false, isAdmin: false }
+      return { slug, isPartner: true, isAdmin: false, isBiker: false, isProduction: false }
     }
   }
 
-  return { slug: null, isPartner: false, isAdmin: false }
+  // ── Cliente público — producción: [slug].loyaltyclub.mx ─────────────────
+  const prodSuffix = `.${PROD_BASE}`
+  if (host.endsWith(prodSuffix)) {
+    const slug = host.slice(0, -prodSuffix.length)
+    if (slug && slug !== 'www' && slug !== 'admin' && slug !== 'bikers') {
+      return { slug, isPartner: false, isAdmin: false, isBiker: false, isProduction: true }
+    }
+  }
+
+  // ── Cliente público — desarrollo: [slug].localhost ───────────────────────
+  const devSuffix = `.${DEV_BASE}`
+  if (host.endsWith(devSuffix)) {
+    const slug = host.slice(0, -devSuffix.length)
+    if (slug && slug !== 'www' && slug !== 'admin' && slug !== 'bikers') {
+      return { slug, isPartner: false, isAdmin: false, isBiker: false, isProduction: false }
+    }
+  }
+
+  return { slug: null, isPartner: false, isAdmin: false, isBiker: false, isProduction }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// UTILIDAD: Rewrite interno (URL visible no cambia para el usuario)
+// UTILIDAD: rewrite interno (la URL visible del usuario no cambia)
 // ─────────────────────────────────────────────────────────────────────────────
 function rewriteTo(request: NextRequest, internalPath: string): NextResponse {
   const url = request.nextUrl.clone()
@@ -67,113 +122,166 @@ function rewriteTo(request: NextRequest, internalPath: string): NextResponse {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MIDDLEWARE PRINCIPAL
+// UTILIDAD: limpiar todas las cookies de sesión y redirigir
+// ─────────────────────────────────────────────────────────────────────────────
+function clearSessionAndRedirect(
+  request: NextRequest,
+  redirectUrl: URL | string,
+  isProduction: boolean,
+): NextResponse {
+  const SESSION_COOKIES = [
+    'session_rol',
+    'session_user',
+    'session_business_id',
+    'session_business_slug',
+    'session_branch_id',
+    'session_user_id',
+  ]
+  const cookieDomain = isProduction ? `.${PROD_BASE}` : undefined
+  const cookieOpts = {
+    path: '/',
+    maxAge: 0,
+    ...(cookieDomain ? { domain: cookieDomain } : {}),
+  }
+  const response = NextResponse.redirect(redirectUrl)
+  SESSION_COOKIES.forEach((name) => response.cookies.set(name, '', cookieOpts))
+  return response
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UTILIDAD: construir URL de redirect hacia subdominio partners autorizado
+// ─────────────────────────────────────────────────────────────────────────────
+function buildPartnerUrl(
+  request: NextRequest,
+  targetSlug: string,
+  path: string,
+  isProduction: boolean,
+): URL {
+  const url = request.nextUrl.clone()
+  if (isProduction) {
+    url.hostname = `${targetSlug}.partners.${PROD_BASE}`
+    url.port = ''
+  } else {
+    url.hostname = `${targetSlug}.partners.${DEV_BASE}`
+    url.port = '3000'
+  }
+  url.pathname = path
+  return url
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VALIDACIÓN CROSS-TENANT — CORAZÓN DEL BLINDAJE
+//
+// Verifica que el slug del subdominio coincida exactamente con la cookie
+// 'session_business_slug'. Si no coincide, aborta y redirige.
+//
+// Retorna null si la validación pasa (el request puede continuar).
+// Retorna un NextResponse de redirect/reject si hay violación.
+// ─────────────────────────────────────────────────────────────────────────────
+function enforceTenantIsolation(
+  request: NextRequest,
+  slugFromHost: string,
+  rol: string | undefined,
+  bizSlug: string | undefined,
+  isProduction: boolean,
+): NextResponse | null {
+
+  // Solo aplica a roles de staff (no superadmin, no cliente anónimo)
+  if (!rol || !STAFF_ROLES.has(rol)) {
+    return null // Sin sesión de staff: dejar pasar (el bloque de auth lo manejará)
+  }
+
+  // Si no hay cookie de slug → sesión corrupta/incompleta → limpiar y login
+  if (!bizSlug) {
+    const loginUrl = buildPartnerUrl(request, slugFromHost, '/login', isProduction)
+    loginUrl.searchParams.set('error', 'session_invalid')
+    return clearSessionAndRedirect(request, loginUrl, isProduction)
+  }
+
+  // Comparación estricta: slug del subdominio vs slug de la cookie
+  // Normalización: lowercase + trim para evitar bypasses por capitalización
+  const normalizedHostSlug = slugFromHost.trim().toLowerCase()
+  const normalizedCookieSlug = bizSlug.trim().toLowerCase()
+
+  if (normalizedHostSlug === normalizedCookieSlug) {
+    return null // ✅ Slug coincide — acceso legítimo
+  }
+
+  // ❌ VIOLACIÓN CROSS-TENANT detectada
+  // El admin está intentando acceder al dashboard de OTRO comercio.
+  // Redirigimos a SU propio subdominio autorizado (no lo dejamos elegir).
+  const authorizedUrl = buildPartnerUrl(request, normalizedCookieSlug, '/dashboard', isProduction)
+  authorizedUrl.searchParams.set('error', 'cross_tenant_blocked')
+  // No limpiamos cookies — el usuario sigue con su sesión válida, sólo lo devolvemos a casa.
+  return NextResponse.redirect(authorizedUrl)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MIDDLEWARE PRINCIPAL (Exportado como proxy para Next.js 16)
 // ─────────────────────────────────────────────────────────────────────────────
 export default function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname
   const hostname = request.headers.get('host') || ''
 
-  // Early Return manual: si la URL contiene un punto "." o empieza con "/_next" o "/api/"
-  if (path.includes('.') || path.startsWith('/_next') || path.startsWith('/api/')) {
-    return NextResponse.next()
+  // ── 1. BYPASS GLOBAL: assets, APIs y paths internos ─────────────────────
+  if (STATIC_EXT.test(path)) return NextResponse.next()
+  for (const prefix of BYPASS_PREFIXES) {
+    if (path === prefix || path.startsWith(`${prefix}/`)) {
+      return NextResponse.next()
+    }
   }
 
-  // Detección de subdominios de Bikers
-  const hostLower = hostname.toLowerCase()
-  const isPartnersBikers = hostLower.startsWith('bikers.partners.')
-  const isBikersClean = hostLower.startsWith('bikers.') && !hostLower.includes('partners')
-  const isBikerSubdomain = isPartnersBikers || isBikersClean
+  const { slug, isPartner, isAdmin, isBiker, isProduction } = parseHostname(hostname)
 
-  // Interceptar assets de bikers para servir los correctos (bikers.png y manifest-bikers.json)
-  if (isBikerSubdomain) {
+  // Leer cookies de sesión (server-side, no manipulables por JS cliente)
+  const rol     = request.cookies.get('session_rol')?.value
+  const bizSlug = request.cookies.get('session_business_slug')?.value
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // BLOQUE BIKERS — portal de flota de repartidores
+  // ══════════════════════════════════════════════════════════════════════════
+  if (isBiker) {
+    // Servir assets específicos del portal biker
     if (path === '/manifest.json') {
       return NextResponse.rewrite(new URL('/manifest-bikers.json', request.url))
     }
     if (path === '/logo.png') {
       return NextResponse.rewrite(new URL('/bikers.png', request.url))
     }
-  }
 
-  // 1. BYPASS ABSOLUTO PARA ARCHIVOS ESTÁTICOS, APIS E IMÁGENES (Evita errores de bikers.png y logo.png)
-  if (
-    path.startsWith('/_next') ||
-    path.startsWith('/api') ||
-    path.includes('.') ||
-    path === '/favicon.ico'
-  ) {
-    return NextResponse.next()
-  }
-
-  // 2. EL FRENO DE MANO DEFINITIVO: Si la ruta interna ya fue reescrita y empieza con /tenant, NO HACER NADA
-  if (path.startsWith('/tenant')) {
-    return NextResponse.next()
-  }
-
-  // 3. DETECCIÓN ESTRICTA DE SUBDOMINIOS
-
-  // 4. ENRUTAMIENTO Y REWRITES SEGUROS (Sin trailing slashes en raíz para evitar bucles de redirección de Next.js)
-  if (isPartnersBikers) {
-    // Mapea el panel administrativo del modulador de la flota
-    const cleanPath = path === '/' || path === '/login' ? '' : path
-    return NextResponse.rewrite(new URL(`/tenant/bikers/modulador${cleanPath}`, request.url))
-  }
-
-  if (isBikersClean) {
-    // Si intentan registrarse, los mandamos al formulario público
-    if (path === '/registro' || path.startsWith('/registro/')) {
-      return NextResponse.rewrite(new URL(`/tenant/bikers/registro`, request.url))
+    if (isPartner) {
+      // bikers.partners.* → modulador de flota (panel admin)
+      const subPath = path === '/' || path === '/login' ? '' : path
+      return rewriteTo(request, `/tenant/bikers/modulador${subPath}`)
+    } else {
+      // bikers.localhost → portal móvil del repartidor
+      if (path === '/registro' || path.startsWith('/registro/')) {
+        return rewriteTo(request, '/tenant/bikers/registro')
+      }
+      return rewriteTo(request, '/tenant/bikers/biker')
     }
-    // Mapea al portal móvil del repartidor (que contiene su login PIN)
-    return NextResponse.rewrite(new URL(`/tenant/bikers/biker`, request.url))
-  }
-
-  const { slug, isPartner, isAdmin } = parseHostname(hostname)
-
-  const rol = request.cookies.get('session_rol')?.value
-  const bizSlug = request.cookies.get('session_business_slug')?.value
-  const isProduction = hostname.includes('loyaltyclub.mx')
-
-  // ── Bypass global: nunca interceptar rutas internas ya rewriteadas ────────
-  if (
-    path.startsWith('/api') ||
-    path.startsWith('/_next') ||
-    path.startsWith('/tenant') ||       // evitar bucle de rewrite
-    path === '/favicon.ico' ||
-    path === '/manifest.json' ||
-    path === '/service-worker.js' ||
-    /\.(png|jpg|jpeg|svg|webp|ico|woff|woff2|ttf|otf|gif|mp4|json)$/.test(path)
-  ) {
-    return NextResponse.next()
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // BLOQUE SEGURIDAD GLOBAL: /superadmin solo desde admin.*
+  // BLOQUE SUPERADMIN — admin.loyaltyclub.mx / admin.localhost
   // ══════════════════════════════════════════════════════════════════════════
-  if (path.startsWith('/superadmin') && !isAdmin) {
+  if (!slug && path.startsWith('/superadmin') && !isAdmin) {
+    // Intentar acceder a /superadmin desde un subdominio no-admin → bloqueado
     const url = request.nextUrl.clone()
-    url.hostname = isProduction ? 'admin.loyaltyclub.mx' : 'admin.localhost'
+    url.hostname = isProduction ? `admin.${PROD_BASE}` : `admin.${DEV_BASE}`
     url.pathname = '/superadmin/login'
+    if (!isProduction) url.port = '3000'
     return NextResponse.redirect(url)
   }
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // NIVEL 1 — SUPERADMIN (admin.loyaltyclub.mx / admin.localhost)
-  // ══════════════════════════════════════════════════════════════════════════
   if (isAdmin) {
-    // Ruta de login: siempre libre
-    if (path === '/superadmin/login') {
-      return NextResponse.next()
-    }
+    // Login de superadmin siempre libre
+    if (path === '/superadmin/login') return NextResponse.next()
 
-    // Raíz o /login: redirigir según sesión
-    if (path === '/' || path === '/login' || path.startsWith('/login')) {
-      if (rol === 'superadmin') {
-        const url = request.nextUrl.clone()
-        url.pathname = '/superadmin'
-        return NextResponse.redirect(url)
-      }
+    // Raíz o /login → redirigir según sesión
+    if (path === '/' || path === '/login' || path.startsWith('/login/')) {
       const url = request.nextUrl.clone()
-      url.pathname = '/superadmin/login'
+      url.pathname = rol === 'superadmin' ? '/superadmin' : '/superadmin/login'
       return NextResponse.redirect(url)
     }
 
@@ -187,80 +295,87 @@ export default function proxy(request: NextRequest) {
       return NextResponse.next()
     }
 
-    // Cualquier otra ruta en admin.* → login
+    // Cualquier otra ruta en admin.* → forzar login
     const url = request.nextUrl.clone()
     url.pathname = '/superadmin/login'
     return NextResponse.redirect(url)
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // NIVEL 2 — PARTNERS (partners.[slug].loyaltyclub.mx)
+  // NIVEL 2 — PARTNERS [slug].partners.* (Staff del comercio)
   // ══════════════════════════════════════════════════════════════════════════
   if (isPartner && slug) {
 
-    // Seguridad: sesión de otro comercio → limpiar y redirigir
-    if (rol && rol !== 'superadmin' && bizSlug && bizSlug !== slug) {
-      const cookieDomain = isProduction ? '.loyaltyclub.mx' : undefined
-      const cookieOpts = { path: '/', maxAge: 0, ...(cookieDomain ? { domain: cookieDomain } : {}) }
-      const sessionCookies = [
-        'session_rol', 'session_user', 'session_business_id',
-        'session_business_slug', 'session_branch_id', 'session_user_id',
-      ]
-      const url = request.nextUrl.clone()
-      url.pathname = '/login'
-      url.searchParams.set('error', 'unauthorized')
-      const response = NextResponse.redirect(url)
-      sessionCookies.forEach(name => response.cookies.set(name, '', cookieOpts))
-      return response
+    // ── BLINDAJE CROSS-TENANT ───────────────────────────────────────────
+    // Solo aplica cuando se accede a rutas protegidas (no al login público)
+    const isProtectedRoute =
+      path === '/dashboard' || path.startsWith('/dashboard/') ||
+      path === '/escaner'   || path.startsWith('/escaner/')   ||
+      path === '/ajustes'   || path.startsWith('/ajustes/')   ||
+      path === '/biker'     || path.startsWith('/biker/')
+
+    if (isProtectedRoute) {
+      const crossTenantViolation = enforceTenantIsolation(
+        request, slug, rol, bizSlug, isProduction,
+      )
+      if (crossTenantViolation) return crossTenantViolation
     }
 
-    // Raíz o /login → servir login del partner o redirigir al dashboard si ya hay sesión
-    if (path === '/' || path === '/login' || path.startsWith('/login')) {
-      if (rol === 'admin_comercio') {
+    // ── Login / Raíz ────────────────────────────────────────────────────
+    if (path === '/' || path === '/login' || path.startsWith('/login/')) {
+      if (rol === 'admin_comercio' && bizSlug === slug) {
         return rewriteTo(request, `/tenant/${slug}/dashboard`)
       }
-      if (rol === 'empleado' || rol === 'cajero') {
+      if ((rol === 'empleado' || rol === 'cajero') && bizSlug === slug) {
         return rewriteTo(request, `/tenant/${slug}/escaner`)
       }
       return rewriteTo(request, `/tenant/${slug}/login`)
     }
 
-    // /dashboard/* → solo admin_comercio; empleado/cajero → escaner
+    // ── /dashboard/* → sólo admin_comercio ─────────────────────────────
     if (path === '/dashboard' || path.startsWith('/dashboard/')) {
-      if (!rol) return NextResponse.redirect(new URL('/login', request.url))
+      if (!rol) {
+        return NextResponse.redirect(new URL('/login', request.url))
+      }
       if (rol === 'empleado' || rol === 'cajero') {
         return rewriteTo(request, `/tenant/${slug}/escaner`)
       }
-      const subPath = path.slice('/dashboard'.length)
+      const subPath = path.slice('/dashboard'.length) || ''
       return rewriteTo(request, `/tenant/${slug}/dashboard${subPath}`)
     }
 
-    // /escaner → /tenant/[slug]/escaner
+    // ── /escaner ────────────────────────────────────────────────────────
     if (path === '/escaner' || path.startsWith('/escaner/')) {
       if (!rol) return NextResponse.redirect(new URL('/login', request.url))
       return rewriteTo(request, `/tenant/${slug}/escaner`)
     }
 
-    // /biker → /tenant/[slug]/biker (portal GPS del repartidor)
+    // ── /biker ──────────────────────────────────────────────────────────
     if (path === '/biker' || path.startsWith('/biker/')) {
       if (!rol) return NextResponse.redirect(new URL('/login', request.url))
       return rewriteTo(request, `/tenant/${slug}/biker`)
     }
 
-    // /ajustes/* → solo admin_comercio; empleado/cajero → escaner
+    // ── /ajustes/* → sólo admin_comercio ───────────────────────────────
     if (path === '/ajustes' || path.startsWith('/ajustes/')) {
       if (!rol) return NextResponse.redirect(new URL('/login', request.url))
       if (rol === 'empleado' || rol === 'cajero') {
         return rewriteTo(request, `/tenant/${slug}/escaner`)
       }
-      const subPath = path.slice('/ajustes'.length)
+      const subPath = path.slice('/ajustes'.length) || ''
       return rewriteTo(request, `/tenant/${slug}/ajustes${subPath}`)
     }
 
-    // Intentos de acceder a rutas de cliente desde partners.* → redirigir al subdominio cliente
+    // ── Rutas de cliente accedidas desde partners.* → redirigir al subdominio público
     if (path.startsWith('/cliente') || path.startsWith('/registro')) {
       const url = request.nextUrl.clone()
-      url.hostname = isProduction ? `${slug}.loyaltyclub.mx` : `${slug}.localhost`
+      if (isProduction) {
+        url.hostname = `${slug}.${PROD_BASE}`
+        url.port = ''
+      } else {
+        url.hostname = `${slug}.${DEV_BASE}`
+        url.port = '3000'
+      }
       url.pathname = '/'
       return NextResponse.redirect(url)
     }
@@ -269,39 +384,48 @@ export default function proxy(request: NextRequest) {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // NIVEL 3 — CLIENTES FINALES ([slug].loyaltyclub.mx)
+  // NIVEL 3 — PORTAL CLIENTE [slug].loyaltyclub.mx / [slug].localhost
   // ══════════════════════════════════════════════════════════════════════════
   if (slug && !isPartner && !isAdmin) {
 
-    // Bloquear intentos de acceso a rutas administrativas → redirigir a [slug].partners.*
-    if (
-      path === '/login' || path.startsWith('/login/') ||
+    // Bloquear acceso a rutas administrativas desde el subdominio público
+    const isAdminRoute =
+      path === '/login'     || path.startsWith('/login/')     ||
       path === '/dashboard' || path.startsWith('/dashboard/') ||
-      path === '/escaner' || path.startsWith('/escaner/') ||
-      path === '/biker' || path.startsWith('/biker/') ||
-      path.startsWith('/ajustes')
-    ) {
+      path === '/escaner'   || path.startsWith('/escaner/')   ||
+      path === '/biker'     || path.startsWith('/biker/')     ||
+      path === '/ajustes'   || path.startsWith('/ajustes/')
+
+    if (isAdminRoute) {
+      // Redirigir al subdominio partners correcto
       const url = request.nextUrl.clone()
-      url.hostname = isProduction ? `${slug}.partners.loyaltyclub.mx` : `${slug}.partners.localhost`
+      if (isProduction) {
+        url.hostname = `${slug}.partners.${PROD_BASE}`
+        url.port = ''
+      } else {
+        url.hostname = `${slug}.partners.${DEV_BASE}`
+        url.port = '3000'
+      }
+      url.pathname = path === '/login' ? '/login' : '/'
       return NextResponse.redirect(url)
     }
 
-    // /menu y cualquier subpath → /tenant/[slug]/menu
+    // /menu y subpaths
     if (path === '/menu' || path.startsWith('/menu/')) {
       return rewriteTo(request, `/tenant/${slug}${path}`)
     }
 
-    // Raíz → Landing/Login del tenant (registro / "ya soy socio")
+    // Raíz → landing/login del tenant
     if (path === '/') {
       return rewriteTo(request, `/tenant/${slug}`)
     }
 
-    // /registro/* → /tenant/[slug]/registro/*
+    // /registro → formulario de registro del cliente
     if (path === '/registro' || path.startsWith('/registro/')) {
       return rewriteTo(request, `/tenant/${slug}/registro`)
     }
 
-    // /cliente/[id] o /card/[id] → /tenant/[slug]/cliente/[id]  (tarjeta VIP)
+    // /cliente/[id] o /card/[id] → tarjeta VIP del cliente
     if (path.startsWith('/cliente/') || path.startsWith('/card/')) {
       const mappedPath = path.startsWith('/card/')
         ? `/cliente/${path.substring(6)}`
@@ -318,21 +442,21 @@ export default function proxy(request: NextRequest) {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // BLOQUE D — DOMINIO BASE (loyaltyclub.mx / localhost sin subdominio)
+  // DOMINIO BASE — loyaltyclub.mx / localhost (sin subdominio)
   // ══════════════════════════════════════════════════════════════════════════
 
-  // Rutas administrativas en dominio base con sesión activa → redirigir al subdominio partners
-  if (
+  // Staff en dominio base con sesión activa → redirigir a su subdominio partners
+  const isAdminPath =
     path.startsWith('/dashboard') ||
-    path.startsWith('/ajustes') ||
-    path === '/escaner' || path.startsWith('/escaner/') ||
-    path === '/biker' || path.startsWith('/biker/')
-  ) {
+    path.startsWith('/ajustes')   ||
+    path === '/escaner'           || path.startsWith('/escaner/') ||
+    path === '/biker'             || path.startsWith('/biker/')
+
+  if (isAdminPath) {
     if (rol && rol !== 'superadmin' && bizSlug) {
-      const domain = isProduction ? 'loyaltyclub.mx' : 'localhost'
       const redirectUrl = isProduction
-        ? `https://${bizSlug}.partners.${domain}${path}`
-        : `http://${bizSlug}.partners.${domain}:3000${path}`
+        ? `https://${bizSlug}.partners.${PROD_BASE}${path}`
+        : `http://${bizSlug}.partners.${DEV_BASE}:3000${path}`
       return NextResponse.redirect(redirectUrl)
     }
     if (!rol) {
@@ -342,29 +466,45 @@ export default function proxy(request: NextRequest) {
     }
   }
 
-  // Landing base
-  if (path === '/') {
-    return NextResponse.next()
-  }
+  // Landing base → libre
+  if (path === '/') return NextResponse.next()
 
-  // Login en dominio base (onboarding / partners central)
+  // Login en dominio base
   if (path === '/login' || path.startsWith('/login/')) {
     if (rol === 'superadmin') {
       const url = request.nextUrl.clone()
-      url.hostname = isProduction ? 'admin.loyaltyclub.mx' : 'admin.localhost'
+      url.hostname = isProduction ? `admin.${PROD_BASE}` : `admin.${DEV_BASE}`
       url.pathname = '/superadmin'
+      if (!isProduction) url.port = '3000'
       return NextResponse.redirect(url)
     }
-    if (rol && bizSlug) {
-      const domain = isProduction ? 'loyaltyclub.mx' : 'localhost'
+    if (rol && bizSlug && STAFF_ROLES.has(rol)) {
       const targetPath = rol === 'admin_comercio' ? '/dashboard' : '/escaner'
       const redirectUrl = isProduction
-        ? `https://${bizSlug}.partners.${domain}${targetPath}`
-        : `http://${bizSlug}.partners.${domain}:3000${targetPath}`
+        ? `https://${bizSlug}.partners.${PROD_BASE}${targetPath}`
+        : `http://${bizSlug}.partners.${DEV_BASE}:3000${targetPath}`
       return NextResponse.redirect(redirectUrl)
     }
     return NextResponse.next()
   }
 
   return NextResponse.next()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONFIG: Matcher — excluye explícitamente assets y endpoints de API
+// para que el middleware/proxy sólo corra donde es necesario (performance).
+// ─────────────────────────────────────────────────────────────────────────────
+export const config = {
+  matcher: [
+    /*
+     * Interceptar todas las rutas EXCEPTO:
+     * - _next/static   → assets compilados por Next.js
+     * - _next/image    → optimización de imágenes
+     * - favicon.ico    → icono del navegador
+     * - api/           → endpoints de Next.js (service_role en Supabase)
+     * - archivos con extensión (*.png, *.js, etc.)
+     */
+    '/((?!_next/static|_next/image|favicon\\.ico|api/|.*\\..*).*)',
+  ],
 }

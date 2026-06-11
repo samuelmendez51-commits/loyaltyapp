@@ -54,6 +54,7 @@ interface Order {
   scheduled_pickup_time?: string
   delivery_token?: string
   notas?: string
+  comentarios_preparacion?: string
 }
 
 interface Business {
@@ -634,6 +635,14 @@ export default function TerminalPage() {
                           ))}
                         </div>
 
+                        {/* Comentarios de preparación */}
+                        {order.comentarios_preparacion && (
+                          <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 text-xs">
+                            <p className="font-bold text-amber-700 text-[10px] uppercase tracking-wide mb-0.5">📝 Notas de Preparación</p>
+                            <p className="text-amber-800">{order.comentarios_preparacion}</p>
+                          </div>
+                        )}
+
                         <button
                           onClick={() => handleAceptar(order.id)}
                           className="w-full bg-amber-500 hover:bg-amber-600 text-zinc-950 font-black uppercase text-xs tracking-wider py-3.5 px-4 rounded-xl shadow-md active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer h-12"
@@ -693,6 +702,14 @@ export default function TerminalPage() {
                             </div>
                           ))}
                         </div>
+
+                        {/* Comentarios de preparación */}
+                        {order.comentarios_preparacion && (
+                          <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 text-xs">
+                            <p className="font-bold text-amber-700 text-[10px] uppercase tracking-wide mb-0.5">📝 Notas de Preparación</p>
+                            <p className="text-amber-800">{order.comentarios_preparacion}</p>
+                          </div>
+                        )}
 
                         {order.tipo === 'delivery' && (
                           <div className="bg-slate-50 rounded-lg p-2.5 border border-zinc-150 text-xs text-zinc-600 space-y-1">

@@ -1,8 +1,8 @@
 -- =============================================
--- LOYALTYAPP — SCHEMA COMPLETO V12 ENTERPRISE
+-- LOYALTYCLUB — SCHEMA COMPLETO V12 ENTERPRISE
 -- SaaS Multi-Tenant · Motores 1-6 Completos
 -- Ejecutar en Supabase SQL Editor
--- Proyecto: loyaltyapp
+-- Proyecto: loyaltyclub
 -- =============================================
 
 -- 0. EXTENSIONES
@@ -27,9 +27,9 @@ ALTER TABLE superadmins ADD COLUMN IF NOT EXISTS nombre TEXT NOT NULL DEFAULT 'S
 
 -- Insertar SuperAdmin raíz por defecto de forma segura
 INSERT INTO superadmins (nombre, email, pin)
-SELECT 'LoyaltyApp Root', 'superadmin@loyaltyapp.com', '0000'
+SELECT 'LoyaltyClub Root', 'superadmin@loyaltyclub.com', '0000'
 WHERE NOT EXISTS (
-  SELECT 1 FROM superadmins WHERE email = 'superadmin@loyaltyapp.com' OR pin = '0000'
+  SELECT 1 FROM superadmins WHERE email = 'superadmin@loyaltyclub.com' OR pin = '0000'
 );
 
 -- =============================================

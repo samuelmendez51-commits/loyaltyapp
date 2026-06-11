@@ -311,7 +311,7 @@ export default function LandingPage() {
           <div className="grid grid-cols-3 gap-4 max-w-3xl mx-auto mb-12">
             {[
               { id: 'cliente', label: '1. Portal del Cliente', desc: 'Menú Inteligente y Tarjetas VIP' },
-              { id: 'terminal', label: '2. Terminal de Cocina', desc: 'Rappi-killer para Tablets' },
+              { id: 'terminal', label: '2. Terminal de Cocina', desc: 'Gestión Profesional de Pedidos' },
               { id: 'logistica', label: '3. Logística Inteligente', desc: 'Despacho Express sin códigos' }
             ].map(pillar => (
               <button
@@ -384,7 +384,7 @@ export default function LandingPage() {
                   </div>
                   <h3 className="text-2xl font-black text-zinc-900">La Terminal de Cocina (Tablet)</h3>
                   <p className="text-zinc-655 text-xs leading-relaxed">
-                    Nuestra alternativa premium a Rappi Aliados optimizada para tablets de 10 pulgadas. Ofrece un flujo visual de 3 columnas (Aceptar, Preparar, Entregar) con integración para impresoras térmicas ESC/POS.
+                    Terminal de cocina profesional optimizada para tablets de 10 pulgadas. Ofrece un flujo visual de 3 columnas (Aceptar, Preparar, Entregar) con integración para impresoras térmicas ESC/POS.
                   </p>
                   <ul className="space-y-2 text-xs text-zinc-600">
                     <li className="flex items-center gap-2">🟢 Interfaz clara de alta legibilidad para cocina</li>
@@ -493,7 +493,7 @@ export default function LandingPage() {
                 </div>
                 <div className="border border-zinc-200 p-4 rounded-2xl bg-slate-50 shadow-sm">
                   <h4 className="font-bold text-zinc-900 text-sm">Cero Comisiones</h4>
-                  <p className="text-zinc-550 text-xs mt-1">Conecta con tus repartidores locales de confianza y olvídate de las tarifas abusivas de Uber o Rappi.</p>
+                  <p className="text-zinc-550 text-xs mt-1">Conecta con tus repartidores locales de confianza con tarifas justas y transparentes.</p>
                 </div>
               </div>
             </div>

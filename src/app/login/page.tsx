@@ -131,7 +131,7 @@ export default function LoginPage() {
     setError('')
 
     try {
-      if (email === (process.env.NEXT_PUBLIC_SUPERADMIN_EMAIL || 'superadmin@loyaltyapp.com')
+      if (email === (process.env.NEXT_PUBLIC_SUPERADMIN_EMAIL || 'superadmin@loyaltyclub.com')
           && password === '0000') {
         setCookies('superadmin', 'Super Admin', '', '', 'root')
         const target = obtenerRedireccionUrl('superadmin', '')
@@ -415,12 +415,12 @@ export default function LoginPage() {
                 <span className="text-3xl">{subdomainBranding.logo}</span>
               )
             ) : (
-              <img src="/logo.png" alt="LoyaltyApp" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display='none' }} />
+              <img src="/logo.png" alt="LoyaltyClub" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display='none' }} />
             )}
           </div>
           <div>
             <h1 className="text-2xl font-bold text-[#09090b] tracking-tight">
-              {subdomainBranding?.nombre || 'LoyaltyApp'}
+              {subdomainBranding?.nombre || 'LoyaltyClub'}
             </h1>
             <p className="text-sm text-[#71717a] mt-1">
               {subdomainBranding ? `Portal de acceso — ${subdomainBranding.nombre}` : 'Sistema de Fidelización Enterprise'}

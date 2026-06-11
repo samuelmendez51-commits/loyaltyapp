@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- LOYALTYAPP — MIGRACIÓN v38: BLINDAJE COMPLETO DE SEGURIDAD RLS
+-- LOYALTYCLUB — MIGRACIÓN v38: BLINDAJE COMPLETO DE SEGURIDAD RLS
 -- SaaS Multi-Tenant · Row Level Security Enterprise
 -- Ejecutar en Supabase SQL Editor (producción)
 -- Autor: LoyaltyClub.mx — 2026
@@ -526,7 +526,7 @@ CREATE POLICY "branches_public_select" ON branches
   FOR SELECT
   TO anon, authenticated
   USING (
-    activo = TRUE
+    activa = TRUE
     AND EXISTS (
       SELECT 1 FROM businesses b
       WHERE b.id = branches.business_id AND b.estado = 'activo'
@@ -607,12 +607,13 @@ CREATE POLICY "credits_staff_select" ON credit_transactions
 -- VERIFICACIÓN FINAL — MUESTRA ESTADO DE RLS POR TABLA
 -- ═══════════════════════════════════════════════════════════════════════════
 SELECT
-  schemaname,
-  tablename,
-  rowsecurity  AS rls_enabled,
-  forcerowsecurity AS rls_forced
-FROM pg_tables
-WHERE schemaname = 'public'
+  c.relname AS tablename,
+  c.relrowsecurity AS rls_enabled,
+  c.relforcerowsecurity AS rls_forced
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE n.nspname = 'public'
+  AND c.relkind = 'r'
 ORDER BY tablename;
 
 -- Muestra todas las políticas activas

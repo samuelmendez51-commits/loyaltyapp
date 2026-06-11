@@ -1,5 +1,5 @@
 -- ============================================================
--- LoyaltyApp — Migración v13 FINAL (100% Safe & Autosanable)
+-- LoyaltyClub — Migración v13 FINAL (100% Safe & Autosanable)
 -- Maneja tablas ya creadas parcialmente en intentos previos
 -- ============================================================
 

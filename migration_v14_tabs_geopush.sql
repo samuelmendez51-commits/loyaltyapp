@@ -1,5 +1,5 @@
 -- ============================================================
--- LoyaltyApp — Migración v14 (Pestañas, Geopush y Horarios Diarios)
+-- LoyaltyClub — Migración v14 (Pestañas, Geopush y Horarios Diarios)
 -- Ejecuta este script en el editor SQL de Supabase
 -- ============================================================
 

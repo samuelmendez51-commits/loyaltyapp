@@ -1,6 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
-import { Html5QrcodeScanner } from 'html5-qrcode'
+import { useEffect, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 
 // --- ESTRELLAS PREMIUM ---
@@ -24,6 +23,7 @@ export default function EscanerTrabajadores() {
   const [businessId, setBusinessId] = useState<string>('')
   const [coupon, setCoupon] = useState<any>(null)
   const [programaActivo, setProgramaActivo] = useState<any>(null)
+  const [camaraDisponible, setCamaraDisponible] = useState(true)
 
   const getCookieVal = (name: string) => {
     if (typeof document === 'undefined') return ''
@@ -31,6 +31,8 @@ export default function EscanerTrabajadores() {
   }
 
   const sellosTotales = programaActivo?.total_estampillas || business?.max_sellos || 10
+
+  const scannerRef = useRef<any>(null)
 
   useEffect(() => {
     const bizId = getCookieVal('session_business_id')
@@ -54,26 +56,36 @@ export default function EscanerTrabajadores() {
       })
     }
 
-    const scanner = new Html5QrcodeScanner(
-      "reader", 
-      { fps: 15, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 }, 
-      false
-    )
-
-    const onScanSuccess = async (decodedText: string) => {
+    // Intentar inicializar el escáner de cámara con fallback dinámico
+    ;(async () => {
       try {
-        await scanner.clear()
-        const idLimpio = decodedText.includes('/') ? decodedText.split('/').pop() : decodedText;
-        if (idLimpio) buscarCliente(idLimpio.trim());
-      } catch (err) {
-        console.error("Error al detener cámara:", err)
+        const { Html5QrcodeScanner: QScanner } = await import('html5-qrcode')
+        const scanner = new QScanner(
+          "reader",
+          { fps: 15, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 },
+          false
+        )
+        scannerRef.current = scanner
+        const onScanSuccess = async (decodedText: string) => {
+          try {
+            await scanner.clear()
+            const idLimpio = decodedText.includes('/') ? decodedText.split('/').pop() : decodedText
+            if (idLimpio) buscarCliente(idLimpio.trim())
+          } catch (err) {
+            console.error("Error al detener cámara:", err)
+          }
+        }
+        scanner.render(onScanSuccess, () => {})
+      } catch (camErr: any) {
+        console.warn('Cámara no disponible, mostrando modo texto:', camErr)
+        setCamaraDisponible(false)
       }
-    }
-
-    scanner.render(onScanSuccess, (error) => { })
+    })()
 
     return () => {
-      scanner.clear().catch(err => console.error("Error al limpiar recursos:", err))
+      if (scannerRef.current) {
+        scannerRef.current.clear().catch((err: any) => console.error("Error al limpiar recursos:", err))
+      }
     }
   }, [])
 
@@ -86,7 +98,7 @@ export default function EscanerTrabajadores() {
     try {
       const decoded = atob(criterio.trim())
       const parsed = JSON.parse(decoded)
-      if ((parsed.seguro === 'LOYALTYAPP-VIP-CANJE' || parsed.seguro === 'LOYALTYCLUB-VIP-CANJE') && parsed.cliente_id) {
+      if ((parsed.seguro === 'LOYALTYCLUB-VIP-CANJE' || parsed.seguro === 'LOYALTYCLUB-VIP-CANJE') && parsed.cliente_id) {
         criterioLimpio = parsed.cliente_id
         alert(`🏆 ¡Pase QR Cifrado VIP Validado!\nSocio: ${parsed.nombre}\nFidelidad: ${parsed.puntos}/${sellosTotales} sellos.\nListo para canjear premio mayor.`);
       }
@@ -366,15 +378,22 @@ export default function EscanerTrabajadores() {
         {/* ESTADO 1: ESCÁNER */}
         {!cliente && !mensaje.texto && (
           <div className="card-glass p-8 relative">
-            <div className="relative w-full aspect-square bg-black rounded-2xl overflow-hidden mb-8 border border-[var(--border-subtle)] shadow-inner">
-              <div id="reader" className="w-full h-full object-cover"></div>
-              
-              {/* Esquinas de enfoque estilo Sci-Fi/Lujo */}
-              <div className="absolute top-6 left-6 w-8 h-8 border-t-[4px] border-l-[4px] border-[var(--brand-red)] rounded-tl-xl z-10 pointer-events-none"></div>
-              <div className="absolute top-6 right-6 w-8 h-8 border-t-[4px] border-r-[4px] border-[var(--brand-red)] rounded-tr-xl z-10 pointer-events-none"></div>
-              <div className="absolute bottom-6 left-6 w-8 h-8 border-b-[4px] border-l-[4px] border-[var(--brand-red)] rounded-bl-xl z-10 pointer-events-none"></div>
-              <div className="absolute bottom-6 right-6 w-8 h-8 border-b-[4px] border-r-[4px] border-[var(--brand-red)] rounded-br-xl z-10 pointer-events-none"></div>
-            </div>
+            {camaraDisponible ? (
+              <div className="relative w-full aspect-square bg-black rounded-2xl overflow-hidden mb-8 border border-[var(--border-subtle)] shadow-inner">
+                <div id="reader" className="w-full h-full object-cover"></div>
+                {/* Esquinas de enfoque estilo Sci-Fi/Lujo */}
+                <div className="absolute top-6 left-6 w-8 h-8 border-t-[4px] border-l-[4px] border-[var(--brand-red)] rounded-tl-xl z-10 pointer-events-none"></div>
+                <div className="absolute top-6 right-6 w-8 h-8 border-t-[4px] border-r-[4px] border-[var(--brand-red)] rounded-tr-xl z-10 pointer-events-none"></div>
+                <div className="absolute bottom-6 left-6 w-8 h-8 border-b-[4px] border-l-[4px] border-[var(--brand-red)] rounded-bl-xl z-10 pointer-events-none"></div>
+                <div className="absolute bottom-6 right-6 w-8 h-8 border-b-[4px] border-r-[4px] border-[var(--brand-red)] rounded-br-xl z-10 pointer-events-none"></div>
+              </div>
+            ) : (
+              <div className="w-full py-8 mb-6 flex flex-col items-center text-center gap-3">
+                <span className="text-5xl">📵</span>
+                <p className="text-[#a1a1aa] text-xs font-bold uppercase tracking-widest">Cámara no disponible</p>
+                <p className="text-zinc-600 text-[10px]">Usa la búsqueda manual por teléfono o ID</p>
+              </div>
+            )}
             
             <div className="flex flex-col gap-4 w-full">
               <label className="text-[#a1a1aa] text-[10px] uppercase font-bold tracking-[0.2em] text-center">
@@ -517,9 +536,26 @@ export default function EscanerTrabajadores() {
               </div>
             )}
             
+            {/* Botón WhatsApp: Enviar Tarjeta */}
+            {cliente && cliente.telefono && (
+              <button
+                onClick={() => {
+                  const tenantSlug = business?.slug || getCookieVal('session_business_slug') || 'laburreria'
+                  const origin = typeof window !== 'undefined' ? window.location.origin : ''
+                  const url = `${origin}/cliente/${cliente.id}`
+                  const msg = `¡Hola ${cliente.nombre}! 🎉 Aquí está tu tarjeta de lealtad digital de ${business?.nombre || 'La Burrería'}. Guarda este link para acumular tus sellos: ${url}`
+                  const tel = '52' + cliente.telefono.replace(/\D/g, '').slice(-10)
+                  window.open(`https://wa.me/${tel}?text=${encodeURIComponent(msg)}`, '_blank')
+                }}
+                className="w-full mt-3 bg-[#25D366] hover:bg-[#20b858] text-white font-bold text-xs uppercase tracking-widest py-3 rounded-xl transition-all flex items-center justify-center gap-2"
+              >
+                📲 Enviar Tarjeta por WhatsApp
+              </button>
+            )}
+
             <button 
               onClick={() => { setCliente(null); window.location.reload(); }} 
-              className="w-full mt-6 text-[#71717a] hover:text-white text-[10px] font-bold tracking-[0.3em] uppercase transition-colors py-3"
+              className="w-full mt-3 text-[#71717a] hover:text-white text-[10px] font-bold tracking-[0.3em] uppercase transition-colors py-3"
             >
               CERRAR PERFIL
             </button>

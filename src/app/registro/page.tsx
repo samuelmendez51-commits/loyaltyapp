@@ -68,7 +68,7 @@ export default function RegistroCliente() {
     try {
       const { data, error } = await supabase
         .from('clientes')
-        .insert([{
+        .upsert([{
           nombre: nombre.trim(),
           telefono: telefonoLimpio,
           email: email.trim() || null,
@@ -81,7 +81,7 @@ export default function RegistroCliente() {
           business_id: businessId,
           branch_id: branchId,
           sucursal_registro_id: SUCURSAL_REGISTRO_ID,
-        }])
+        }], { onConflict: 'telefono', ignoreDuplicates: false })
         .select()
 
       if (error) {

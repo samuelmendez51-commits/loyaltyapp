@@ -1,5 +1,5 @@
 -- =============================================
--- LOYALTYAPP — SCHEMA ADICIONES V12
+-- LOYALTYCLUB — SCHEMA ADICIONES V12
 -- BI & Gamification Engine
 -- Ejecutar sobre schema V10 existente (seguro)
 -- =============================================

@@ -1,5 +1,5 @@
 -- =============================================
--- LOYALTYAPP — SCHEMA COMPLETO V10 ENTERPRISE
+-- LOYALTYCLUB — SCHEMA COMPLETO V10 ENTERPRISE
 -- SaaS Multi-Tenant · Motor 6 Completo
 -- Ejecutar en Supabase SQL Editor
 -- Proyecto: hjaeireljkcvjnigfhzb
@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS superadmins (
 
 -- Insertar SuperAdmin raíz por defecto
 INSERT INTO superadmins (nombre, email, pin) VALUES
-  ('LoyaltyApp Root', 'superadmin@loyaltyapp.com', '0000')
+  ('LoyaltyClub Root', 'superadmin@loyaltyclub.com', '0000')
 ON CONFLICT (email) DO NOTHING;
 
 -- =============================================

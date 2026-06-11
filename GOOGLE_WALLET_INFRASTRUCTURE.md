@@ -117,7 +117,7 @@ Este es el backend de producción definitivo implementado en `/api/wallet/google
 4. **Enlace "Save to Wallet":** Produce la URL oficial `https://pay.google.com/gp/v/save/[JWT]` para abrir de forma nativa la Billetera en Android.
 
 ```typescript
-// file:///c:/proyecto/loyaltyapp/src/app/api/wallet/google/route.ts
+// file:///c:/proyecto/loyaltyclub/src/app/api/wallet/google/route.ts
 import { JWT } from 'google-auth-library'
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
