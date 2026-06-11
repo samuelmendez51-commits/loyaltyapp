@@ -880,6 +880,8 @@ export default function DashboardPage() {
   const checklistCompletado = completedStepsCount === 4
 
   // ── ESTADOS DEL ESCÁNER INTEGRADO ──
+  const scanInputRef = useRef<HTMLInputElement>(null)
+  const [scanToast, setScanToast] = useState<{ show: boolean; message: string; tipo: 'exito' | 'error' }>({ show: false, message: '', tipo: 'exito' })
   const [scanCliente, setScanCliente] = useState<any>(null)
   const [scanMensaje, setScanMensaje] = useState({ tipo: '', texto: '' })
   const [scanCargando, setScanCargando] = useState(false)
@@ -892,6 +894,37 @@ export default function DashboardPage() {
   const [scanEnvioExitoMsg, setScanEnvioExitoMsg] = useState('')
   const [scanHasCamera, setScanHasCamera] = useState<boolean | null>(null)
   const [mostrarBuscadorManual, setMostrarBuscadorManual] = useState(false)
+
+  const resetScannerState = () => {
+    setScanCliente(null)
+    setScanCoupon(null)
+    setScanInputManual('')
+    setScanSearchedPhone('')
+    setScanNuevoClienteNombre('')
+    setScanRegistradoExito(null)
+    setScanMensaje({ tipo: '', texto: '' })
+    setScanEnvioExitoMsg('')
+    
+    // Sincronizar recarga del historial/clientes para mantener panel al día
+    cargarClientesYHistorial()
+
+    setTimeout(() => {
+      if (scanInputRef.current) {
+        scanInputRef.current.focus()
+      }
+    }, 50)
+  }
+
+  // Auto-focus manual search input when entering the escaner tab
+  useEffect(() => {
+    if (pestaña === 'escaner') {
+      setTimeout(() => {
+        if (scanInputRef.current) {
+          scanInputRef.current.focus()
+        }
+      }, 150)
+    }
+  }, [pestaña])
 
   // --- Lógica de Escáner Integrada ---
   const sellosTotales = (programas || []).find(p => p.activo === true)?.total_estampillas || business?.max_sellos || 10
@@ -3099,6 +3132,27 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-[#fafafa] text-[#09090b] flex font-sans">
+      {/* ── Toast de Notificación Flotante ── */}
+      {scanToast.show && (
+        <div className={`fixed top-4 right-4 z-[9999] max-w-sm w-full bg-white border-l-4 ${
+          scanToast.tipo === 'exito' ? 'border-emerald-500 shadow-[0_10px_30px_rgba(16,185,129,0.15)]' : 'border-rose-500 shadow-[0_10px_30px_rgba(244,63,94,0.15)]'
+        } rounded-xl p-4 flex items-start gap-3 border border-zinc-100 animate-in fade-in slide-in-from-top-4 duration-300`}>
+          <div className="flex-1">
+            <p className="text-xs font-bold text-zinc-950 uppercase tracking-wide">
+              {scanToast.tipo === 'exito' ? '✅ Éxito' : '❌ Error'}
+            </p>
+            <p className="text-xs text-zinc-600 mt-1 font-medium leading-relaxed">
+              {scanToast.message}
+            </p>
+          </div>
+          <button 
+            onClick={() => setScanToast(prev => ({ ...prev, show: false }))}
+            className="text-zinc-400 hover:text-zinc-600 transition-colors text-xs font-bold font-mono hover:scale-105 active:scale-95"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* ── Modal Ajuste ── */}
       <ModalAjuste
@@ -3708,6 +3762,7 @@ export default function DashboardPage() {
                       Búsqueda Manual
                     </label>
                     <input 
+                      ref={scanInputRef}
                       type="text" 
                       value={scanInputManual}
                       onChange={(e) => setScanInputManual(e.target.value)}
@@ -3817,7 +3872,15 @@ export default function DashboardPage() {
                             })
                             
                             if (response.ok) {
-                              setScanEnvioExitoMsg('✅ Tarjeta digital VIP enviada con éxito desde la línea oficial del negocio.')
+                              setScanToast({
+                                show: true,
+                                message: '¡Tarjeta enviada con éxito por WhatsApp!',
+                                tipo: 'exito'
+                              })
+                              setTimeout(() => {
+                                setScanToast(prev => ({ ...prev, show: false }))
+                              }, 4000)
+                              resetScannerState()
                             } else {
                               const errData = await response.json().catch(() => ({}))
                               alert(`Error al enviar WhatsApp: ${errData.error || 'Error desconocido'}`)
@@ -3835,13 +3898,7 @@ export default function DashboardPage() {
                       </button>
 
                       <button 
-                        onClick={() => { 
-                          setScanMensaje({ tipo: '', texto: '' })
-                          setScanInputManual('')
-                          setScanSearchedPhone('')
-                          setScanNuevoClienteNombre('')
-                          setScanRegistradoExito(null)
-                        }} 
+                        onClick={resetScannerState} 
                         className="mt-6 text-zinc-500 hover:text-zinc-800 text-[10px] font-bold uppercase tracking-widest cursor-pointer hover:underline"
                       >
                         Ir al Escáner
@@ -3969,11 +4026,6 @@ export default function DashboardPage() {
 
                   {/* Enviar Tarjeta por WhatsApp (Socio Encontrado) */}
                   <div className="space-y-3 w-full mt-4 border-t border-[#f4f4f5] pt-4">
-                    {scanEnvioExitoMsg && (
-                      <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-semibold leading-relaxed text-center shadow-sm">
-                        {scanEnvioExitoMsg}
-                      </div>
-                    )}
                     <button
                       disabled={scanEnviandoWhatsapp}
                       onClick={async () => {
@@ -4002,7 +4054,15 @@ export default function DashboardPage() {
                           })
                           
                           if (response.ok) {
-                            setScanEnvioExitoMsg('✅ Tarjeta digital VIP enviada con éxito desde la línea oficial del negocio.')
+                            setScanToast({
+                              show: true,
+                              message: '¡Tarjeta enviada con éxito por WhatsApp!',
+                              tipo: 'exito'
+                            })
+                            setTimeout(() => {
+                              setScanToast(prev => ({ ...prev, show: false }))
+                            }, 4000)
+                            resetScannerState()
                           } else {
                             const errData = await response.json().catch(() => ({}))
                             alert(`Error al enviar WhatsApp: ${errData.error || 'Error desconocido'}`)
@@ -4021,7 +4081,7 @@ export default function DashboardPage() {
                   </div>
                   
                   <button 
-                    onClick={() => { setScanCliente(null); cargarClientesYHistorial(); }} 
+                    onClick={resetScannerState} 
                     className="w-full mt-4 text-[#71717a] hover:text-[#dc2626] text-[10px] font-bold tracking-[0.3em] uppercase transition-colors py-2"
                   >
                     CERRAR PERFIL
