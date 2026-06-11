@@ -368,9 +368,11 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const tabParam = searchParams.get('tab')
-    if (tabParam) {
+    // Guard: only update if the value actually differs to prevent render loops
+    if (tabParam && tabParam !== pestaña) {
       setPestaña(tabParam)
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
   const [sidebarExpanded, setSidebarExpanded] = useState(true)
   const [quickToolsOpen, setQuickToolsOpen] = useState(false)
@@ -957,39 +959,63 @@ export default function DashboardPage() {
     }
   }, [])
 
-  // Inicialización del escáner
+  // Inicialización del escáner — con cleanup robusto anti memory-leak
   useEffect(() => {
     if (pestaña !== 'escaner' || scanHasCamera === false) return
 
     let scanner: any = null
-    try {
-      scanner = new Html5QrcodeScanner(
-        "reader", 
-        { fps: 15, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 }, 
-        false
-      )
+    let mounted = true // bandera para evitar setState en componente desmontado
 
-      const onScanSuccess = async (decodedText: string) => {
-        try {
-          await scanner.clear()
-          const idLimpio = decodedText.includes('/') ? decodedText.split('/').pop() : decodedText;
-          if (idLimpio) buscarCliente(idLimpio.trim());
-        } catch (err) {
-          // Silencioso
+    const initScanner = async () => {
+      try {
+        // Asegurarse de que el contenedor #reader exista antes de instanciar
+        const readerEl = document.getElementById('reader')
+        if (!readerEl) return
+
+        scanner = new Html5QrcodeScanner(
+          'reader',
+          { fps: 15, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 },
+          false
+        )
+
+        const onScanSuccess = async (decodedText: string) => {
+          if (!mounted) return
+          try {
+            await scanner.clear()
+            const idLimpio = decodedText.includes('/')
+              ? decodedText.split('/').pop()
+              : decodedText
+            if (idLimpio) buscarCliente(idLimpio.trim())
+          } catch (_) {
+            // Silencioso — el clear() puede lanzar si ya fue limpiado
+          }
+        }
+
+        scanner.render(onScanSuccess, () => {
+          // Ignorar errores de lectura de cuadros individuales
+        })
+      } catch (e) {
+        if (mounted) {
+          setScanHasCamera(false)
+          setMostrarBuscadorManual(true)
         }
       }
-
-      scanner.render(onScanSuccess, (error: any) => { })
-    } catch (e) {
-      setScanHasCamera(false)
-      setMostrarBuscadorManual(true)
     }
+
+    initScanner()
 
     return () => {
+      mounted = false
       if (scanner) {
-        scanner.clear().catch(err => { /* Silencioso */ })
+        scanner.clear().catch(() => { /* Silencioso */ }).finally(() => {
+          // Limpiar el DOM del elemento reader para evitar fugas al remontar
+          const el = document.getElementById('reader')
+          if (el) el.innerHTML = ''
+        })
       }
     }
+  // buscarCliente es estable durante el ciclo de vida del tab
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pestaña, scanHasCamera])
 
   const buscarCliente = async (criterio: string) => {
@@ -3866,7 +3892,7 @@ export default function DashboardPage() {
                               },
                               body: JSON.stringify({
                                 clientPhone: phoneParam,
-                                message: textParam,
+                                clienteId: scanRegistradoExito.id,
                                 tenantSlug: slug
                               })
                             })
@@ -4048,7 +4074,7 @@ export default function DashboardPage() {
                             },
                             body: JSON.stringify({
                               clientPhone: phoneParam,
-                              message: textParam,
+                              clienteId: scanCliente.id,
                               tenantSlug: slug
                             })
                           })
@@ -5251,7 +5277,7 @@ export default function DashboardPage() {
                                           {m.requerido && <span className="text-[8px] bg-red-50 text-[#dc2626] font-extrabold uppercase px-1.5 py-0.5 rounded">Obligatorio</span>}
                                         </div>
                                         <p className="text-[9px] text-[#71717a] mt-0.5">
-                                          Incluye: {m.incluidos} · Max: {m.maximo_permitido || 'Ilimitado'} · Op: {m.modifier_options?.map((o: any) => o.nombre).join(', ') || 'Sin opciones'}
+                                          Incluye: {Number(m.incluidos ?? 0)} · Max: {m.maximo_permitido != null && m.maximo_permitido !== '' ? Number(m.maximo_permitido) : 'Ilimitado'} · Op: {m.modifier_options?.map((o: any) => o.nombre).join(', ') || 'Sin opciones'}
                                         </p>
                                       </div>
                                       <div className="flex gap-2 shrink-0 ml-2">

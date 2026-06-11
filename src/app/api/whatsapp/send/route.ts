@@ -6,7 +6,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-// Helper modular para simular o conectar con un gateway real (Meta API, Evolution API, etc.)
+// ── Helper: gateway modular (Evolution API / Meta Cloud API / Mock) ─────────
 async function sendViaWhatsAppGateway({
   senderPayload,
   recipient,
@@ -17,7 +17,7 @@ async function sendViaWhatsAppGateway({
   text: string
 }) {
   const provider = process.env.WHATSAPP_PROVIDER || 'mock'
-  
+
   if (provider === 'evolution') {
     const apiUrl = process.env.WHATSAPP_API_URL
     const apiKey = process.env.WHATSAPP_API_KEY
@@ -29,7 +29,7 @@ async function sendViaWhatsAppGateway({
     }
 
     const url = `${apiUrl.replace(/\/$/, '')}/message/sendText/${instanceName}`
-    
+
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -67,7 +67,7 @@ async function sendViaWhatsAppGateway({
     }
 
     const url = `https://graph.facebook.com/v18.0/${phoneId}/messages`
-    
+
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -111,68 +111,173 @@ function runMockSimulator(senderPayload: string, recipient: string, text: string
   return { success: true }
 }
 
+// ── Helper: construir la plantilla dinámica del mensaje ────────────────────
+function buildMessageTemplate({
+  nombreCliente,
+  sellosActuales,
+  sellosTotales,
+  slugNegocio,
+  telefonoCliente,
+  nombreNegocio,
+}: {
+  nombreCliente: string
+  sellosActuales: number
+  sellosTotales: number
+  slugNegocio: string
+  telefonoCliente: string
+  nombreNegocio: string
+}): string {
+  // Calcular sellos restantes (nunca negativo)
+  const sellosRestantes = Math.max(0, sellosTotales - sellosActuales)
+
+  // Normalizar el teléfono para la URL: últimos 10 dígitos sin prefijo de país
+  const telLimpio = telefonoCliente.replace(/\D/g, '').slice(-10)
+  const cardUrl = `https://${slugNegocio}.loyaltyclub.mx/cliente/${telLimpio}`
+
+  // Barra de progreso ASCII (12 chars max para no romper en móvil)
+  const barLength = 10
+  const filled = Math.round((sellosActuales / Math.max(sellosTotales, 1)) * barLength)
+  const bar = '▓'.repeat(filled) + '░'.repeat(Math.max(0, barLength - filled))
+
+  return `¡Hola, ${nombreCliente}! 🌯🔥
+
+¡Felicidades! Ya eres parte oficial de nuestro Club de Lealtad en ${nombreNegocio}. Tu visita de hoy ya sumó en tu tarjeta digital.
+
+📊 Tu Estado Actual:
+[${bar}] ${sellosActuales}/${sellosTotales} sellos
+¡Estás a solo ${sellosRestantes} visita${sellosRestantes === 1 ? '' : 's'} de reclamar tu premio gratis! 🎉
+
+📱 Consulta tus sellos y juega en la Ruleta VIP aquí mismo:
+👉 ${cardUrl}
+
+Guarda este número en tus contactos para que el enlace se vuelva interactivo y puedas abrir tu tarjeta cuando quieras en un solo toque. ¡Gracias por tu preferencia! 👑`
+}
+
+// ── POST Handler ────────────────────────────────────────────────────────────
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const { clientPhone, message, tenantSlug } = body
+    const { clientPhone, tenantSlug, clienteId } = body
 
-    if (!clientPhone || !message || !tenantSlug) {
+    if (!clientPhone || !tenantSlug) {
       return NextResponse.json(
-        { error: 'Faltan campos requeridos: clientPhone, message o tenantSlug' },
+        { error: 'Faltan campos requeridos: clientPhone o tenantSlug' },
         { status: 400 }
       )
     }
 
-    // 1. Consultar el número oficial configurado en la tabla businesses
+    // ── 1. Cargar datos del negocio (número emisor, nombre, max_sellos) ──────
     let telefonoEmisor = ''
+    let nombreNegocio = 'La Burrería'
+    let sellosTotalesNegocio = 10
+
     try {
       const { data: biz } = await supabase
         .from('businesses')
-        .select('telefono_whatsapp')
+        .select('telefono_whatsapp, nombre, max_sellos')
         .eq('slug', tenantSlug.toLowerCase().trim())
         .maybeSingle()
-      
-      if (biz && biz.telefono_whatsapp) {
-        telefonoEmisor = biz.telefono_whatsapp
+
+      if (biz) {
+        if (biz.telefono_whatsapp) telefonoEmisor = biz.telefono_whatsapp
+        if (biz.nombre) nombreNegocio = biz.nombre
+        if (biz.max_sellos) sellosTotalesNegocio = Number(biz.max_sellos) || 10
       }
     } catch (err) {
       console.warn('[WhatsApp Route] Error al buscar en businesses, intentando fallback:', err)
     }
 
-    // Fallback secundario si businesses falla o no tiene el número
-    if (!telefonoEmisor) {
-      try {
-        const { data: ten } = await supabase
-          .from('tenants')
-          .select('telefono_whatsapp, color_primario') // supuestas columnas
-          .eq('slug', tenantSlug.toLowerCase().trim())
+    // ── 2. Intentar cargar desde programa de fidelidad activo (fuente preferida) ──
+    try {
+      const { data: bizForId } = await supabase
+        .from('businesses')
+        .select('id')
+        .eq('slug', tenantSlug.toLowerCase().trim())
+        .maybeSingle()
+
+      if (bizForId?.id) {
+        const { data: prog } = await supabase
+          .from('programas_fidelidad')
+          .select('total_estampillas')
+          .eq('business_id', bizForId.id)
+          .eq('activo', true)
           .maybeSingle()
-        
-        if (ten && (ten as any).telefono_whatsapp) {
-          telefonoEmisor = (ten as any).telefono_whatsapp
+
+        if (prog?.total_estampillas) {
+          sellosTotalesNegocio = Number(prog.total_estampillas) || sellosTotalesNegocio
         }
-      } catch (err) {
-        // Ignorar
       }
+    } catch (_) {
+      // Silencioso — usamos el fallback de businesses.max_sellos
     }
 
-    // Fallback definitivo si de plano no tiene configurado número
+    // Fallback número emisor
     if (!telefonoEmisor) {
-      telefonoEmisor = '524521042522' // Número base/default de soporte o demo
+      telefonoEmisor = '524521042522'
     }
 
-    // Asegurar formato de teléfono para emisor y receptor (ej: agregar prefijo de país 52 si no lo tiene)
-    const cleanRecipient = clientPhone.replace(/\D/g, '')
-    const recipientPhone = cleanRecipient.startsWith('52') ? cleanRecipient : `52${cleanRecipient}`
+    // ── 3. Cargar datos del cliente (nombre y sellos actuales) ───────────────
+    let nombreCliente = 'Socio VIP'
+    let sellosActuales = 0
 
+    // Normalizar el teléfono de entrada para buscar en Supabase
+    const cleanRecipient = clientPhone.replace(/\D/g, '')
+    const recipientPhone = cleanRecipient.startsWith('52')
+      ? cleanRecipient
+      : `52${cleanRecipient}`
+
+    // El formato almacenado incluye + al inicio
+    const telConPlus = `+${recipientPhone}`
+
+    try {
+      // Intentar por ID directo si viene en el payload (más preciso)
+      if (clienteId) {
+        const { data: cli } = await supabase
+          .from('clientes')
+          .select('nombre, puntos')
+          .eq('id', clienteId)
+          .maybeSingle()
+
+        if (cli) {
+          nombreCliente = cli.nombre || nombreCliente
+          sellosActuales = Number(cli.puntos) || 0
+        }
+      } else {
+        // Buscar por teléfono (con y sin +)
+        const { data: cli } = await supabase
+          .from('clientes')
+          .select('nombre, puntos')
+          .or(`telefono.eq.${telConPlus},telefono.eq.${recipientPhone}`)
+          .maybeSingle()
+
+        if (cli) {
+          nombreCliente = cli.nombre || nombreCliente
+          sellosActuales = Number(cli.puntos) || 0
+        }
+      }
+    } catch (err) {
+      console.warn('[WhatsApp Route] No se pudo obtener datos del cliente:', err)
+    }
+
+    // ── 4. Construir mensaje dinámico y persuasivo ───────────────────────────
+    const messageText = buildMessageTemplate({
+      nombreCliente,
+      sellosActuales,
+      sellosTotales: sellosTotalesNegocio,
+      slugNegocio: tenantSlug.toLowerCase().trim(),
+      telefonoCliente: recipientPhone,
+      nombreNegocio,
+    })
+
+    // ── 5. Normalizar número emisor ──────────────────────────────────────────
     const cleanSender = telefonoEmisor.replace(/\D/g, '')
     const senderPhone = cleanSender.startsWith('52') ? cleanSender : `52${cleanSender}`
 
-    // 2. Disparar el mensaje a través de nuestro gateway helper
+    // ── 6. Disparar el mensaje a través del gateway ──────────────────────────
     await sendViaWhatsAppGateway({
       senderPayload: senderPhone,
       recipient: recipientPhone,
-      text: message
+      text: messageText
     })
 
     return NextResponse.json({
