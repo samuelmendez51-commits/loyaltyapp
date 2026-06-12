@@ -2586,8 +2586,8 @@ _Pedido procesado a través de LoyaltyClub VIP_`
         </div>
       )}
 
-      {/* ── Bottom Navigation Bar (solo móvil) ── */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-[#e4e4e7] shadow-[0_-4px_20px_rgba(0,0,0,0.06)] z-40">
+      {/* ── Bottom Navigation Bar ── */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-[#e4e4e7] shadow-[0_-4px_20px_rgba(0,0,0,0.06)] z-40">
         <div className="max-w-sm mx-auto flex justify-around px-1">
           {[
             {
