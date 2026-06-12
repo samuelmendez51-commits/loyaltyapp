@@ -24,6 +24,7 @@ interface ParsedDomain {
   isPartner: boolean
   isAdmin: boolean
   isBiker: boolean
+  isSocio: boolean
   isProduction: boolean
 }
 
@@ -60,20 +61,56 @@ function parseHostname(hostname: string): ParsedDomain {
 
   // ── Admin panel ──────────────────────────────────────────────────────────
   if (host === `admin.${PROD_BASE}` || host === `admin.${DEV_BASE}`) {
-    return { slug: null, isPartner: false, isAdmin: true, isBiker: false, isProduction }
+    return { slug: null, isPartner: false, isAdmin: true, isBiker: false, isSocio: false, isProduction }
   }
 
   // ── Bikers (portal de flota) — producción ───────────────────────────────
   if (host === `bikers.partners.${PROD_BASE}`) {
-    return { slug: 'bikers', isPartner: true, isAdmin: false, isBiker: true, isProduction: true }
+    return { slug: 'bikers', isPartner: true, isAdmin: false, isBiker: true, isSocio: false, isProduction: true }
   }
 
   // ── Bikers — desarrollo ──────────────────────────────────────────────────
   if (host === `bikers-partners.${DEV_BASE}` || host === `bikers.partners.${DEV_BASE}`) {
-    return { slug: 'bikers', isPartner: true, isAdmin: false, isBiker: true, isProduction: false }
+    return { slug: 'bikers', isPartner: true, isAdmin: false, isBiker: true, isSocio: false, isProduction: false }
   }
   if (host === `bikers.${DEV_BASE}`) {
-    return { slug: 'bikers', isPartner: false, isAdmin: false, isBiker: true, isProduction: false }
+    return { slug: 'bikers', isPartner: false, isAdmin: false, isBiker: true, isSocio: false, isProduction: false }
+  }
+
+  // ── Socio — producción: [slug].socios.loyaltyclub.mx ────────
+  const socioProdSuffix = `.socios.${PROD_BASE}`
+  if (host.endsWith(socioProdSuffix)) {
+    const slug = host.slice(0, -socioProdSuffix.length)
+    if (slug && slug !== 'www') {
+      return { slug, isPartner: false, isAdmin: false, isBiker: false, isSocio: true, isProduction: true }
+    }
+  }
+
+  // ── Socio — desarrollo: [slug].socios.localhost ─────────────
+  const socioDevSuffix = `.socios.${DEV_BASE}`
+  if (host.endsWith(socioDevSuffix)) {
+    const slug = host.slice(0, -socioDevSuffix.length)
+    if (slug && slug !== 'www') {
+      return { slug, isPartner: false, isAdmin: false, isBiker: false, isSocio: true, isProduction: false }
+    }
+  }
+
+  // ── Biker del negocio — producción: [slug].bikers.loyaltyclub.mx ────────
+  const bikerProdSuffix = `.bikers.${PROD_BASE}`
+  if (host.endsWith(bikerProdSuffix)) {
+    const slug = host.slice(0, -bikerProdSuffix.length)
+    if (slug && slug !== 'www') {
+      return { slug, isPartner: false, isAdmin: false, isBiker: true, isSocio: false, isProduction: true }
+    }
+  }
+
+  // ── Biker del negocio — desarrollo: [slug].bikers.localhost ─────────────
+  const bikerDevSuffix = `.bikers.${DEV_BASE}`
+  if (host.endsWith(bikerDevSuffix)) {
+    const slug = host.slice(0, -bikerDevSuffix.length)
+    if (slug && slug !== 'www') {
+      return { slug, isPartner: false, isAdmin: false, isBiker: true, isSocio: false, isProduction: false }
+    }
   }
 
   // ── Partner (staff) — producción: [slug].partners.loyaltyclub.mx ────────
@@ -81,7 +118,7 @@ function parseHostname(hostname: string): ParsedDomain {
   if (host.endsWith(partnerProdSuffix)) {
     const slug = host.slice(0, -partnerProdSuffix.length)
     if (slug && slug !== 'www') {
-      return { slug, isPartner: true, isAdmin: false, isBiker: false, isProduction: true }
+      return { slug, isPartner: true, isAdmin: false, isBiker: false, isSocio: false, isProduction: true }
     }
   }
 
@@ -90,7 +127,7 @@ function parseHostname(hostname: string): ParsedDomain {
   if (host.endsWith(partnerDevSuffix)) {
     const slug = host.slice(0, -partnerDevSuffix.length)
     if (slug && slug !== 'www') {
-      return { slug, isPartner: true, isAdmin: false, isBiker: false, isProduction: false }
+      return { slug, isPartner: true, isAdmin: false, isBiker: false, isSocio: false, isProduction: false }
     }
   }
 
@@ -99,7 +136,7 @@ function parseHostname(hostname: string): ParsedDomain {
   if (host.endsWith(prodSuffix)) {
     const slug = host.slice(0, -prodSuffix.length)
     if (slug && slug !== 'www' && slug !== 'admin' && slug !== 'bikers') {
-      return { slug, isPartner: false, isAdmin: false, isBiker: false, isProduction: true }
+      return { slug, isPartner: false, isAdmin: false, isBiker: false, isSocio: false, isProduction: true }
     }
   }
 
@@ -108,11 +145,11 @@ function parseHostname(hostname: string): ParsedDomain {
   if (host.endsWith(devSuffix)) {
     const slug = host.slice(0, -devSuffix.length)
     if (slug && slug !== 'www' && slug !== 'admin' && slug !== 'bikers') {
-      return { slug, isPartner: false, isAdmin: false, isBiker: false, isProduction: false }
+      return { slug, isPartner: false, isAdmin: false, isBiker: false, isSocio: false, isProduction: false }
     }
   }
 
-  return { slug: null, isPartner: false, isAdmin: false, isBiker: false, isProduction }
+  return { slug: null, isPartner: false, isAdmin: false, isBiker: false, isSocio: false, isProduction }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -234,7 +271,21 @@ export default function proxy(request: NextRequest) {
     }
   }
 
-  const { slug, isPartner, isAdmin, isBiker, isProduction } = parseHostname(hostname)
+  const { slug, isPartner, isAdmin, isBiker, isSocio, isProduction } = parseHostname(hostname)
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // BLOQUE SOCIOS — portal de socios / terminal de cocina para tablets
+  // ══════════════════════════════════════════════════════════════════════════
+  if (isSocio && slug) {
+    return rewriteTo(request, `/socio/${slug}/dashboard`)
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // BLOQUE BIKERS ESPECÍFICO DEL TENANT — [slug].bikers.localhost
+  // ══════════════════════════════════════════════════════════════════════════
+  if (isBiker && slug && slug !== 'bikers') {
+    return rewriteTo(request, `/biker/${slug}/dashboard`)
+  }
 
   // Leer cookies de sesión (server-side, no manipulables por JS cliente)
   const rol     = request.cookies.get('session_rol')?.value

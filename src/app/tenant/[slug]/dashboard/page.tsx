@@ -3859,9 +3859,31 @@ export default function DashboardPage() {
                       
                       {scanSearchedPhone ? (
                         <div className="w-full space-y-4 border-t border-[#f4f4f5] pt-4 mt-2">
-                          <p className="text-xs font-bold text-zinc-700">
-                            Número detectado: <span className="font-mono text-zinc-900 bg-zinc-100 px-2 py-1 rounded">{scanSearchedPhone}</span>
-                          </p>
+                          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-[#fafafa] border border-[#e4e4e7] p-3 rounded-2xl">
+                            <p className="text-xs font-bold text-zinc-700">
+                              Número: <span className="font-mono text-zinc-900 bg-zinc-100 px-2 py-0.5 rounded">{scanSearchedPhone}</span>
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const cleanTel = scanSearchedPhone.replace(/\D/g, '')
+                                const invitationUrl = `https://${slug}.loyaltyclub.mx/unirme?tel=${cleanTel}`
+                                const msg = `¡Muchas gracias por tu compra en ${(business?.nombre || 'La Burrería').toUpperCase()}! 🌯 Te acabamos de regalar una Tarjeta de Lealtad VIP digital para acumular sellos y ganar premios gratis. Reclámala aquí mismo: ${invitationUrl}`
+                                navigator.clipboard.writeText(msg)
+                                setScanToast({
+                                  show: true,
+                                  message: '¡Mensaje copiado! Listo para pegar en WhatsApp Web',
+                                  tipo: 'exito'
+                                })
+                                setTimeout(() => {
+                                  setScanToast(prev => ({ ...prev, show: false }))
+                                }, 3000)
+                              }}
+                              className="bg-emerald-600 hover:bg-emerald-750 text-white font-bold text-[10px] py-1.5 px-3 rounded-xl uppercase tracking-wider transition-colors flex items-center gap-1 cursor-pointer"
+                            >
+                              📋 Copiar Invitación VIP
+                            </button>
+                          </div>
                           <div className="space-y-2 text-left">
                             <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block">Nombre del Cliente</label>
                             <input
