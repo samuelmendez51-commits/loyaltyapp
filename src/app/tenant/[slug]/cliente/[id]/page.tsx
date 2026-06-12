@@ -389,7 +389,7 @@ export default function TarjetaLealtadFinal() {
   const [generandoGoogle, setGenerandoGoogle] = useState(false)
   const [generandoApple, setGenerandoApple] = useState(false)
 
-  const [vistaActiva, setVistaActiva] = useState<'tarjeta' | 'menu' | 'pedido' | 'ubicacion' | 'horarios' | 'redes'>('tarjeta')
+  const [vistaActiva, setVistaActiva] = useState<'tarjeta' | 'menu' | 'pedidos' | 'ubicacion' | 'horarios' | 'redes'>('tarjeta')
   const [mostrarRuleta, setMostrarRuleta] = useState(false)
   const [mostrarGuiaInicio, setMostrarGuiaInicio] = useState(false)
   const [osDetectado, setOsDetectado] = useState<'ios' | 'android' | 'otro'>('ios')
@@ -493,7 +493,7 @@ export default function TarjetaLealtadFinal() {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const tabParam = new URLSearchParams(window.location.search).get('tab')
-      if (tabParam && ['tarjeta', 'menu', 'pedido', 'ubicacion', 'horarios', 'redes'].includes(tabParam)) {
+      if (tabParam && ['tarjeta', 'menu', 'pedidos', 'ubicacion', 'horarios', 'redes'].includes(tabParam)) {
         setVistaActiva(tabParam as any)
       }
     }
@@ -525,7 +525,7 @@ export default function TarjetaLealtadFinal() {
     const L = (window as any).L
     if (!L) return
 
-    const stepCheckout = (pasoMenu === 'checkout')
+    const stepCheckout = (vistaActiva === 'pedidos' && pasoMenu === 'checkout')
     if (!stepCheckout || tipoMenu !== 'delivery') {
       if (mapRef.current) {
         mapRef.current.remove()
@@ -576,7 +576,7 @@ export default function TarjetaLealtadFinal() {
         markerRef.current = null
       }
     }
-  }, [mapaCargado, pasoMenu, tipoMenu, business])
+  }, [mapaCargado, pasoMenu, vistaActiva, tipoMenu, business])
 
   useEffect(() => {
     if (!cliente?.id) return
@@ -1615,11 +1615,59 @@ _Pedido procesado a través de LoyaltyClub VIP_`
         </div>
       )}
 
+      {/* ── Header Global para PC/Tablet ── */}
+      <div className="hidden md:flex flex-col items-center pt-8">
+        <div className="w-20 h-20 rounded-3xl overflow-hidden border-2 border-[#dc2626] shadow-md bg-white mb-3">
+          <img
+            src={programaActivo?.logo_url || business?.logo_url || '/logo.png'}
+            alt={business?.nombre || 'LoyaltyClub'}
+            className="w-full h-full object-cover"
+            onError={(e) => { (e.target as HTMLImageElement).src = '/logo.png' }}
+          />
+        </div>
+        <p className="text-xs text-[#71717a] font-bold uppercase tracking-widest">Club de Fidelización VIP</p>
+        <h1 className="text-2xl font-black text-[#09090b] tracking-tight mt-1">{business?.nombre || 'LoyaltyClub'}</h1>
+      </div>
+
+      {/* ── Barra Superior de Navegación para PC/Tablet (Top Nav) ── */}
+      <div className="hidden md:flex justify-center items-center gap-6 my-6 border-b pb-4 text-sm font-semibold">
+        {[
+          { id: 'tarjeta', label: 'Tarjeta' },
+          { id: 'menu', label: 'Menú' },
+          { id: 'ubicacion', label: 'Mapa/Ubicación' },
+          { id: 'horarios', label: 'Horas/Horarios' },
+          { id: 'redes', label: 'Redes' },
+          { id: 'pedidos', label: 'PEDIDOS' },
+        ].map((tab) => {
+          const activo = vistaActiva === tab.id
+          return (
+            <button
+              key={tab.id}
+              onClick={() => {
+                if (cliente?.id === 'guest' && tab.id === 'pedidos') {
+                  setMostrarModalRegistro(true)
+                } else {
+                  setVistaActiva(tab.id as any)
+                  if (tab.id === 'menu') {
+                    setPasoMenu('menu')
+                  }
+                }
+              }}
+              className={`pb-1 transition-all relative border-b-2 ${
+                activo ? 'border-[#dc2626] text-[#dc2626] font-bold' : 'border-transparent text-[#71717a] hover:text-[#09090b]'
+              }`}
+            >
+              {tab.label}
+            </button>
+          )
+        })}
+      </div>
+
       {/* ── Vista: Tarjeta de Lealtad ── */}
       {vistaActiva === 'tarjeta' && (
         <div className="max-w-sm mx-auto pt-8 px-4 space-y-5 animate-fadeIn">
           {/* Header del negocio */}
-          <div className="flex items-center gap-3">
+          <div className="flex md:hidden items-center gap-3">
             <div className="w-12 h-12 rounded-2xl overflow-hidden border border-[#e4e4e7] shadow-sm bg-white shrink-0">
               <img
                 src={programaActivo?.logo_url || business?.logo_url || '/logo.png'}
@@ -1987,7 +2035,7 @@ _Pedido procesado a través de LoyaltyClub VIP_`
       {vistaActiva === 'menu' && (
         <div className="max-w-sm mx-auto pt-8 px-4 space-y-5 animate-fadeIn text-[#09090b]">
           {/* Header del portal */}
-          <div className="flex items-center gap-3">
+          <div className="flex md:hidden items-center gap-3">
             <div className="w-12 h-12 rounded-2xl overflow-hidden border border-[#e4e4e7] shadow-sm bg-white shrink-0">
               <img
                 src={business?.logo_url || '/logo.png'}
@@ -2132,166 +2180,30 @@ _Pedido procesado a través de LoyaltyClub VIP_`
 
             </div>
           )}
+        </div>
+      )}
 
-          {/* CHECKOUT FLOW */}
-          {pasoMenu === 'checkout' && (
-            <div className="bg-white border border-[#f0f0f0] rounded-3xl p-6 shadow-[0_4px_24px_rgba(0,0,0,0.08)] space-y-6 animate-fadeIn">
-              <div className="flex justify-between items-center">
-                <button onClick={() => setPasoMenu('menu')} className="text-xs text-[#71717a] font-bold hover:text-[#09090b] transition-colors">← Volver al Menú</button>
-                <span className="text-[9px] bg-red-50 border border-red-100 text-[#dc2626] px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider">Paso 2 de 2</span>
-              </div>
-              
-              <div>
-                <h3 className="text-lg font-bold text-[#09090b] tracking-tight">Confirmar Mi Pedido</h3>
-                <p className="text-xs text-[#71717a] mt-0.5">Por favor revisa tu orden y proporciona tus datos de entrega.</p>
-              </div>
-              
-              {/* Resumen Carrito */}
-              <div className="bg-[#fafafa] border border-[#e4e4e7] rounded-2xl p-4 space-y-3 shadow-xs">
-                {cart.map((item, index) => (
-                  <div key={`${item.product.id}-${index}`} className="flex justify-between items-start gap-4 border-b border-[#f4f4f5] pb-2.5 last:border-b-0 last:pb-0">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <button 
-                          onClick={() => setCart(prev => prev.filter((_, idx) => idx !== index))}
-                          className="text-red-500 hover:text-red-700 transition-colors w-4 h-4 rounded-full bg-red-50 hover:bg-red-100 flex items-center justify-center font-bold text-[10px] shrink-0"
-                        >
-                          ×
-                        </button>
-                        <p className="font-bold text-xs text-[#09090b]">{item.cantidad}x {item.product.nombre}</p>
-                      </div>
-                      {Object.keys(item.selecciones).length > 0 && (
-                        <p className="text-[9px] text-[#71717a] mt-0.5 pl-6 font-medium leading-relaxed">
-                          {Object.entries(item.selecciones).map(([key, o]: [string, any]) => {
-                            if (key === 'salsa-aparte') return o ? '🥣 Salsa Aparte' : ''
-                            if (Array.isArray(o)) return o.map(subOpt => `• ${subOpt.nombre}`).join(', ')
-                            return `• ${o?.nombre || ''}`
-                          }).filter(Boolean).join(', ')}
-                        </p>
-                      )}
-                    </div>
-                    <p className="text-[#dc2626] font-mono font-bold text-xs shrink-0">${item.subtotal.toLocaleString()} MXN</p>
-                  </div>
-                ))}
-                
-                <div className="border-t border-[#e4e4e7] pt-3 flex justify-between font-black text-sm">
-                  <span className="text-[#09090b]">Total</span>
-                  <span className="text-[#dc2626] text-base">${totalCarrito.toLocaleString()} MXN</span>
-                </div>
-                
-                {totalCarrito >= (business?.monto_minimo_sello || 0) ? (
-                  <p className="text-green-700 text-[10px] font-bold text-center bg-green-50 border border-green-200 rounded-xl py-2">
-                    ⭐ ¡Felicidades! Este pedido califica para recibir un sello VIP.
-                  </p>
-                ) : (
-                  <p className="text-[#71717a] text-[9px] font-medium text-center bg-[#f4f4f5] rounded-xl py-2">
-                    Agrega ${((business?.monto_minimo_sello || 0) - totalCarrito).toLocaleString()} MXN más para ganar un sello.
-                  </p>
-                )}
-              </div>
-              
-              {/* Datos del Cliente */}
-              <div className="space-y-4">
-                {[
-                  { key: 'nombre', label: 'Nombre completo', placeholder: 'Juan García', type: 'text' },
-                  { key: 'telefono', label: 'Número de teléfono', placeholder: '3221234567', type: 'tel' },
-                ].map(field => (
-                  <div key={field.key}>
-                    <label className="text-[10px] text-[#52525b] uppercase tracking-widest font-bold block mb-1">{field.label}</label>
-                    <input
-                      type={field.type}
-                      value={form[field.key as keyof typeof form]}
-                      onChange={e => setForm(prev => ({ ...prev, [field.key]: e.target.value }))}
-                      placeholder={field.placeholder}
-                      className="w-full bg-[#fafafa] border border-[#e4e4e7] rounded-xl px-3.5 py-2.5 text-[#09090b] text-xs focus:outline-none focus:border-[#dc2626] transition-colors font-medium"
-                    />
-                  </div>
-                ))}
-
-                {tipoMenu === 'delivery' && (
-                  <div className="space-y-4 border-t border-[#e4e4e7] pt-4">
-                    <h3 className="text-xs font-bold text-[#09090b] uppercase tracking-wider mb-2">📍 Dirección de Entrega</h3>
-                    
-                    {[
-                      { key: 'calle', label: 'Calle', placeholder: 'Av. Principal', type: 'text' },
-                      { key: 'numero', label: 'Número', placeholder: '123', type: 'text' },
-                      { key: 'colonia', label: 'Colonia', placeholder: 'Centro', type: 'text' },
-                      { key: 'referencia', label: 'Referencia / Entre calles (Opcional)', placeholder: 'Frente al parque, portón café', type: 'text' },
-                    ].map(field => (
-                      <div key={field.key}>
-                        <label className="text-[10px] text-[#52525b] uppercase tracking-widest font-bold block mb-1">{field.label}</label>
-                        <input
-                          type={field.type}
-                          value={form[field.key as keyof typeof form]}
-                          onChange={e => setForm(prev => ({ ...prev, [field.key]: e.target.value }))}
-                          placeholder={field.placeholder}
-                          className="w-full bg-[#fafafa] border border-[#e4e4e7] rounded-xl px-3.5 py-2.5 text-[#09090b] text-xs focus:outline-none focus:border-[#dc2626] transition-colors font-medium"
-                        />
-                      </div>
-                    ))}
-
-                    {/* Leaflet Map Selector */}
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] text-[#52525b] uppercase tracking-widest font-bold block">Ubicación GPS (Arrastra el Pin)</label>
-                      <p className="text-[10px] text-[#71717a] font-medium leading-normal">
-                        Para asegurar que el repartidor llegue sin contratiempos, arrastra el marcador azul exactamente a donde está tu ubicación.
-                      </p>
-                      <div
-                        id="mapa-cliente-checkout"
-                        style={{ height: '240px' }}
-                        className="w-full rounded-2xl border border-[#e4e4e7] overflow-hidden bg-zinc-50 relative shadow-inner mt-2 z-0"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* Método de Pago */}
-                <div className="border-t border-[#e4e4e7] pt-4 space-y-2">
-                  <label className="text-[10px] text-[#52525b] uppercase tracking-widest font-bold block">Método de Pago</label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setMetodoPago('efectivo')}
-                      className={`py-3 px-4 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 ${
-                        metodoPago === 'efectivo'
-                          ? 'bg-[#dc2626] border-[#dc2626] text-white shadow-sm'
-                          : 'bg-white border-[#e4e4e7] text-[#52525b] hover:bg-zinc-50'
-                      }`}
-                    >
-                      💵 Efectivo
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setMetodoPago('transferencia')}
-                      className={`py-3 px-4 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 ${
-                        metodoPago === 'transferencia'
-                          ? 'bg-[#dc2626] border-[#dc2626] text-white shadow-sm'
-                          : 'bg-white border-[#e4e4e7] text-[#52525b] hover:bg-zinc-50'
-                      }`}
-                    >
-                      🏦 Transferencia
-                    </button>
-                  </div>
-                  {metodoPago === 'transferencia' && (
-                    <p className="text-[9px] text-[#71717a] italic mt-1.5 font-medium leading-relaxed bg-[#f4f4f5] p-2.5 rounded-xl border border-[#e4e4e7]">
-                      *Nota: Los pagos por transferencia deberán ser confirmados por el restaurante antes de proceder con el envío de tu pedido. Envía tu comprobante cuando seas redirigido a WhatsApp.
-                    </p>
-                  )}
-                </div>
-              </div>
-              
-              <button
-                onClick={crearPedido}
-                disabled={!form.nombre || !form.telefono || fueraDeHorario || enviando}
-                className="w-full bg-[#dc2626] hover:bg-[#b91c1c] text-white font-black py-4 rounded-2xl uppercase tracking-widest text-xs transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-md shadow-red-500/10 active:scale-95"
-              >
-                {enviando ? 'Procesando...' : '📦 Confirmar y Enviar a WhatsApp'}
-              </button>
+      {/* ── Vista: Hacer Pedido (PEDIDOS) ── */}
+      {vistaActiva === 'pedidos' && (
+        <div className="max-w-sm mx-auto pt-8 px-4 space-y-5 animate-fadeIn text-[#09090b]">
+          {/* Header del portal - ocultar en PC */}
+          <div className="flex md:hidden items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl overflow-hidden border border-[#e4e4e7] shadow-sm bg-white shrink-0">
+              <img
+                src={business?.logo_url || '/logo.png'}
+                alt={business?.nombre || 'LoyaltyClub'}
+                className="w-full h-full object-cover"
+                onError={(e) => { (e.target as HTMLImageElement).src = '/logo.png' }}
+              />
             </div>
-          )}
+            <div>
+              <p className="text-xs text-[#71717a] font-medium">Pedidos & Club VIP</p>
+              <h1 className="text-base font-bold text-[#09090b] tracking-tight">{business?.nombre || 'LoyaltyClub'}</h1>
+            </div>
+          </div>
 
           {/* CONFIRMATION FLOW */}
-          {pasoMenu === 'confirmado' && (
+          {pasoMenu === 'confirmado' ? (
             <div className="bg-white border border-[#f0f0f0] rounded-3xl p-8 shadow-[0_4px_24px_rgba(0,0,0,0.08)] text-center space-y-5 animate-fadeIn">
               <div className="w-16 h-16 rounded-full bg-green-50 border border-green-200 flex items-center justify-center mx-auto text-green-600">
                 <span className="text-3xl">🎉</span>
@@ -2317,44 +2229,188 @@ _Pedido procesado a través de LoyaltyClub VIP_`
                 onClick={() => {
                   setCart([])
                   setPasoMenu('menu')
+                  setVistaActiva('menu')
                 }}
                 className="w-full bg-[#dc2626] hover:bg-[#b91c1c] text-white font-black py-3.5 rounded-xl text-xs uppercase tracking-widest shadow-md transition-all active:scale-95"
               >
                 Aceptar y Volver al Menú
               </button>
             </div>
-          )}
-        </div>
-      )}
-
-      {/* ── Vista: Hacer Pedido ── */}
-      {vistaActiva === 'pedido' && (
-        <div className="max-w-sm mx-auto pt-8 px-4 animate-fadeIn">
-          <h2 className="text-xl font-bold text-[#09090b] mb-6">Hacer un Pedido</h2>
-          {business?.telefono_whatsapp ? (
-            <div className="space-y-4">
-              <div className="bg-white border border-[#e4e4e7] rounded-2xl p-5 shadow-sm">
-                <p className="text-sm text-[#71717a] mb-4">Haz tu pedido directamente por WhatsApp con el negocio.</p>
-                <a
-                  href={`https://wa.me/${'52' + (business.telefono_whatsapp || '').replace(/\D/g, '').slice(-10)}?text=${encodeURIComponent(`Hola! Soy ${cliente.nombre} (Socio VIP ID: ${cliente.id.substring(0, 8)}) y quiero hacer un pedido.`)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn-primary w-full py-3.5 text-sm flex items-center justify-center gap-2"
-                  style={{ backgroundColor: '#25D366', boxShadow: '0 2px 12px rgba(37,211,102,0.3)' }}
-                >
-                  <svg viewBox="0 0 24 24" className="w-5 h-5 fill-current text-white">
-                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-                  </svg>
-                  Pedir por WhatsApp
-                </a>
-              </div>
-            </div>
           ) : (
-            <div className="bg-white rounded-2xl p-8 text-center border border-[#e4e4e7] shadow-sm">
-              <p className="text-4xl mb-3">📲</p>
-              <p className="font-bold text-[#09090b]">Pedidos No Configurados</p>
-              <p className="text-xs text-[#71717a] mt-1">El negocio aún no ha configurado el canal de pedidos.</p>
-            </div>
+            /* Si no está confirmado */
+            cart.length === 0 ? (
+              /* Carrito Vacío */
+              <div className="bg-white border border-[#f0f0f0] rounded-3xl p-8 shadow-[0_4px_24px_rgba(0,0,0,0.08)] text-center space-y-5 animate-fadeIn">
+                <div className="text-4xl">🛒</div>
+                <div className="space-y-1">
+                  <h3 className="text-base font-bold text-[#09090b]">Tu carrito está vacío</h3>
+                  <p className="text-xs text-[#71717a] leading-relaxed">
+                    Aún no has agregado productos a tu orden. ¡Explora nuestro menú digital!
+                  </p>
+                </div>
+                <button
+                  onClick={() => setVistaActiva('menu')}
+                  className="w-full bg-[#09090b] hover:bg-zinc-800 text-white font-black py-3 rounded-xl text-xs uppercase tracking-widest transition-all active:scale-95 shadow-sm"
+                >
+                  Ver Menú Digital
+                </button>
+              </div>
+            ) : (
+              /* CHECKOUT FLOW */
+              <div className="bg-white border border-[#f0f0f0] rounded-3xl p-6 shadow-[0_4px_24px_rgba(0,0,0,0.08)] space-y-6 animate-fadeIn">
+                <div className="flex justify-between items-center">
+                  <button onClick={() => { setVistaActiva('menu'); setPasoMenu('menu'); }} className="text-xs text-[#71717a] font-bold hover:text-[#09090b] transition-colors">← Volver al Menú</button>
+                  <span className="text-[9px] bg-red-50 border border-red-100 text-[#dc2626] px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider">Paso 2 de 2</span>
+                </div>
+                
+                <div>
+                  <h3 className="text-lg font-bold text-[#09090b] tracking-tight">Confirmar Mi Pedido</h3>
+                  <p className="text-xs text-[#71717a] mt-0.5">Por favor revisa tu orden y proporciona tus datos de entrega.</p>
+                </div>
+                
+                {/* Resumen Carrito */}
+                <div className="bg-[#fafafa] border border-[#e4e4e7] rounded-2xl p-4 space-y-3 shadow-xs">
+                  {cart.map((item, index) => (
+                    <div key={`${item.product.id}-${index}`} className="flex justify-between items-start gap-4 border-b border-[#f4f4f5] pb-2.5 last:border-b-0 last:pb-0">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <button 
+                            onClick={() => setCart(prev => prev.filter((_, idx) => idx !== index))}
+                            className="text-red-500 hover:text-red-700 transition-colors w-4 h-4 rounded-full bg-red-50 hover:bg-red-100 flex items-center justify-center font-bold text-[10px] shrink-0"
+                          >
+                            ×
+                          </button>
+                          <p className="font-bold text-xs text-[#09090b]">{item.cantidad}x {item.product.nombre}</p>
+                        </div>
+                        {Object.keys(item.selecciones).length > 0 && (
+                          <p className="text-[9px] text-[#71717a] mt-0.5 pl-6 font-medium leading-relaxed">
+                            {Object.entries(item.selecciones).map(([key, o]: [string, any]) => {
+                              if (key === 'salsa-aparte') return o ? '🥣 Salsa Aparte' : ''
+                              if (Array.isArray(o)) return o.map(subOpt => `• ${subOpt.nombre}`).join(', ')
+                              return `• ${o?.nombre || ''}`
+                            }).filter(Boolean).join(', ')}
+                          </p>
+                        )}
+                      </div>
+                      <p className="text-[#dc2626] font-mono font-bold text-xs shrink-0">${item.subtotal.toLocaleString()} MXN</p>
+                    </div>
+                  ))}
+                  
+                  <div className="border-t border-[#e4e4e7] pt-3 flex justify-between font-black text-sm">
+                    <span className="text-[#09090b]">Total</span>
+                    <span className="text-[#dc2626] text-base">${totalCarrito.toLocaleString()} MXN</span>
+                  </div>
+                  
+                  {totalCarrito >= (business?.monto_minimo_sello || 0) ? (
+                    <p className="text-green-700 text-[10px] font-bold text-center bg-green-50 border border-green-200 rounded-xl py-2">
+                      ⭐ ¡Felicidades! Este pedido califica para recibir un sello VIP.
+                    </p>
+                  ) : (
+                    <p className="text-[#71717a] text-[9px] font-medium text-center bg-[#f4f4f5] rounded-xl py-2">
+                      Agrega ${((business?.monto_minimo_sello || 0) - totalCarrito).toLocaleString()} MXN más para ganar un sello.
+                    </p>
+                  )}
+                </div>
+                
+                {/* Datos del Cliente */}
+                <div className="space-y-4">
+                  {[
+                    { key: 'nombre', label: 'Nombre completo', placeholder: 'Juan García', type: 'text' },
+                    { key: 'telefono', label: 'Número de teléfono', placeholder: '3221234567', type: 'tel' },
+                  ].map(field => (
+                    <div key={field.key}>
+                      <label className="text-[10px] text-[#52525b] uppercase tracking-widest font-bold block mb-1">{field.label}</label>
+                      <input
+                        type={field.type}
+                        value={form[field.key as keyof typeof form]}
+                        onChange={e => setForm(prev => ({ ...prev, [field.key]: e.target.value }))}
+                        placeholder={field.placeholder}
+                        className="w-full bg-[#fafafa] border border-[#e4e4e7] rounded-xl px-3.5 py-2.5 text-[#09090b] text-xs focus:outline-none focus:border-[#dc2626] transition-colors font-medium"
+                      />
+                    </div>
+                  ))}
+
+                  {tipoMenu === 'delivery' && (
+                    <div className="space-y-4 border-t border-[#e4e4e7] pt-4">
+                      <h3 className="text-xs font-bold text-[#09090b] uppercase tracking-wider mb-2">📍 Dirección de Entrega</h3>
+                      
+                      {[
+                        { key: 'calle', label: 'Calle', placeholder: 'Av. Principal', type: 'text' },
+                        { key: 'numero', label: 'Número', placeholder: '123', type: 'text' },
+                        { key: 'colonia', label: 'Colonia', placeholder: 'Centro', type: 'text' },
+                        { key: 'referencia', label: 'Referencia / Entre calles (Opcional)', placeholder: 'Frente al parque, portón café', type: 'text' },
+                      ].map(field => (
+                        <div key={field.key}>
+                          <label className="text-[10px] text-[#52525b] uppercase tracking-widest font-bold block mb-1">{field.label}</label>
+                          <input
+                            type={field.type}
+                            value={form[field.key as keyof typeof form]}
+                            onChange={e => setForm(prev => ({ ...prev, [field.key]: e.target.value }))}
+                            placeholder={field.placeholder}
+                            className="w-full bg-[#fafafa] border border-[#e4e4e7] rounded-xl px-3.5 py-2.5 text-[#09090b] text-xs focus:outline-none focus:border-[#dc2626] transition-colors font-medium"
+                          />
+                        </div>
+                      ))}
+
+                      {/* Leaflet Map Selector */}
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] text-[#52525b] uppercase tracking-widest font-bold block">Ubicación GPS (Arrastra el Pin)</label>
+                        <p className="text-[10px] text-[#71717a] font-medium leading-normal">
+                          Para asegurar que el repartidor llegue sin contratiempos, arrastra el marcador azul exactamente a donde está tu ubicación.
+                        </p>
+                        <div
+                          id="mapa-cliente-checkout"
+                          style={{ height: '240px' }}
+                          className="w-full rounded-2xl border border-[#e4e4e7] overflow-hidden bg-zinc-50 relative shadow-inner mt-2 z-0"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Método de Pago */}
+                  <div className="border-t border-[#e4e4e7] pt-4 space-y-2">
+                    <label className="text-[10px] text-[#52525b] uppercase tracking-widest font-bold block">Método de Pago</label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setMetodoPago('efectivo')}
+                        className={`py-3 px-4 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 ${
+                          metodoPago === 'efectivo'
+                            ? 'bg-[#dc2626] border-[#dc2626] text-white shadow-sm'
+                            : 'bg-white border-[#e4e4e7] text-[#52525b] hover:bg-zinc-50'
+                        }`}
+                      >
+                        💵 Efectivo
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMetodoPago('transferencia')}
+                        className={`py-3 px-4 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 ${
+                          metodoPago === 'transferencia'
+                            ? 'bg-[#dc2626] border-[#dc2626] text-white shadow-sm'
+                            : 'bg-white border-[#e4e4e7] text-[#52525b] hover:bg-zinc-50'
+                        }`}
+                      >
+                        🏦 Transferencia
+                      </button>
+                    </div>
+                    {metodoPago === 'transferencia' && (
+                      <p className="text-[9px] text-[#71717a] italic mt-1.5 font-medium leading-relaxed bg-[#f4f4f5] p-2.5 rounded-xl border border-[#e4e4e7]">
+                        *Nota: Los pagos por transferencia deberán ser confirmados por el restaurante antes de proceder con el envío de tu pedido. Envía tu comprobante cuando seas redirigido a WhatsApp.
+                      </p>
+                    )}
+                  </div>
+                </div>
+                
+                <button
+                  onClick={crearPedido}
+                  disabled={!form.nombre || !form.telefono || fueraDeHorario || enviando}
+                  className="w-full bg-[#dc2626] hover:bg-[#b91c1c] text-white font-black py-4 rounded-2xl uppercase tracking-widest text-xs transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-md shadow-red-500/10 active:scale-95"
+                >
+                  {enviando ? 'Procesando...' : '📦 Confirmar y Enviar a WhatsApp'}
+                </button>
+              </div>
+            )
           )}
         </div>
       )}
@@ -2363,7 +2419,7 @@ _Pedido procesado a través de LoyaltyClub VIP_`
       {vistaActiva === 'ubicacion' && (
         <div className="max-w-sm mx-auto pt-8 px-4 space-y-5 animate-fadeIn">
           {/* Header */}
-          <div className="flex items-center gap-3">
+          <div className="flex md:hidden items-center gap-3">
             <div className="w-12 h-12 rounded-2xl overflow-hidden border border-[#e4e4e7] shadow-sm bg-white shrink-0">
               <img
                 src={business?.logo_url || '/logo.png'}
@@ -2424,7 +2480,7 @@ _Pedido procesado a través de LoyaltyClub VIP_`
       {vistaActiva === 'horarios' && (
         <div className="max-w-sm mx-auto pt-8 px-4 space-y-5 animate-fadeIn">
           {/* Header */}
-          <div className="flex items-center gap-3">
+          <div className="flex md:hidden items-center gap-3">
             <div className="w-12 h-12 rounded-2xl overflow-hidden border border-[#e4e4e7] shadow-sm bg-white shrink-0">
               <img
                 src={business?.logo_url || '/logo.png'}
@@ -2503,7 +2559,7 @@ _Pedido procesado a través de LoyaltyClub VIP_`
       {vistaActiva === 'redes' && (
         <div className="max-w-sm mx-auto pt-8 px-4 space-y-5 animate-fadeIn">
           {/* Header */}
-          <div className="flex items-center gap-3">
+          <div className="flex md:hidden items-center gap-3">
             <div className="w-12 h-12 rounded-2xl overflow-hidden border border-[#e4e4e7] shadow-sm bg-white shrink-0">
               <img
                 src={business?.logo_url || '/logo.png'}
@@ -2587,7 +2643,7 @@ _Pedido procesado a través de LoyaltyClub VIP_`
       )}
 
       {/* ── Bottom Navigation Bar ── */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-[#e4e4e7] shadow-[0_-4px_20px_rgba(0,0,0,0.06)] z-40">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-[#e4e4e7] shadow-[0_-4px_20px_rgba(0,0,0,0.06)] z-40">
         <div className="max-w-sm mx-auto flex justify-around px-1">
           {[
             {
@@ -2616,8 +2672,8 @@ _Pedido procesado a través de LoyaltyClub VIP_`
               icon: Share2,
             },
             {
-              id: 'pedido',
-              label: 'Pedir',
+              id: 'pedidos',
+              label: 'Pedidos',
               icon: Bell,
             },
           ].map((tab) => {
@@ -2627,10 +2683,13 @@ _Pedido procesado a través de LoyaltyClub VIP_`
               <button
                 key={tab.id}
                 onClick={() => {
-                  if (cliente?.id === 'guest' && tab.id === 'pedido') {
+                  if (cliente?.id === 'guest' && tab.id === 'pedidos') {
                     setMostrarModalRegistro(true)
                   } else {
                     setVistaActiva(tab.id as any)
+                    if (tab.id === 'menu') {
+                      setPasoMenu('menu')
+                    }
                   }
                 }}
                 className={`flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 transition-all relative ${
@@ -2825,6 +2884,7 @@ _Pedido procesado a través de LoyaltyClub VIP_`
                 if (cliente?.id === 'guest') {
                   setMostrarModalRegistro(true)
                 } else {
+                  setVistaActiva('pedidos')
                   setPasoMenu('checkout')
                 }
               }}

@@ -52,6 +52,11 @@ interface Business {
   longitude: number
   created_at: string
   business_users?: BusinessUser[]
+  plan_vitalicio?: boolean
+  portal_cliente_enabled?: boolean
+  terminal_cocina_enabled?: boolean
+  logistica_bikers_enabled?: boolean
+  ruleta_vip_enabled?: boolean
 }
 
 interface CreditTransaction {
@@ -251,7 +256,7 @@ export default function SuperAdminPage() {
 
   // Estados de Registro
   const [nuevoBiz, setNuevoBiz] = useState({
-    nombre: '', slug: '', ownerName: '', ownerEmail: '', pin: '9999', plan: 'mensual', creditos: 1
+    nombre: '', slug: '', ownerName: '', ownerEmail: '', pin: '9999', plan: 'mensual', creditos: 1, planVitalicio: false
   })
   const [creando, setCreando] = useState(false)
 
@@ -329,11 +334,16 @@ export default function SuperAdminPage() {
           owner_name: nuevoBiz.ownerName.trim(),
           owner_email: nuevoBiz.ownerEmail.trim().toLowerCase(),
           plan: nuevoBiz.plan,
-          estado: nuevoBiz.plan === 'demo' ? 'demo' : 'activo',
+          estado: nuevoBiz.planVitalicio ? 'activo' : (nuevoBiz.plan === 'demo' ? 'demo' : 'activo'),
           creditos_totales: Number(nuevoBiz.creditos),
           creditos_usados: Number(nuevoBiz.creditos),
-          fecha_vencimiento: fin.toISOString(),
-          es_demo: nuevoBiz.plan === 'demo'
+          fecha_vencimiento: nuevoBiz.planVitalicio ? null : fin.toISOString(),
+          es_demo: nuevoBiz.plan === 'demo',
+          plan_vitalicio: nuevoBiz.planVitalicio,
+          portal_cliente_enabled: true,
+          terminal_cocina_enabled: true,
+          logistica_bikers_enabled: true,
+          ruleta_vip_enabled: true
         })
         .select()
         .single()
@@ -379,7 +389,7 @@ export default function SuperAdminPage() {
       alert('✅ Negocio y Administrador SaaS registrados con éxito')
       setModalRegistrar(false)
       setNuevoBiz({
-        nombre: '', slug: '', ownerName: '', ownerEmail: '', pin: '9999', plan: 'mensual', creditos: 1
+        nombre: '', slug: '', ownerName: '', ownerEmail: '', pin: '9999', plan: 'mensual', creditos: 1, planVitalicio: false
       })
       cargar()
     } catch (err: any) {
@@ -811,10 +821,18 @@ export default function SuperAdminPage() {
                               </td>
                               {/* Vigencia */}
                               <td className="px-4 py-4">
-                                <p className="text-[#52525b] font-mono mb-0.5">
-                                  {new Date(b.fecha_vencimiento).toLocaleDateString('es-MX')}
-                                </p>
-                                <Countdown fechaVencimiento={b.fecha_vencimiento} />
+                                {b.plan_vitalicio ? (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase bg-emerald-100 text-emerald-800 border border-emerald-250">
+                                    💎 VITALICIO
+                                  </span>
+                                ) : (
+                                  <>
+                                    <p className="text-[#52525b] font-mono mb-0.5">
+                                      {b.fecha_vencimiento ? new Date(b.fecha_vencimiento).toLocaleDateString('es-MX') : '—'}
+                                    </p>
+                                    {b.fecha_vencimiento && <Countdown fechaVencimiento={b.fecha_vencimiento} />}
+                                  </>
+                                )}
                               </td>
                               {/* Prohibir / Bloquear */}
                               <td className="px-4 py-4">
@@ -1032,6 +1050,18 @@ export default function SuperAdminPage() {
                   className="input-clean text-xs focus:border-[#dc2626]"
                   required
                 />
+              </div>
+
+              <div className="flex items-center pt-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={nuevoBiz.planVitalicio}
+                    onChange={e => setNuevoBiz(prev => ({ ...prev, planVitalicio: e.target.checked }))}
+                    className="w-4 h-4 accent-[#dc2626]"
+                  />
+                  <span className="text-xs font-semibold text-[#3f3f46]">Modalidad Permanente (Plan Vitalicio)</span>
+                </label>
               </div>
 
               <div className="bg-[#fafafa] border border-[#e4e4e7] rounded-xl p-4 text-xs space-y-1">
@@ -1309,6 +1339,12 @@ function EditarBusinessModal({
   const [creditosTotales, setCreditosTotales] = useState(business.creditos_totales)
   const [creditosUsados, setCreditosUsados] = useState(business.creditos_usados)
   
+  const [planVitalicio, setPlanVitalicio] = useState(business.plan_vitalicio || false)
+  const [portalClienteEnabled, setPortalClienteEnabled] = useState(business.portal_cliente_enabled ?? true)
+  const [terminalCocinaEnabled, setTerminalCocinaEnabled] = useState(business.terminal_cocina_enabled ?? true)
+  const [logisticaBikersEnabled, setLogisticaBikersEnabled] = useState(business.logistica_bikers_enabled ?? true)
+  const [ruletaVipEnabled, setRuletaVipEnabled] = useState(business.ruleta_vip_enabled ?? true)
+  
   // Buscar PIN/Contraseña actual de la base de datos
   const adminUser = business.business_users?.find(u => u.rol === 'admin_comercio')
   const [nuevoPin, setNuevoPin] = useState(adminUser?.pin || '')
@@ -1340,9 +1376,14 @@ function EditarBusinessModal({
           plan,
           estado,
           es_demo: esDemo,
-          fecha_vencimiento: new Date(fechaVencimiento).toISOString(),
+          fecha_vencimiento: planVitalicio ? null : (fechaVencimiento ? new Date(fechaVencimiento).toISOString() : null),
           creditos_totales: Number(creditosTotales),
-          creditos_usados: Number(creditosUsados)
+          creditos_usados: Number(creditosUsados),
+          plan_vitalicio: planVitalicio,
+          portal_cliente_enabled: portalClienteEnabled,
+          terminal_cocina_enabled: terminalCocinaEnabled,
+          logistica_bikers_enabled: logisticaBikersEnabled,
+          ruleta_vip_enabled: ruletaVipEnabled
         })
         .eq('id', business.id)
 
@@ -1373,19 +1414,49 @@ function EditarBusinessModal({
   }
 
   const eliminarNegocio = async () => {
+    const lowerName = business.nombre.trim().toLowerCase();
+    const lowerSlug = business.slug.trim().toLowerCase();
+    if (lowerSlug === 'laburreria' || lowerName === 'la burrería' || lowerName === 'laburreria') {
+      alert("⚠️ ERROR CRÍTICO: Este negocio pertenece al núcleo maestro de la plataforma y está protegido contra eliminación.");
+      return;
+    }
+
     if (!confirm(`¿ESTÁS ABSOLUTAMENTE SEGURO de eliminar el negocio "${business.nombre}"?\nEsta acción es irreversible y borrará sucursales, cajeros, clientes, menús y TODO el historial.`)) return
     if (prompt(`Escribe el nombre del negocio "${business.nombre}" para confirmar la eliminación:`) !== business.nombre) {
       return alert('Confirmación incorrecta. Eliminación cancelada.')
     }
     setCargando(true)
-    const { error } = await supabase.from('businesses').delete().eq('id', business.id)
-    if (error) {
-      alert('Error al eliminar el negocio: ' + error.message)
-    } else {
-      alert('🗑️ Negocio eliminado con éxito')
-      onSuccess()
+    try {
+      // 1. Limpiar audit_logs
+      await supabase.from('audit_logs').delete().eq('business_id', business.id)
+      // 2. Limpiar tracking_events
+      await supabase.from('tracking_events').delete().eq('business_id', business.id)
+      // 3. Limpiar credit_transactions
+      await supabase.from('credit_transactions').delete().eq('business_id', business.id)
+      // 4. Limpiar orders
+      await supabase.from('orders').delete().eq('business_id', business.id)
+      // 5. Limpiar historial_puntos
+      await supabase.from('historial_puntos').delete().eq('business_id', business.id)
+      // 6. Limpiar clientes
+      await supabase.from('clientes').delete().eq('business_id', business.id)
+      // 7. Limpiar programas_fidelidad
+      await supabase.from('programas_fidelidad').delete().eq('business_id', business.id)
+      // 8. Limpiar ruletas
+      await supabase.from('ruletas').delete().eq('business_id', business.id)
+
+      // Finalmente, eliminar negocio
+      const { error } = await supabase.from('businesses').delete().eq('id', business.id)
+      if (error) {
+        throw error
+      } else {
+        alert('🗑️ Negocio eliminado con éxito')
+        onSuccess()
+      }
+    } catch (err: any) {
+      alert('Error al eliminar el negocio: ' + err.message)
+    } finally {
+      setCargando(false)
     }
-    setCargando(false)
   }
 
   return (
@@ -1530,14 +1601,72 @@ function EditarBusinessModal({
           </div>
 
           <div>
-            <label className="text-[10px] text-[#52525b] uppercase font-bold block mb-1">Fecha de Vencimiento *</label>
+            <label className="text-[10px] text-[#52525b] uppercase font-bold block mb-1">Fecha de Vencimiento</label>
             <input
               type="datetime-local"
-              value={fechaVencimiento}
+              value={planVitalicio ? '' : fechaVencimiento}
               onChange={e => setFechaVencimiento(e.target.value)}
-              className="input-clean text-xs focus:border-[#dc2626]"
-              required
+              className="input-clean text-xs focus:border-[#dc2626] disabled:opacity-50"
+              required={!planVitalicio}
+              disabled={planVitalicio}
             />
+          </div>
+
+          <div className="border-t border-[#f4f4f5] pt-4 space-y-4">
+            <div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={planVitalicio}
+                  onChange={e => setPlanVitalicio(e.target.checked)}
+                  className="w-4 h-4 accent-[#dc2626]"
+                />
+                <span className="text-xs font-semibold text-[#09090b]">Modalidad Permanente (Plan Vitalicio)</span>
+              </label>
+              <p className="text-[10px] text-[#71717a] ml-6">Ignora la fecha de vencimiento y mantiene activa la cuenta de por vida.</p>
+            </div>
+
+            <div className="space-y-2.5">
+              <h3 className="text-[10px] text-[#52525b] uppercase font-bold tracking-wider">Características del Plan</h3>
+              <div className="space-y-2 bg-[#fafafa] border border-[#e4e4e7] rounded-xl p-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={portalClienteEnabled}
+                    onChange={e => setPortalClienteEnabled(e.target.checked)}
+                    className="w-4 h-4 accent-[#dc2626]"
+                  />
+                  <span className="text-xs font-medium text-[#3f3f46]">Habilitar Portal de Cliente VIP (Menú Inteligente y Tarjetas)</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={terminalCocinaEnabled}
+                    onChange={e => setTerminalCocinaEnabled(e.target.checked)}
+                    className="w-4 h-4 accent-[#dc2626]"
+                  />
+                  <span className="text-xs font-medium text-[#3f3f46]">Habilitar Terminal de Cocina (Portal de Socios para Tablets)</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={logisticaBikersEnabled}
+                    onChange={e => setLogisticaBikersEnabled(e.target.checked)}
+                    className="w-4 h-4 accent-[#dc2626]"
+                  />
+                  <span className="text-xs font-medium text-[#3f3f46]">Habilitar Logística Inteligente (Portal de Bikers/Repartidores)</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={ruletaVipEnabled}
+                    onChange={e => setRuletaVipEnabled(e.target.checked)}
+                    className="w-4 h-4 accent-[#dc2626]"
+                  />
+                  <span className="text-xs font-medium text-[#3f3f46]">Habilitar Módulo de Ruleta VIP (Gamificación)</span>
+                </label>
+              </div>
+            </div>
           </div>
 
           <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-[#f4f4f5] justify-between items-center">

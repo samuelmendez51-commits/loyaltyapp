@@ -77,7 +77,7 @@ export default function SuperAdminLoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="input-clean text-xs pl-10 py-3 focus:border-[#eab308]"
-                placeholder="samen_mg@hotmail.com"
+                placeholder="admin@loyaltyclub.mx"
               />
               <Mail className="w-4 h-4 text-[#a1a1aa] absolute left-3 top-3.5" />
             </div>
