@@ -43,6 +43,7 @@ interface Order {
   entregado_at?: string
   lat_entrega?: number
   lng_entrega?: number
+  delayed_minutes?: number
 }
 
 export default function BikerDashboardPage() {
@@ -279,6 +280,13 @@ export default function BikerDashboardPage() {
                 return (
                   <div key={order.id} className="bg-zinc-900 border-2 border-emerald-500 rounded-3xl p-5 shadow-2xl relative overflow-hidden space-y-4 animate-fadeIn">
                     
+                    {order.delayed_minutes && order.delayed_minutes > 0 ? (
+                      <div className="bg-rose-600 text-white border border-rose-500 rounded-2xl p-4 text-xs font-black flex items-center gap-2 animate-pulse uppercase tracking-wider text-center justify-center">
+                        <AlertTriangle className="w-4.5 h-4.5 shrink-0" />
+                        <span>⚠️ COCINA REPORTA RETRASO DE {order.delayed_minutes} MINUTOS EN ESTA ORDEN</span>
+                      </div>
+                    ) : null}
+
                     {/* Alerta de ruta activa */}
                     <div className="flex justify-between items-start">
                       <div>
@@ -410,6 +418,13 @@ export default function BikerDashboardPage() {
                 return (
                   <div key={order.id} className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-lg space-y-4 relative overflow-hidden animate-fadeIn">
                     
+                    {order.delayed_minutes && order.delayed_minutes > 0 ? (
+                      <div className="bg-rose-600 text-white border border-rose-500 rounded-2xl p-4 text-xs font-black flex items-center gap-2 animate-pulse uppercase tracking-wider text-center justify-center">
+                        <AlertTriangle className="w-4.5 h-4.5 shrink-0" />
+                        <span>⚠️ COCINA REPORTA RETRASO DE {order.delayed_minutes} MINUTOS EN ESTA ORDEN</span>
+                      </div>
+                    ) : null}
+
                     {/* Alerta de Pedido Solicitado */}
                     <div className="flex justify-between items-start">
                       <div>
@@ -437,11 +452,13 @@ export default function BikerDashboardPage() {
                     {/* Botón Tomar Pedido Gigante */}
                     <button
                       onClick={() => handleTomarPedido(order.id)}
-                      disabled={procesandoId === order.id}
+                      disabled={procesandoId === order.id || miRuta.length >= 3}
                       className="w-full bg-blue-600 hover:bg-blue-500 active:scale-95 disabled:opacity-50 text-white font-black text-sm uppercase py-4.5 rounded-2xl transition-all shadow-lg shadow-blue-950/10 flex items-center justify-center gap-2 cursor-pointer select-none"
                     >
                       {procesandoId === order.id ? (
                         <RefreshCw className="w-5 h-5 animate-spin" />
+                      ) : miRuta.length >= 3 ? (
+                        <span>🚫 Ruta Llena (Máx. 3)</span>
                       ) : (
                         <><Bike className="w-5 h-5" /> Tomar Pedido</>
                       )}

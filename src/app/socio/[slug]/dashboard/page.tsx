@@ -40,6 +40,7 @@ interface Order {
   repartidor_solicitado_at?: string
   tengo_el_pedido_at?: string
   entregado_at?: string
+  delayed_minutes?: number
 }
 
 export default function SocioDashboardPage() {
@@ -53,6 +54,7 @@ export default function SocioDashboardPage() {
   
   // Realtime Connection State
   const [connected, setConnected] = useState(true)
+  const [delayMenuOrderId, setDelayMenuOrderId] = useState<string | null>(null)
 
   // Configuration state
   const [config, setConfig] = useState({
@@ -298,6 +300,17 @@ export default function SocioDashboardPage() {
       setOrders(prev => prev.map(o => o.id === orderId ? { ...o, estado: 'listo', listo_at: now } : o))
       await supabase.from('orders')
         .update({ estado: 'listo', listo_at: now })
+        .eq('id', orderId)
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  const handleReportarRetraso = async (orderId: string, minutes: number | null) => {
+    try {
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, delayed_minutes: minutes ?? undefined } : o))
+      await supabase.from('orders')
+        .update({ delayed_minutes: minutes })
         .eq('id', orderId)
     } catch (e) {
       console.error(e)
@@ -623,6 +636,13 @@ export default function SocioDashboardPage() {
                           const minElapsed = Math.floor((currentTime - new Date(order.created_at).getTime()) / 60000)
                           return (
                             <div key={order.id} className="border border-zinc-200 rounded-xl p-4 hover:border-zinc-300 transition-colors shadow-sm space-y-3 relative overflow-hidden bg-[#fafafa]">
+                              {order.delayed_minutes && order.delayed_minutes > 0 ? (
+                                <div className="bg-rose-50 text-rose-700 border border-rose-150 rounded-lg p-2 text-xs font-bold flex items-center gap-1.5 animate-pulse">
+                                  <AlertTriangle className="w-3.5 h-3.5" />
+                                  <span>Cocina reporta retraso de +{order.delayed_minutes} min</span>
+                                </div>
+                              ) : null}
+
                               <div className="flex justify-between items-start">
                                 <div>
                                   <span className="text-[10px] font-mono font-bold bg-amber-100 px-2 py-0.5 rounded-full text-amber-800 uppercase">
@@ -654,12 +674,66 @@ export default function SocioDashboardPage() {
                                 </p>
                               )}
 
-                              <button
-                                onClick={() => handleListo(order.id)}
-                                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-2 px-3 rounded-lg uppercase tracking-wider transition-colors flex items-center justify-center gap-1 shadow-sm active:scale-[0.98]"
-                              >
-                                <Check className="w-3.5 h-3.5" /> Terminado / Listo
-                              </button>
+                              <div className="flex gap-2 relative">
+                                <button
+                                  onClick={() => handleListo(order.id)}
+                                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-2 px-3 rounded-lg uppercase tracking-wider transition-colors flex items-center justify-center gap-1 shadow-sm active:scale-[0.98]"
+                                >
+                                  <Check className="w-3.5 h-3.5" /> Listo
+                                </button>
+                                
+                                <div className="relative">
+                                  <button
+                                    onClick={() => setDelayMenuOrderId(delayMenuOrderId === order.id ? null : order.id)}
+                                    className="bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold text-xs py-2 px-3 rounded-lg uppercase tracking-wider transition-colors flex items-center justify-center gap-1 shadow-sm border border-zinc-200"
+                                  >
+                                    ⏳ Retraso
+                                  </button>
+                                  
+                                  {delayMenuOrderId === order.id && (
+                                    <div className="absolute right-0 bottom-full mb-2 w-32 bg-white border border-zinc-200 rounded-xl shadow-xl z-30 py-1 text-xs">
+                                      <button
+                                        onClick={() => {
+                                          handleReportarRetraso(order.id, 10)
+                                          setDelayMenuOrderId(null)
+                                        }}
+                                        className="w-full text-left px-3 py-2 hover:bg-zinc-50 font-semibold text-zinc-700"
+                                      >
+                                        +10 min
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          handleReportarRetraso(order.id, 15)
+                                          setDelayMenuOrderId(null)
+                                        }}
+                                        className="w-full text-left px-3 py-2 hover:bg-zinc-50 font-semibold text-zinc-700"
+                                      >
+                                        +15 min
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          handleReportarRetraso(order.id, 25)
+                                          setDelayMenuOrderId(null)
+                                        }}
+                                        className="w-full text-left px-3 py-2 hover:bg-zinc-50 font-semibold text-zinc-700"
+                                      >
+                                        +25 min
+                                      </button>
+                                      {order.delayed_minutes && order.delayed_minutes > 0 ? (
+                                        <button
+                                          onClick={() => {
+                                            handleReportarRetraso(order.id, null)
+                                            setDelayMenuOrderId(null)
+                                          }}
+                                          className="w-full text-left px-3 py-2 hover:bg-rose-50 font-semibold text-rose-600 border-t border-zinc-100"
+                                        >
+                                          Quitar Retraso
+                                        </button>
+                                      ) : null}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
                             </div>
                           )
                         })}

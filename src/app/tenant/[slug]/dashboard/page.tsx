@@ -545,6 +545,7 @@ export default function DashboardPage() {
 
 
   // ── SOCIOS VIP ──────────────────────────────────────────────────────────────
+  const [clientesAprobados, setClientesAprobados] = useState<string[]>([])
   const [sociosSospechosos, setSociosSospechosos] = useState<Record<string, boolean>>({})
   const [modalAjusteSocio, setModalAjusteSocio] = useState<{ id: string; nombre: string; puntos: number; direccion: 'suma' | 'resta' } | null>(null)
   const [motivoAjuste, setMotivoAjuste] = useState('')
@@ -2972,6 +2973,62 @@ export default function DashboardPage() {
     }
   }
 
+  const handleAprobarSospechoso = async (clienteId: string) => {
+    try {
+      setClientesAprobados(prev => [...prev, clienteId])
+      
+      const { error: errorCliente } = await supabase
+        .from('clientes')
+        .update({
+          bloqueado: false,
+          bandera_roja: false
+        })
+        .eq('id', clienteId)
+      
+      if (errorCliente) throw errorCliente
+
+      const { error: errorOrders } = await supabase
+        .from('orders')
+        .update({
+          sello_aprobado: true
+        })
+        .eq('cliente_id', clienteId)
+        .eq('business_id', activeBizId)
+        .eq('sello_aprobado', false)
+
+      if (errorOrders) throw errorOrders
+
+      const { error: errorAudit } = await supabase
+        .from('audit_logs')
+        .insert({
+          business_id: activeBizId,
+          accion: 'anular_alerta',
+          recurso: 'clientes',
+          recurso_id: clienteId,
+          valor_anterior: { bandera_roja: true, bloqueado: true },
+          valor_nuevo: { bandera_roja: false, bloqueado: false }
+        })
+
+      if (errorAudit) {
+        console.warn('Advertencia al escribir en audit_logs:', errorAudit)
+      }
+
+      setScanToast({
+        show: true,
+        message: '¡Socio sospechoso aprobado y desbloqueado con éxito!',
+        tipo: 'exito'
+      })
+      setTimeout(() => {
+        setScanToast(prev => ({ ...prev, show: false }))
+      }, 3000)
+
+      setClienteSeleccionadoModal(null)
+      cargarDatos()
+    } catch (e: any) {
+      alert('Error al aprobar socio sospechoso: ' + e.message)
+    }
+  }
+
   const handleAgregarSocioSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     const businessId = getCookieVal('session_business_id') || business?.id
@@ -3703,7 +3760,7 @@ export default function DashboardPage() {
                     </thead>
                     <tbody className="divide-y divide-[#f4f4f5]">
                       {clientesVIP.map(c => {
-                        const sospechoso = sociosSospechosos[c.id]
+                        const sospechoso = sociosSospechosos[c.id] && !clientesAprobados.includes(c.id)
                         return (
                           <tr key={c.id} className="hover:bg-[#fafafa] transition-colors group cursor-pointer" onClick={() => setClienteSeleccionadoModal(c)}>
                             <td className="px-6 py-4 whitespace-nowrap">
@@ -6746,6 +6803,24 @@ export default function DashboardPage() {
                 <p className="text-xs text-[#a1a1aa] mt-0.5">{clienteSeleccionadoModal.email || 'Sin correo electrónico'}</p>
                 <p className="text-xs font-mono text-[#71717a]">{clienteSeleccionadoModal.telefono}</p>
               </div>
+
+              {sociosSospechosos[clienteSeleccionadoModal.id] && !clientesAprobados.includes(clienteSeleccionadoModal.id) && (
+                <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 text-left space-y-2">
+                  <div className="flex items-center gap-1.5 text-rose-700 font-bold text-xs uppercase">
+                    <AlertTriangle className="w-4 h-4 text-rose-600 animate-pulse" />
+                    <span>Alerta de Fraude Detectada</span>
+                  </div>
+                  <p className="text-[11px] text-rose-650 leading-relaxed font-medium">
+                    Este cliente acumuló sellos con una frecuencia inusualmente alta (3 o más sellos en menos de 5 minutos).
+                  </p>
+                  <button
+                    onClick={() => handleAprobarSospechoso(clienteSeleccionadoModal.id)}
+                    className="w-full bg-[#dc2626] hover:bg-[#b91c1c] text-white font-bold text-xs py-2.5 rounded-xl uppercase tracking-wider transition-colors flex items-center justify-center gap-1.5 shadow-md mt-1 cursor-pointer"
+                  >
+                    <Check className="w-3.5 h-3.5" /> Aprobar y Hacer Válido
+                  </button>
+                </div>
+              )}
 
               <div className="bg-[#fafafa] border border-[#e4e4e7] rounded-2xl p-4">
                 <p className="text-xs text-[#71717a] font-semibold uppercase tracking-wider mb-2">Acumulación de Sellos</p>
