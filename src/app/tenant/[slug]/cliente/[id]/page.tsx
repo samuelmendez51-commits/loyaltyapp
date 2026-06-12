@@ -82,6 +82,7 @@ function RuletaVIP({
   bloquearCierre = false,
   activePendingPrize = null,
   onClaimed,
+  ruletaPremios = []
 }: {
   premios: Premio[]
   business: any
@@ -91,6 +92,7 @@ function RuletaVIP({
   bloquearCierre?: boolean
   activePendingPrize?: any
   onClaimed?: () => void
+  ruletaPremios?: string[]
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [girando, setGirando] = useState(false)
@@ -101,16 +103,19 @@ function RuletaVIP({
   const sellosActuales = cliente?.puntos || 0
   const configRango = business?.ruleta_config?.[String(sellosActuales)]
   
-  const premiosList = (configRango && configRango.activo && Array.isArray(configRango.premios) && configRango.premios.length > 0)
-    ? configRango.premios.map((p: string, i: number) => ({ id: String(i), nombre: p, estampillas_requeridas: sellosActuales }))
-    : ((business?.premios_ruleta && Array.isArray(business.premios_ruleta) && business.premios_ruleta.length > 0)
-        ? business.premios_ruleta.map((p: string, i: number) => ({ id: String(i), nombre: p, estampillas_requeridas: 10 }))
-        : (premios.length > 0 ? premios : [
-            { id: '1', nombre: 'Café Gratis', estampillas_requeridas: 10 },
-            { id: '2', nombre: 'Postre Sorpresa', estampillas_requeridas: 10 },
-            { id: '3', nombre: 'Bebida Grande', estampillas_requeridas: 10 },
-            { id: '4', nombre: '20% Descuento', estampillas_requeridas: 10 },
-          ])
+  const premiosList = (ruletaPremios && ruletaPremios.length > 0)
+    ? ruletaPremios.map((p: string, i: number) => ({ id: String(i), nombre: p, estampillas_requeridas: sellosActuales }))
+    : ((configRango && configRango.activo && Array.isArray(configRango.premios) && configRango.premios.length > 0)
+        ? configRango.premios.map((p: string, i: number) => ({ id: String(i), nombre: p, estampillas_requeridas: sellosActuales }))
+        : ((business?.premios_ruleta && Array.isArray(business.premios_ruleta) && business.premios_ruleta.length > 0)
+            ? business.premios_ruleta.map((p: string, i: number) => ({ id: String(i), nombre: p, estampillas_requeridas: 10 }))
+            : (premios.length > 0 ? premios : [
+                { id: '1', nombre: 'Café Gratis', estampillas_requeridas: 10 },
+                { id: '2', nombre: 'Postre Sorpresa', estampillas_requeridas: 10 },
+                { id: '3', nombre: 'Bebida Grande', estampillas_requeridas: 10 },
+                { id: '4', nombre: '20% Descuento', estampillas_requeridas: 10 },
+              ])
+          )
       )
  
   const COLORES = ['#dc2626', '#ef4444', '#b91c1c', '#991b1b', '#f87171', '#fca5a5']
@@ -392,6 +397,9 @@ export default function TarjetaLealtadFinal() {
   const [ultimoPedidoTotal, setUltimoPedidoTotal] = useState<number>(0)
   const [activePendingPrize, setActivePendingPrize] = useState<any>(null)
 
+  const [mostrarModalRegistro, setMostrarModalRegistro] = useState(false)
+  const [ruletaPremios, setRuletaPremios] = useState<string[]>([])
+
   const [linkFacebook, setLinkFacebook] = useState('')
   const [linkInstagram, setLinkInstagram] = useState('')
   const [linkTiktok, setLinkTiktok] = useState('')
@@ -478,6 +486,15 @@ export default function TarjetaLealtadFinal() {
         setOsDetectado('android')
       } else {
         setOsDetectado('otro')
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const tabParam = new URLSearchParams(window.location.search).get('tab')
+      if (tabParam && ['tarjeta', 'menu', 'pedido', 'ubicacion', 'horarios', 'redes'].includes(tabParam)) {
+        setVistaActiva(tabParam as any)
       }
     }
   }, [])
@@ -621,126 +638,157 @@ export default function TarjetaLealtadFinal() {
 
   const cargarDatos = useCallback(async () => {
     if (!id) return
-    const { data: clienteData } = await supabase
-      .from('clientes')
-      .select('*')
-      .eq('id', id)
-      .maybeSingle()
+    const isGuest = id === 'guest' || id === 'invitado'
+    let clienteData: any = null
+
+    if (isGuest) {
+      clienteData = {
+        id: 'guest',
+        nombre: 'Invitado',
+        telefono: '',
+        puntos: 0,
+        business_id: null
+      }
+    } else {
+      const { data } = await supabase
+        .from('clientes')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle()
+      clienteData = data
+    }
 
     if (clienteData) {
       setCliente(clienteData)
       
-      // Cargar pedido activo de delivery (creado en las últimas 2 horas con estado de pre-despacho)
-      try {
-        const dosHorasAtras = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
-        const { data: ord } = await supabase
-          .from('orders')
-          .select('*')
-          .eq('cliente_id', clienteData.id)
-          .eq('tipo', 'delivery')
-          .in('delivery_status', ['SHIPPED_SCHEDULED', 'SHIPPED_IMMEDIATE'])
-          .gt('created_at', dosHorasAtras)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
+      if (!isGuest) {
+        // Cargar pedido activo de delivery (creado en las últimas 2 horas con estado de pre-despacho)
+        try {
+          const dosHorasAtras = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
+          const { data: ord } = await supabase
+            .from('orders')
+            .select('*')
+            .eq('cliente_id', clienteData.id)
+            .eq('tipo', 'delivery')
+            .in('delivery_status', ['SHIPPED_SCHEDULED', 'SHIPPED_IMMEDIATE'])
+            .gt('created_at', dosHorasAtras)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
 
-        if (ord) {
-          setActiveOrder(ord)
+          if (ord) {
+            setActiveOrder(ord)
+          }
+        } catch (err) {
+          console.warn('Error al cargar pedido activo del cliente:', err)
         }
-      } catch (err) {
-        console.warn('Error al cargar pedido activo del cliente:', err)
+
+        // Cargar premio de ruleta pendiente si existe
+        try {
+          const { data: pending } = await supabase
+            .from('premios_canjes')
+            .select('*')
+            .eq('cliente_id', clienteData.id)
+            .eq('estado', 'Pendiente')
+            .order('creado_en', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+          
+          setActivePendingPrize(pending || null)
+        } catch (err) {
+          console.warn('Error al cargar premio pendiente:', err)
+        }
+
+        setForm(prev => ({
+          ...prev,
+          nombre: clienteData.nombre || '',
+          telefono: clienteData.telefono || ''
+        }))
+        setTelefonoAutocompletar(clienteData.telefono || '')
       }
 
-      // Cargar premio de ruleta pendiente si existe
-      try {
-        const { data: pending } = await supabase
-          .from('premios_canjes')
+      // Cargar branding del negocio
+      let bizData: any = null
+      if (isGuest && slug) {
+        const { data } = await supabase
+          .from('businesses')
           .select('*')
-          .eq('cliente_id', clienteData.id)
-          .eq('estado', 'Pendiente')
-          .order('creado_en', { ascending: false })
-          .limit(1)
+          .eq('slug', slug)
           .maybeSingle()
-        
-        setActivePendingPrize(pending || null)
-      } catch (err) {
-        console.warn('Error al cargar premio pendiente:', err)
-      }
-
-      setForm(prev => ({
-        ...prev,
-        nombre: clienteData.nombre || '',
-        telefono: clienteData.telefono || ''
-      }))
-      setTelefonoAutocompletar(clienteData.telefono || '')
-      if (clienteData.business_id) {
-        const { data: bizData } = await supabase
+        bizData = data
+      } else if (clienteData.business_id) {
+        const { data } = await supabase
           .from('businesses')
           .select('*')
           .eq('id', clienteData.business_id)
           .maybeSingle()
-        if (bizData) {
-          // ── Guardia cross-tenant ──
-          if (slug && bizData.slug !== slug) {
-            setCargando(false)
-            return
+        bizData = data
+      }
+
+      if (bizData) {
+        // ── Guardia cross-tenant ──
+        if (slug && bizData.slug !== slug) {
+          setCargando(false)
+          return
+        }
+        setBusiness({ ...bizData, name: bizData.nombre })
+        if (isGuest) {
+          clienteData.business_id = bizData.id
+        }
+
+        let linkFb = (bizData as any).link_facebook || ''
+        let linkIg = (bizData as any).link_instagram || ''
+        let linkTk = (bizData as any).link_tiktok || ''
+        let linkYt = (bizData as any).link_youtube || ''
+        let horarioSem = (bizData as any).horario_semanal || null
+
+        if (bizData.direccion && bizData.direccion.includes('{')) {
+          try {
+            const jsonStart = bizData.direccion.indexOf('{')
+            const jsonStr = bizData.direccion.substring(jsonStart)
+            const parsed = JSON.parse(jsonStr)
+            if (parsed.facebook) linkFb = parsed.facebook
+            if (parsed.instagram) linkIg = parsed.instagram
+            if (parsed.tiktok) linkTk = parsed.tiktok
+            if (parsed.youtube) linkYt = parsed.youtube
+            if (parsed.horario_semanal) horarioSem = parsed.horario_semanal
+          } catch (err) {
+            console.warn("Error parsing schedule fallback JSON in client portal:", err)
           }
-          setBusiness({ ...bizData, name: bizData.nombre })
+        }
 
-          let linkFb = (bizData as any).link_facebook || ''
-          let linkIg = (bizData as any).link_instagram || ''
-          let linkTk = (bizData as any).link_tiktok || ''
-          let linkYt = (bizData as any).link_youtube || ''
-          let horarioSem = (bizData as any).horario_semanal || null
+        setLinkFacebook(linkFb)
+        setLinkInstagram(linkIg)
+        setLinkTiktok(linkTk)
+        setLinkYoutube(linkYt)
 
-          if (bizData.direccion && bizData.direccion.includes('{')) {
-            try {
-              const jsonStart = bizData.direccion.indexOf('{')
-              const jsonStr = bizData.direccion.substring(jsonStart)
-              const parsed = JSON.parse(jsonStr)
-              if (parsed.facebook) linkFb = parsed.facebook
-              if (parsed.instagram) linkIg = parsed.instagram
-              if (parsed.tiktok) linkTk = parsed.tiktok
-              if (parsed.youtube) linkYt = parsed.youtube
-              if (parsed.horario_semanal) horarioSem = parsed.horario_semanal
-            } catch (err) {
-              console.warn("Error parsing schedule fallback JSON in client portal:", err)
-            }
-          }
+        const horarioDefault = {
+          lunes: { cerrado: true, apertura: '14:00', cierre: '22:00' },
+          martes: { cerrado: false, apertura: '14:00', cierre: '21:30' },
+          miercoles: { cerrado: false, apertura: '14:00', cierre: '21:30' },
+          jueves: { cerrado: false, apertura: '14:00', cierre: '21:30' },
+          viernes: { cerrado: false, apertura: '14:00', cierre: '22:00' },
+          sabado: { cerrado: false, apertura: '14:00', cierre: '22:00' },
+          domingo: { cerrado: false, apertura: '14:00', cierre: '21:30' }
+        }
+        const horarioFinal = horarioSem || horarioDefault
+        setHorarioSemanal(horarioFinal)
 
-          setLinkFacebook(linkFb)
-          setLinkInstagram(linkIg)
-          setLinkTiktok(linkTk)
-          setLinkYoutube(linkYt)
+        const estaCerrado = verificarHorarioNegocio(horarioFinal)
+        setFueraDeHorario(estaCerrado)
 
-          const horarioDefault = {
-            lunes: { cerrado: true, apertura: '14:00', cierre: '22:00' },
-            martes: { cerrado: false, apertura: '14:00', cierre: '21:30' },
-            miercoles: { cerrado: false, apertura: '14:00', cierre: '21:30' },
-            jueves: { cerrado: false, apertura: '14:00', cierre: '21:30' },
-            viernes: { cerrado: false, apertura: '14:00', cierre: '22:00' },
-            sabado: { cerrado: false, apertura: '14:00', cierre: '22:00' },
-            domingo: { cerrado: false, apertura: '14:00', cierre: '21:30' }
-          }
-          const horarioFinal = horarioSem || horarioDefault
-          setHorarioSemanal(horarioFinal)
-
-          const estaCerrado = verificarHorarioNegocio(horarioFinal)
-          setFueraDeHorario(estaCerrado)
-
-          const diasSemana = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado']
-          const diaHoy = diasSemana[new Date().getDay()]
-          const configHoy = horarioFinal[diaHoy]
-          if (configHoy) {
-            setHoraAperturaHoy(configHoy.apertura || '14:00')
-            setHoraCierreHoy(configHoy.cierre || '22:00')
-          }
+        const diasSemana = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado']
+        const diaHoy = diasSemana[new Date().getDay()]
+        const configHoy = horarioFinal[diaHoy]
+        if (configHoy) {
+          setHoraAperturaHoy(configHoy.apertura || '14:00')
+          setHoraCierreHoy(configHoy.cierre || '22:00')
         }
 
         const { data: premiosData } = await (supabase as any)
           .from('loyalty_rewards')
           .select('*')
-          .eq('business_id', clienteData.business_id)
+          .eq('business_id', bizData.id)
           .eq('activo', true)
           .order('sello_requerido')
         if (premiosData) setPremios(premiosData as Premio[])
@@ -748,7 +796,7 @@ export default function TarjetaLealtadFinal() {
         const { data: menuData } = await supabase
           .from('menus_digitales')
           .select('*')
-          .eq('business_id', clienteData.business_id)
+          .eq('business_id', bizData.id)
           .eq('activo', true)
           .maybeSingle()
         if (menuData) setMenuDigital(menuData)
@@ -757,7 +805,7 @@ export default function TarjetaLealtadFinal() {
           const { data: gData } = await supabase
             .from('menu_groups')
             .select('*')
-            .eq('business_id', clienteData.business_id)
+            .eq('business_id', bizData.id)
             .eq('activo', true)
             .in('tipo_menu', [tipoMenu, 'ambos'])
             .order('orden')
@@ -773,7 +821,7 @@ export default function TarjetaLealtadFinal() {
           const { data: pData } = await supabase
             .from('menu_products')
             .select('*, product_modifiers(*, modifier_options(*))')
-            .eq('business_id', clienteData.business_id)
+            .eq('business_id', bizData.id)
           if (pData) {
             const ahora = new Date()
             let huboCambio = false
@@ -800,43 +848,55 @@ export default function TarjetaLealtadFinal() {
         try {
           const { data: progActivo } = await supabase
             .from('programas_fidelidad')
-            .select('id, nombre_club, logo_url, portada_url, total_estampillas')
-            .eq('business_id', clienteData.business_id)
+            .select('id, nombre_club, logo_url, portada_url, total_estampillas, ruleta_id')
+            .eq('business_id', bizData.id)
             .eq('activo', true)
             .maybeSingle()
           if (progActivo) {
             setProgramaActivo(progActivo)
+            if (progActivo.ruleta_id) {
+              const { data: ruletaData } = await supabase
+                .from('ruletas')
+                .select('premios')
+                .eq('id', progActivo.ruleta_id)
+                .maybeSingle()
+              if (ruletaData && Array.isArray(ruletaData.premios)) {
+                setRuletaPremios(ruletaData.premios)
+              }
+            }
           }
         } catch (e) {
           console.warn('La tabla de programas_fidelidad o sus columnas logo_url/portada_url no están listas.', e)
         }
       }
 
-      const { data: couponData } = await supabase
-        .from('tracking_events')
-        .select('*')
-        .eq('cliente_id', clienteData.id)
-        .eq('event_type', 'reward_generated')
-        .eq('cupon_canjeado', false)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-      if (couponData) setActiveCoupon(couponData)
-
-      try {
-        const { data: lastOrder } = await supabase
-          .from('orders')
-          .select('total')
+      if (!isGuest) {
+        const { data: couponData } = await supabase
+          .from('tracking_events')
+          .select('*')
           .eq('cliente_id', clienteData.id)
+          .eq('event_type', 'reward_generated')
+          .eq('cupon_canjeado', false)
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle()
-        
-        if (lastOrder) {
-          setUltimoPedidoTotal(Number(lastOrder.total) || 0)
+        if (couponData) setActiveCoupon(couponData)
+
+        try {
+          const { data: lastOrder } = await supabase
+            .from('orders')
+            .select('total')
+            .eq('cliente_id', clienteData.id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+          
+          if (lastOrder) {
+            setUltimoPedidoTotal(Number(lastOrder.total) || 0)
+          }
+        } catch (e) {
+          console.warn('Error al cargar el último pedido del cliente:', e)
         }
-      } catch (e) {
-        console.warn('Error al cargar el último pedido del cliente:', e)
       }
     } else {
       if (slug) {
@@ -1365,7 +1425,7 @@ _Pedido procesado a través de LoyaltyClub VIP_`
 
       {/* Enlace sutil al menú por si solo quiere ver la carta */}
       <Link 
-        href="/menu" 
+        href="/cliente/guest?tab=menu" 
         className="mt-8 text-xs text-[#a1a1aa] hover:text-[#52525b] font-bold underline"
       >
         Ver el menú de {business?.nombre || 'la marca'}
@@ -1417,6 +1477,7 @@ _Pedido procesado a través de LoyaltyClub VIP_`
           bloquearCierre={tieneRuletaActiva}
           activePendingPrize={activePendingPrize}
           onClaimed={() => setActivePendingPrize(null)}
+          ruletaPremios={ruletaPremios}
         />
       )}
 
@@ -1669,8 +1730,48 @@ _Pedido procesado a través de LoyaltyClub VIP_`
             </div>
           )}
 
-          {/* Tarjeta Principal */}
-          <div className="rounded-3xl shadow-[0_4px_24px_rgba(0,0,0,0.1)] border border-black/10 overflow-hidden p-6 space-y-6 text-[#09090b]" style={{ backgroundColor: business?.color_primario || '#dc2626' }}>
+          {cliente?.id === 'guest' ? (
+            /* Tarjeta Informativa de Invitado */
+            <div className="rounded-3xl shadow-[0_4px_24px_rgba(0,0,0,0.1)] border border-black/10 overflow-hidden p-6 space-y-6 text-white text-center animate-fadeIn" style={{ backgroundColor: business?.color_primario || '#dc2626' }}>
+              <div className="space-y-2">
+                <div className="w-16 h-16 mx-auto rounded-full bg-white/20 flex items-center justify-center text-3xl shadow-inner animate-pulse">
+                  🎁
+                </div>
+                <h2 className="text-xl font-black tracking-tight leading-none uppercase">Club VIP {business?.nombre}</h2>
+                <p className="text-[10px] font-bold text-white/80 uppercase tracking-widest mt-1">Beneficios Exclusivos para Socios</p>
+              </div>
+
+              <div className="bg-white rounded-2xl p-5 text-left text-zinc-800 space-y-3.5 shadow-sm">
+                <h3 className="font-extrabold text-xs text-[#09090b] tracking-wider uppercase">¿Cómo funciona el Club?</h3>
+                <ul className="space-y-3 text-[11px] font-semibold text-zinc-600 leading-normal">
+                  <li className="flex items-start gap-2.5">
+                    <span className="text-rose-500 text-sm">⭐</span>
+                    <span><strong>Acumula Sellos:</strong> Presenta tu QR en caja en cada visita y suma sellos para tus premios.</span>
+                  </li>
+                  <li className="flex items-start gap-2.5">
+                    <span className="text-amber-500 text-sm">🎰</span>
+                    <span><strong>Gira la Ruleta VIP:</strong> Al completar tu tarjeta, gira la ruleta digital y gana premios al instante.</span>
+                  </li>
+                  <li className="flex items-start gap-2.5">
+                    <span className="text-emerald-500 text-sm">🔥</span>
+                    <span><strong>Pases de Wallet:</strong> Guarda tu tarjeta digital en Apple Wallet o Google Wallet para acceso rápido.</span>
+                  </li>
+                </ul>
+              </div>
+
+              <div className="pt-2">
+                <button
+                  onClick={() => setMostrarModalRegistro(true)}
+                  className="w-full bg-white hover:bg-gray-100 text-[#09090b] font-black py-4 rounded-2xl uppercase tracking-widest text-xs transition-all active:scale-95 shadow-lg"
+                >
+                  ⚡ Unirme al Club VIP Gratis
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Tarjeta Principal */}
+              <div className="rounded-3xl shadow-[0_4px_24px_rgba(0,0,0,0.1)] border border-black/10 overflow-hidden p-6 space-y-6 text-[#09090b]" style={{ backgroundColor: business?.color_primario || '#dc2626' }}>
             {/* Encabezado */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -1852,6 +1953,8 @@ _Pedido procesado a través de LoyaltyClub VIP_`
               )}
             </button>
           </div>
+        </>
+      )}
 
           {/* Card / Banner de Acceso Directo a Inicio (PWA) */}
           <div className="bg-white border border-[#e4e4e7] rounded-3xl p-5 mt-5 shadow-[0_2px_12px_rgba(0,0,0,0.06)] flex gap-4 items-center animate-fadeIn">
@@ -2523,7 +2626,13 @@ _Pedido procesado a través de LoyaltyClub VIP_`
             return (
               <button
                 key={tab.id}
-                onClick={() => setVistaActiva(tab.id as any)}
+                onClick={() => {
+                  if (cliente?.id === 'guest' && tab.id === 'pedido') {
+                    setMostrarModalRegistro(true)
+                  } else {
+                    setVistaActiva(tab.id as any)
+                  }
+                }}
                 className={`flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 transition-all relative ${
                   activo ? 'text-[#dc2626]' : 'text-[#a1a1aa] hover:text-[#71717a]'
                 }`}
@@ -2712,11 +2821,56 @@ _Pedido procesado a través de LoyaltyClub VIP_`
               <p className="font-extrabold text-sm text-[#09090b]">{cantidadTotal} {cantidadTotal === 1 ? 'producto' : 'productos'} · <span className="font-mono text-[#dc2626]">${totalCarrito.toLocaleString()} MXN</span></p>
             </div>
             <button
-              onClick={() => setPasoMenu('checkout')}
+              onClick={() => {
+                if (cliente?.id === 'guest') {
+                  setMostrarModalRegistro(true)
+                } else {
+                  setPasoMenu('checkout')
+                }
+              }}
               className="bg-[#dc2626] hover:bg-[#b91c1c] text-white font-black text-xs uppercase tracking-widest py-3 px-5 rounded-2xl transition-all flex items-center gap-1.5 shrink-0 shadow-md active:scale-95"
             >
               <span>Ver Carrito 🛒</span>
             </button>
+          </div>
+        </div>
+      )}
+      {/* ── Modal Emergente de Registro/Login para Invitados ── */}
+      {mostrarModalRegistro && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white border border-[#e4e4e7] rounded-3xl p-8 w-full max-w-sm shadow-2xl relative animate-fadeIn text-[#09090b] text-center space-y-5">
+            <button 
+              onClick={() => setMostrarModalRegistro(false)}
+              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-[#fafafa] hover:bg-[#f4f4f5] flex items-center justify-center transition-colors text-[#71717a] font-bold"
+            >
+              ✕
+            </button>
+
+            <div className="w-16 h-16 bg-red-50 text-[#dc2626] rounded-full flex items-center justify-center mx-auto border border-red-100 shadow-sm">
+              <Lock className="w-8 h-8" />
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="text-lg font-black tracking-tight text-[#09090b]">¡Únete al Club de Lealtad!</h3>
+              <p className="text-xs text-[#71717a] leading-relaxed font-semibold">
+                Para acumular sellos, girar la ruleta de premios y realizar pedidos, necesitas ser un socio registrado. ¡Es gratis y toma menos de 1 minuto!
+              </p>
+            </div>
+
+            <div className="pt-2 space-y-3">
+              <Link
+                href="/registro"
+                className="w-full bg-[#dc2626] hover:bg-[#b91c1c] text-white font-black py-3.5 rounded-2xl uppercase tracking-widest text-xs transition-all block text-center shadow-md active:scale-95"
+              >
+                📝 Registrarme Ahora
+              </Link>
+              <button
+                onClick={() => setMostrarModalRegistro(false)}
+                className="w-full bg-white hover:bg-gray-50 text-[#71717a] hover:text-[#09090b] border border-[#e4e4e7] font-black py-3.5 rounded-2xl uppercase tracking-widest text-xs transition-all block text-center active:scale-95"
+              >
+                Seguir navegando
+              </button>
+            </div>
           </div>
         </div>
       )}

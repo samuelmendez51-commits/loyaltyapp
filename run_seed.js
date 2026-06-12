@@ -93,9 +93,9 @@ async function seed() {
     const { data: clientes, error: cliError } = await supabase
       .from('clientes')
       .insert([
-        { business_id: bizId, nombre: 'Yareli Lozano', telefono: '3221234567', puntos: 10 },
-        { business_id: bizId, nombre: 'Juan Pérez', telefono: '3227654321', puntos: 4 },
-        { business_id: bizId, nombre: 'María Rodríguez', telefono: '3229876543', puntos: 8 }
+        { business_id: bizId, nombre: 'Yareli Lozano', telefono: '+523221234567', puntos: 10 },
+        { business_id: bizId, nombre: 'Juan Pérez', telefono: '+523227654321', puntos: 4 },
+        { business_id: bizId, nombre: 'María Rodríguez', telefono: '+523229876543', puntos: 8 }
       ])
       .select()
 

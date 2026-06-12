@@ -26,13 +26,6 @@ export default function TenantLandingPage() {
   const [error, setError] = useState(false)
 
   useEffect(() => {
-    // Redirección automática si el socio ya tiene una sesión activa guardada en este navegador
-    const savedClientId = typeof window !== 'undefined' ? localStorage.getItem('vip_cliente_id') : null
-    if (savedClientId) {
-      router.replace(`/cliente/${savedClientId}`)
-      return
-    }
-
     const cargarBranding = async () => {
       if (!slug) return
       try {
@@ -46,8 +39,29 @@ export default function TenantLandingPage() {
 
         if (!data) {
           setError(true)
-        } else {
-          setBusiness(data as Business)
+          setCargando(false)
+          return
+        }
+
+        setBusiness(data as Business)
+
+        // Redirección automática si el socio ya tiene una sesión activa y válida en la BD
+        const savedClientId = typeof window !== 'undefined' ? localStorage.getItem('vip_cliente_id') : null
+        if (savedClientId) {
+          const { data: clientData, error: clientError } = await supabase
+            .from('clientes')
+            .select('id')
+            .eq('id', savedClientId)
+            .eq('business_id', data.id)
+            .maybeSingle()
+
+          if (!clientError && clientData) {
+            router.replace(`/cliente/${savedClientId}`)
+            return
+          } else {
+            // Limpiar ID inválido del localStorage
+            localStorage.removeItem('vip_cliente_id')
+          }
         }
       } catch (err) {
         console.error('[TenantLanding] Error cargando portal:', err)
@@ -58,7 +72,7 @@ export default function TenantLandingPage() {
     }
 
     cargarBranding()
-  }, [slug])
+  }, [slug, router])
 
   if (cargando) {
     return (
@@ -169,7 +183,7 @@ export default function TenantLandingPage() {
           <div className="space-y-4 pt-2">
             <button
               onClick={() => {
-                window.location.href = '/menu';
+                window.location.href = '/cliente/guest?tab=menu';
               }}
               className="w-full text-white py-4 rounded-2xl text-xs font-bold uppercase tracking-wider shadow-sm transition-all hover:brightness-110 active:scale-[0.99] flex items-center justify-center gap-2.5"
               style={{ backgroundColor: colorActivo, boxShadow: `0 4px 14px ${colorActivo}33` }}

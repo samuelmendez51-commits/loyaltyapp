@@ -81,6 +81,8 @@ export default function RegistroCliente() {
       return
     }
 
+    const telefonoNormalizado = `+52${telefonoLimpio}`
+
     setRegistrando(true)
     setMensaje({ texto: '', tipo: '' })
 
@@ -94,7 +96,7 @@ export default function RegistroCliente() {
       const { data, error } = await supabase
         .from('clientes')
         .select('*')
-        .eq('telefono', telefonoLimpio)
+        .eq('telefono', telefonoNormalizado)
         .eq('business_id', tenantId)
         .maybeSingle()
 
@@ -128,6 +130,8 @@ export default function RegistroCliente() {
       setMensaje({ texto: 'El teléfono debe tener exactamente 10 dígitos.', tipo: 'error' })
       return
     }
+
+    const telefonoNormalizado = `+52${telefonoLimpio}`
 
     setRegistrando(true)
     setMensaje({ texto: '', tipo: '' })
@@ -181,7 +185,7 @@ export default function RegistroCliente() {
         .from('clientes')
         .insert([{
           nombre: nombre.trim(),
-          telefono: telefonoLimpio,
+          telefono: telefonoNormalizado,
           email: email.trim() || null,
           fecha_nacimiento: fechaEnsamblada,
           calle: calle.trim() || null,
@@ -206,7 +210,7 @@ export default function RegistroCliente() {
             const { data: cliente } = await supabase
               .from('clientes')
               .select('*')
-              .eq('telefono', telefonoLimpio)
+              .eq('telefono', telefonoNormalizado)
               .eq('business_id', tenantId)
               .maybeSingle()
 
@@ -249,7 +253,7 @@ export default function RegistroCliente() {
           const { data: cliente } = await supabase
             .from('clientes')
             .select('*')
-            .eq('telefono', telefonoLimpio)
+            .eq('telefono', telefonoNormalizado)
             .eq('business_id', tenantId)
             .maybeSingle()
 
@@ -530,6 +534,15 @@ export default function RegistroCliente() {
               </button>
             </div>
           </form>
+
+          <div className="mt-4 pt-4 border-t border-[#f4f4f5] text-center">
+            <Link
+              href="/cliente/guest?tab=menu"
+              className="text-xs font-bold uppercase tracking-wider text-[#71717a] hover:text-[#09090b] transition-colors"
+            >
+              Entrar como Invitado (Ver Menú)
+            </Link>
+          </div>
         </div>
 
         {/* Footer */}

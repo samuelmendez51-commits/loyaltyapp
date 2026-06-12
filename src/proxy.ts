@@ -64,12 +64,15 @@ function parseHostname(hostname: string): ParsedDomain {
   }
 
   // ── Bikers (portal de flota) — producción ───────────────────────────────
-  if (host === `bikers.partners.${PROD_BASE}` || host.startsWith('bikers.partners.')) {
-    return { slug: 'bikers', isPartner: true, isAdmin: false, isBiker: true, isProduction }
+  if (host === `bikers.partners.${PROD_BASE}`) {
+    return { slug: 'bikers', isPartner: true, isAdmin: false, isBiker: true, isProduction: true }
   }
 
   // ── Bikers — desarrollo ──────────────────────────────────────────────────
-  if (host === `bikers.partners.${DEV_BASE}` || host === `bikers.${DEV_BASE}`) {
+  if (host === `bikers-partners.${DEV_BASE}` || host === `bikers.partners.${DEV_BASE}`) {
+    return { slug: 'bikers', isPartner: true, isAdmin: false, isBiker: true, isProduction: false }
+  }
+  if (host === `bikers.${DEV_BASE}`) {
     return { slug: 'bikers', isPartner: false, isAdmin: false, isBiker: true, isProduction: false }
   }
 
@@ -412,7 +415,10 @@ export default function proxy(request: NextRequest) {
 
     // /menu y subpaths
     if (path === '/menu' || path.startsWith('/menu/')) {
-      return rewriteTo(request, `/tenant/${slug}${path}`)
+      const url = request.nextUrl.clone()
+      url.pathname = '/cliente/guest'
+      url.searchParams.set('tab', 'menu')
+      return NextResponse.redirect(url)
     }
 
     // Raíz → landing/login del tenant

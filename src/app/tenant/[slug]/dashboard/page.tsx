@@ -365,6 +365,11 @@ export default function DashboardPage() {
   const slug = (useParams().slug as string) || ''
   const searchParams = useSearchParams()
   const [pestaña, setPestaña] = useState(searchParams.get('tab') || 'metricas')
+  const [isMounted, setIsMounted] = useState(false)
+
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
 
   useEffect(() => {
     const tabParam = searchParams.get('tab')
@@ -790,6 +795,7 @@ export default function DashboardPage() {
   const [editEmpPin, setEditEmpPin] = useState('')
   const [editEmpRol, setEditEmpRol] = useState('empleado')
   const [guardandoEdicionEmp, setGuardandoEdicionEmp] = useState(false)
+  const [showEditEmpPin, setShowEditEmpPin] = useState(false)
 
   // ── LEALTAD: Crear Tarjetas ─────────────────────────────────────────────────
   const [programas, setProgramas] = useState<any[]>([])
@@ -819,6 +825,14 @@ export default function DashboardPage() {
   const [premioSellos, setPremioSellos] = useState<string>('3')
   const [programaIdActivo, setProgramaIdActivo] = useState<string>('')
   
+  // Configuración de Ruletas
+  const [ruletas, setRuletas] = useState<any[]>([])
+  const [selectedRuletaId, setSelectedRuletaId] = useState<string>('')
+  const [mostrarCrearRuletaModal, setMostrarCrearRuletaModal] = useState(false)
+  const [nuevaRuletaNombre, setNuevaRuletaNombre] = useState('')
+  const [nuevaRuletaPremios, setNuevaRuletaPremios] = useState('Café Gratis, Postre Sorpresa, Bebida Grande, 20% Descuento')
+  const [guardandoNuevaRuleta, setGuardandoNuevaRuleta] = useState(false)
+
   // Nuevos estados para CRM Interno (Agregar Socio) y Ruleta por nivel de programa
   const [mostrarAgregarSocioModal, setMostrarAgregarSocioModal] = useState(false)
   const [nuevoSocioForm, setNuevoSocioForm] = useState({
@@ -1011,6 +1025,20 @@ export default function DashboardPage() {
           // Limpiar el DOM del elemento reader para evitar fugas al remontar
           const el = document.getElementById('reader')
           if (el) el.innerHTML = ''
+          
+          // Detener todos los tracks de video para liberar la cámara físicamente
+          try {
+            const videoEls = document.querySelectorAll('video')
+            videoEls.forEach(v => {
+              const stream = v.srcObject as MediaStream
+              if (stream) {
+                stream.getTracks().forEach(track => track.stop())
+              }
+              v.srcObject = null
+            })
+          } catch (trackErr) {
+            console.warn('Error stopping video tracks:', trackErr)
+          }
         })
       }
     }
@@ -1541,6 +1569,10 @@ export default function DashboardPage() {
       const { data: progsData } = await supabase.from('programas_fidelidad').select('*').eq('business_id', bId)
       if (progsData) setProgramas(progsData)
 
+      // Cargar Ruletas
+      const { data: ruletasData } = await supabase.from('ruletas').select('*').eq('business_id', bId)
+      if (ruletasData) setRuletas(ruletasData)
+
       // Cargar Horarios Semanales, Geopush, Premios de Ruleta y Canjes
       await cargarHorariosSemanales(bId)
       await cargarGeoPush(bId)
@@ -2011,8 +2043,9 @@ export default function DashboardPage() {
     setEmpleadoAEditar(emp)
     setEditEmpNombre(emp.nombre || '')
     setEditEmpEmail(emp.email || '')
-    setEditEmpPin('')
+    setEditEmpPin(emp.pin || '')
     setEditEmpRol(emp.rol || 'empleado')
+    setShowEditEmpPin(false)
   }
 
   const guardarEdicionEmpleado = async (e: React.FormEvent) => {
@@ -2696,6 +2729,7 @@ export default function DashboardPage() {
     }
     setProgLogoFile(null)
     setProgPortadaFile(null)
+    setSelectedRuletaId(prog.ruleta_id || '')
     
     setMostrarCrearPrograma(true)
     setPasoLealtad('config') // Ir directo a la configuración de campos
@@ -2713,6 +2747,7 @@ export default function DashboardPage() {
     setProgPortadaY(50)
     setProgLogoFile(null)
     setProgPortadaFile(null)
+    setSelectedRuletaId('')
     
     setMostrarCrearPrograma(true)
     setPasoLealtad('selector')
@@ -2775,7 +2810,8 @@ export default function DashboardPage() {
         precargadas: precargadasFinal,
         comportamiento_completado: comportamiento,
         logo_url: finalLogoUrl || null,
-        portada_url: finalPortadaUrl || null
+        portada_url: finalPortadaUrl || null,
+        ruleta_id: selectedRuletaId || null
       }
 
       // Guardar branding del negocio en la tabla businesses
@@ -2826,7 +2862,8 @@ export default function DashboardPage() {
             estampillas_max_dia: maxDiaFinal,
             total_estampillas: totalFinal,
             precargadas: precargadasFinal,
-            comportamiento_completado: comportamiento
+            comportamiento_completado: comportamiento,
+            ruleta_id: selectedRuletaId || null
           }
           if (programaAEditar) {
             const { error: errRetry } = await supabase
@@ -3200,7 +3237,7 @@ export default function DashboardPage() {
               <div className="w-8 h-8 bg-[#dc2626] rounded-lg flex items-center justify-center shadow-sm shrink-0">
                 <Star className="w-4 h-4 text-white fill-white" />
               </div>
-              {sidebarExpanded && (
+              {isMounted && sidebarExpanded && (
                 <span className="font-bold text-[#09090b] text-sm tracking-tight truncate">LoyaltyClub</span>
               )}
             </div>
@@ -3253,7 +3290,7 @@ export default function DashboardPage() {
               {sidebarExpanded && 'Instalar App'}
             </button>
           )}
-          {sidebarExpanded && (
+          {isMounted && sidebarExpanded && (
             <p className="text-center text-[#a1a1aa] text-[10px] mt-2">LoyaltyClub Enterprise v14</p>
           )}
         </div>
@@ -3266,7 +3303,7 @@ export default function DashboardPage() {
         <header className="h-16 border-b border-[#e4e4e7] bg-white sticky top-0 z-20 px-6 flex items-center justify-between shadow-[0_1px_0_#e4e4e7]">
           <div className="min-w-0">
             <h1 className="text-base font-bold text-[#09090b] truncate flex items-center gap-2">
-              <span>{business?.nombre || 'LoyaltyClub'}</span>
+              <span>{isMounted ? (business?.nombre || 'LoyaltyClub') : ''}</span>
               <span className="hidden sm:inline ml-2 text-xs font-normal text-[#a1a1aa]">Panel de Control</span>
             </h1>
           </div>
@@ -3305,12 +3342,13 @@ export default function DashboardPage() {
               <QrCode className="w-4 h-4 text-[#dc2626]" />
               <span className="hidden md:inline whitespace-nowrap">Lector QR</span>
             </button>
-            <Link href="/registro">
-              <button className="btn-primary py-2 px-3 text-xs flex items-center gap-1.5">
-                <UserPlus className="w-4 h-4" />
-                <span className="hidden md:inline whitespace-nowrap">Registrar Socio</span>
-              </button>
-            </Link>
+            <button 
+              onClick={() => setMostrarAgregarSocioModal(true)}
+              className="btn-primary py-2 px-3 text-xs flex items-center gap-1.5"
+            >
+              <UserPlus className="w-4 h-4" />
+              <span className="hidden md:inline whitespace-nowrap">Registrar Socio</span>
+            </button>
             {getCookieVal('session_rol') === 'superadmin' && (
               <Link href="/superadmin">
                 <button className="border border-purple-200 text-purple-600 font-medium py-2 px-3 rounded-xl text-xs hover:bg-purple-50 transition-all">
@@ -3421,8 +3459,8 @@ export default function DashboardPage() {
                     onClick={() => {
                       if (typeof window !== 'undefined') {
                         const currentHost = window.location.host;
-                        const customerHost = currentHost.replace(/^partners\./i, '');
-                        const previewUrl = `${window.location.protocol}//${customerHost}/menu`;
+                        const customerHost = currentHost.replace(/\.partners\./i, '.');
+                        const previewUrl = `${window.location.protocol}//${customerHost}/`;
                         window.open(previewUrl, '_blank');
                       }
                     }}
@@ -3875,8 +3913,9 @@ export default function DashboardPage() {
                           setScanEnviandoWhatsapp(true)
                           setScanEnvioExitoMsg('')
                           try {
-                            const cleanTel = scanRegistradoExito.telefono
-                            const phoneParam = cleanTel.startsWith('52') ? cleanTel : '52' + cleanTel
+                            const rawTel = scanRegistradoExito.telefono || ''
+                            const cleanTel = rawTel.replace(/\D/g, '')
+                            const phoneParam = cleanTel.length === 10 ? '52' + cleanTel : (cleanTel.startsWith('52') ? cleanTel : '52' + cleanTel)
                             const origin = typeof window !== 'undefined' ? window.location.origin : ''
                             const domain = typeof window !== 'undefined' && window.location.hostname.includes('loyaltyclub.mx') 
                               ? `${slug}.loyaltyclub.mx` 
@@ -4058,8 +4097,9 @@ export default function DashboardPage() {
                         setScanEnviandoWhatsapp(true)
                         setScanEnvioExitoMsg('')
                         try {
-                          const cleanTel = scanCliente.telefono
-                          const phoneParam = cleanTel.startsWith('52') ? cleanTel : '52' + cleanTel
+                          const rawTel = scanCliente.telefono || ''
+                          const cleanTel = rawTel.replace(/\D/g, '')
+                          const phoneParam = cleanTel.length === 10 ? '52' + cleanTel : (cleanTel.startsWith('52') ? cleanTel : '52' + cleanTel)
                           const domain = typeof window !== 'undefined' && window.location.hostname.includes('loyaltyclub.mx') 
                             ? `${slug}.loyaltyclub.mx` 
                             : `${slug}.localhost:3000`
@@ -4559,8 +4599,8 @@ export default function DashboardPage() {
                         <QRCodeSVG
                           value={(() => {
                             const origin = typeof window !== 'undefined' ? window.location.origin : 'https://laburreria.loyaltyclub.mx'
-                            const cleanOrigin = origin.replace(/^partners\./i, '')
-                            return `${cleanOrigin}/menu?tipo=${tipoQR}`
+                            const cleanOrigin = origin.replace(/\.partners\./i, '.')
+                            return `${cleanOrigin}/cliente/guest?tab=menu&tipo=${tipoQR}`
                           })()}
                           size={120}
                           bgColor="#ffffff"
@@ -4577,8 +4617,8 @@ export default function DashboardPage() {
                           <button
                             onClick={() => {
                               const origin = typeof window !== 'undefined' ? window.location.origin : 'https://laburreria.loyaltyclub.mx'
-                              const cleanOrigin = origin.replace(/^partners\./i, '')
-                              navigator.clipboard.writeText(`${cleanOrigin}/menu?tipo=${tipoQR}`)
+                              const cleanOrigin = origin.replace(/\.partners\./i, '.')
+                              navigator.clipboard.writeText(`${cleanOrigin}/cliente/guest?tab=menu&tipo=${tipoQR}`)
                               alert('📋 Enlace de menú copiado al portapapeles!')
                             }}
                             className="bg-white border border-[#e4e4e7] hover:bg-[#fafafa] text-[#09090b] text-[10px] font-bold px-3.5 py-2 rounded-lg transition-colors flex items-center gap-1.5"
@@ -4588,8 +4628,8 @@ export default function DashboardPage() {
                           <a
                             href={(() => {
                               const origin = typeof window !== 'undefined' ? window.location.origin : 'https://laburreria.loyaltyclub.mx'
-                              const cleanOrigin = origin.replace(/^partners\./i, '')
-                              return `${cleanOrigin}/menu?tipo=${tipoQR}`
+                              const cleanOrigin = origin.replace(/\.partners\./i, '.')
+                              return `${cleanOrigin}/cliente/guest?tab=menu&tipo=${tipoQR}`
                             })()}
                             target="_blank"
                             className="bg-white border border-[#e4e4e7] hover:bg-[#fafafa] text-[#09090b] text-[10px] font-bold px-3.5 py-2 rounded-lg transition-colors flex items-center gap-1.5"
@@ -5783,6 +5823,35 @@ export default function DashboardPage() {
                             </select>
                           </div>
 
+                          {/* Enlace a Ruleta de Premios */}
+                          <div className="space-y-1.5">
+                            <label className={LBL}>Ruleta de Premios Asociada</label>
+                            <div className="flex gap-2">
+                              <select
+                                value={selectedRuletaId}
+                                onChange={e => setSelectedRuletaId(e.target.value)}
+                                className={IC}
+                              >
+                                <option value="">Ninguna (Sin Ruleta de Premios)</option>
+                                {ruletas.map(r => (
+                                  <option key={r.id} value={r.id}>
+                                    {r.nombre} ({Array.isArray(r.premios) ? r.premios.join(', ') : 'Configurando...'})
+                                  </option>
+                                ))}
+                              </select>
+                              <button
+                                type="button"
+                                onClick={() => setMostrarCrearRuletaModal(true)}
+                                className="bg-[#09090b] hover:bg-zinc-800 text-white font-bold text-xs uppercase tracking-wider px-4 rounded-xl transition-all active:scale-95 whitespace-nowrap shrink-0"
+                              >
+                                🎰 + Agregar Ruleta
+                              </button>
+                            </div>
+                            <p className="text-[10px] text-[#71717a]">
+                              Selecciona o crea una ruleta de premios que se activará cuando el cliente complete este programa.
+                            </p>
+                          </div>
+
                           {/* Exploradores de Archivos: Logo y Portada */}
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-[#f4f4f5]">
                             {/* Logo (Top Left) */}
@@ -6435,6 +6504,99 @@ export default function DashboardPage() {
         </main>
       </div>
 
+      {/* ── MODAL: AGREGAR RULETA EXPRESS ── */}
+      {mostrarCrearRuletaModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl p-6 border border-[#e4e4e7] animate-slideUp text-left">
+            <div className="flex justify-between items-center mb-4 border-b border-[#f4f4f5] pb-3">
+              <h3 className="font-bold text-base text-[#09090b]">Crear Nueva Ruleta Express</h3>
+              <button
+                onClick={() => setMostrarCrearRuletaModal(false)}
+                className="w-7 h-7 rounded-full bg-[#fafafa] flex items-center justify-center hover:bg-[#f4f4f5]"
+              >
+                <X className="w-4 h-4 text-[#71717a]" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-[10px] text-[#71717a] font-bold uppercase tracking-wider block mb-1">Nombre de la Ruleta *</label>
+                <input
+                  type="text"
+                  required
+                  value={nuevaRuletaNombre}
+                  onChange={e => setNuevaRuletaNombre(e.target.value)}
+                  className="w-full bg-[#fafafa] border border-[#e4e4e7] rounded-xl px-4 py-2.5 focus:outline-none focus:border-[#dc2626] focus:bg-white text-sm text-[#09090b]"
+                  placeholder="Ej: Ruleta Básica o Premium"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] text-[#71717a] font-bold uppercase tracking-wider block mb-1">Premios (Separados por comas) *</label>
+                <textarea
+                  required
+                  value={nuevaRuletaPremios}
+                  onChange={e => setNuevaRuletaPremios(e.target.value)}
+                  className="w-full bg-[#fafafa] border border-[#e4e4e7] rounded-xl px-4 py-2.5 focus:outline-none focus:border-[#dc2626] focus:bg-white text-sm text-[#09090b] min-h-[80px]"
+                  placeholder="Ej: Café Gratis, Postre Sorpresa, Bebida Grande, 20% Descuento"
+                />
+                <span className="text-[9px] text-[#a1a1aa] block mt-1">Recomendado: mínimo 4 premios para una visualización correcta.</span>
+              </div>
+
+              <div className="pt-2 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setMostrarCrearRuletaModal(false)}
+                  className="flex-1 py-3 border border-[#e4e4e7] rounded-xl text-[#52525b] text-xs font-bold hover:bg-[#fafafa] transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={guardandoNuevaRuleta || !nuevaRuletaNombre.trim() || !nuevaRuletaPremios.trim()}
+                  onClick={async () => {
+                    setGuardandoNuevaRuleta(true)
+                    try {
+                      const businessId = getCookieVal('session_business_id') || business?.id
+                      if (!businessId) throw new Error('No se detectó ID de negocio')
+                      
+                      const premiosArr = nuevaRuletaPremios.split(',').map(p => p.trim()).filter(Boolean)
+                      if (premiosArr.length < 2) throw new Error('Ingresa al menos 2 premios')
+
+                      const { data: newRuleta, error } = await supabase
+                        .from('ruletas')
+                        .insert({
+                          business_id: businessId,
+                          nombre: nuevaRuletaNombre.trim(),
+                          premios: premiosArr
+                        })
+                        .select()
+                        .single()
+
+                      if (error) throw error
+
+                      alert('✅ Ruleta creada con éxito')
+                      setRuletas(prev => [...prev, newRuleta])
+                      setSelectedRuletaId(newRuleta.id)
+                      setNuevaRuletaNombre('')
+                      setNuevaRuletaPremios('Café Gratis, Postre Sorpresa, Bebida Grande, 20% Descuento')
+                      setMostrarCrearRuletaModal(false)
+                    } catch (err: any) {
+                      alert('Error al crear ruleta: ' + err.message)
+                    } finally {
+                      setGuardandoNuevaRuleta(false)
+                    }
+                  }}
+                  className="flex-1 py-3 bg-[#dc2626] hover:bg-[#b91c1c] text-white rounded-xl font-black uppercase tracking-wider text-xs shadow-md transition-all active:scale-95 disabled:opacity-50"
+                >
+                  {guardandoNuevaRuleta ? 'Guardando...' : 'Crear y Asignar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── MODAL: AGREGAR SOCIO INTERNO ── */}
       {mostrarAgregarSocioModal && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -6721,7 +6883,24 @@ export default function DashboardPage() {
               </div>
               <div>
                 <label className={LBL}>PIN de 4 dígitos (Vacío para mantener actual)</label>
-                <input type="password" maxLength={4} inputMode="numeric" value={editEmpPin} onChange={e => setEditEmpPin(e.target.value.replace(/\D/g, ''))} className={IC + ' text-center tracking-[0.5em] font-mono'} placeholder="••••" />
+                <div className="relative">
+                  <input
+                    type={showEditEmpPin ? 'text' : 'password'}
+                    maxLength={4}
+                    inputMode="numeric"
+                    value={editEmpPin}
+                    onChange={e => setEditEmpPin(e.target.value.replace(/\D/g, ''))}
+                    className={IC + ' text-center tracking-[0.5em] font-mono pr-10'}
+                    placeholder="••••"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowEditEmpPin(!showEditEmpPin)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#a1a1aa] hover:text-[#52525b] transition-colors"
+                  >
+                    {showEditEmpPin ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
               </div>
               <div>
                 <label className={LBL}>Nivel de Acceso</label>
