@@ -1225,24 +1225,24 @@ export default function SocioDashboardPage() {
 
                       {/* Printer ID/IP */}
                       <div className="space-y-1.5">
-                        <div className="flex items-center justify-between">
-                          <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Dirección / IP de Impresora</label>
+                        <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Dirección / IP de Impresora</label>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={config.config_impresora}
+                            onChange={e => setConfig(prev => ({ ...prev, config_impresora: e.target.value }))}
+                            placeholder="Ej: 192.168.1.100 o PrinterName"
+                            className="flex-1 bg-[#fafafa] border border-zinc-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#dc2626] focus:bg-white transition-colors"
+                          />
                           <button
                             type="button"
                             title="Ayuda de Conexión"
                             onClick={() => setShowHelpModal(true)}
-                            className="text-[#dc2626] hover:text-red-700 transition-colors flex items-center gap-1 text-[10px] font-bold uppercase cursor-pointer"
+                            className="w-11 h-11 shrink-0 rounded-xl bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center text-lg font-black transition-colors shadow-sm cursor-pointer"
                           >
-                            <HelpCircle className="w-3.5 h-3.5" /> ¿Cómo conectar?
+                            ?
                           </button>
                         </div>
-                        <input
-                          type="text"
-                          value={config.config_impresora}
-                          onChange={e => setConfig(prev => ({ ...prev, config_impresora: e.target.value }))}
-                          placeholder="Ej: 192.168.1.100 o PrinterName"
-                          className="w-full bg-[#fafafa] border border-zinc-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#dc2626] focus:bg-white transition-colors"
-                        />
                       </div>
                     </div>
 

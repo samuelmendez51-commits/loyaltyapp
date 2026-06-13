@@ -65,8 +65,8 @@ export async function POST(req: Request) {
     console.log('================================================\n')
 
     if (tipo_impresora === 'red_usb') {
-      const safeId = String(orderData.id || Date.now()).replace(/[^a-zA-Z0-9]/g, '_')
-      tempFilePath = path.join(process.cwd(), `ticket_${safeId}.bin`)
+      const orderId = orderData.id || Date.now()
+      tempFilePath = path.join(process.cwd(), `ticket_${orderId}.bin`)
       fs.writeFileSync(tempFilePath, finalBuffer)
 
       try {

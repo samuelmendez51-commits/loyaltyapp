@@ -3610,7 +3610,7 @@ export default function DashboardPage() {
                     }}
                     className="flex items-center gap-1.5 py-2.5 px-4 text-xs font-bold bg-[#f4f4f5] hover:bg-[#e4e4e7] border border-[#e4e4e7] text-[#18181b] rounded-xl shadow-sm transition-colors cursor-pointer"
                   >
-                    <Download className="w-4 h-4 text-[#71717a]" /> Exportar CSV
+                    📥 Exportar para Google Contacts (.csv)
                   </button>
                   <button
                     onClick={() => setMostrarAgregarSocioModal(true)}

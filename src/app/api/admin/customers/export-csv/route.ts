@@ -47,7 +47,7 @@ export async function GET(req: Request) {
         const name = cleanText(c.nombre || '');
         const phone = c.telefono ? cleanText(c.telefono.trim()) : '';
         const birthday = c.fecha_nacimiento || '';
-        const phoneType = 'MOBILE';
+        const phoneType = 'Mobile';
 
         const escapedName = name.replace(/"/g, '""');
         const escapedPhone = phone.replace(/"/g, '""');
