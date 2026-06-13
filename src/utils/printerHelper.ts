@@ -38,7 +38,7 @@ export function wrapText(text: string, limit: number): string[] {
   return lines;
 }
 
-export function formatItemRow(qty: string, desc: string, price: string, width: number, largeFontItems: boolean): Buffer[] {
+export function formatItemRow(qty: string, desc: string, price: string, width: number, largeFontItems: boolean, fontSize?: string): Buffer[] {
   qty = cleanText(qty);
   desc = cleanText(desc);
   price = cleanText(price);
@@ -61,11 +61,14 @@ export function formatItemRow(qty: string, desc: string, price: string, width: n
     if (i === 0) {
       parts.push(Buffer.from(qty.padEnd(colQtyWidth).substring(0, colQtyWidth), 'latin1'));
 
+      const isDoubleHeight = fontSize === 'DOBLE_ALTO' || fontSize === 'doble_alto';
+      const resetCmd = isDoubleHeight ? [0x1B, 0x21, 0x10] : [0x1B, 0x21, 0x00];
+
       if (largeFontItems) {
         parts.push(Buffer.from([0x1B, 0x21, 0x30]));
         const lineDesc = descLines[i].padEnd(wrapLimit).substring(0, wrapLimit);
         parts.push(Buffer.from(lineDesc, 'latin1'));
-        parts.push(Buffer.from([0x1B, 0x21, 0x00]));
+        parts.push(Buffer.from(resetCmd));
 
         const remainingForPrice = width - colQtyWidth - (wrapLimit * 2);
         parts.push(Buffer.from(price.padStart(remainingForPrice).substring(0, remainingForPrice) + '\n', 'latin1'));
@@ -77,11 +80,14 @@ export function formatItemRow(qty: string, desc: string, price: string, width: n
     } else {
       parts.push(Buffer.from(' '.repeat(colQtyWidth), 'latin1'));
 
+      const isDoubleHeight = fontSize === 'DOBLE_ALTO' || fontSize === 'doble_alto';
+      const resetCmd = isDoubleHeight ? [0x1B, 0x21, 0x10] : [0x1B, 0x21, 0x00];
+
       if (largeFontItems) {
         parts.push(Buffer.from([0x1B, 0x21, 0x30]));
         const lineDesc = descLines[i].padEnd(wrapLimit).substring(0, wrapLimit);
         parts.push(Buffer.from(lineDesc, 'latin1'));
-        parts.push(Buffer.from([0x1B, 0x21, 0x00]));
+        parts.push(Buffer.from(resetCmd));
 
         const remainingSpaces = width - colQtyWidth - (wrapLimit * 2);
         parts.push(Buffer.from(' '.repeat(remainingSpaces) + '\n', 'latin1'));
@@ -108,11 +114,19 @@ export function formatOrderTicket(orderData: any, config: any): Buffer {
   const dividerDouble = "=".repeat(lineWidth) + "\n";
 
   const parts: Buffer[] = [];
+  const fontSize = config.fontSize || config.tamano_fuente;
 
   // Initialize printer (ESC @)
   parts.push(Buffer.from([0x1B, 0x40]));
+  // BEEP: Command 30 (0x1E)
+  parts.push(Buffer.from([30]));
   // Character page WPC1252 (ESC t 16)
   parts.push(Buffer.from([0x1B, 0x74, 0x10]));
+
+  // Set Global Font Size
+  const isDoubleHeight = fontSize === 'DOBLE_ALTO' || fontSize === 'doble_alto';
+  parts.push(Buffer.from(isDoubleHeight ? [0x1B, 0x21, 0x10] : [0x1B, 0x21, 0x00]));
+
   // Center alignment (ESC a 1)
   parts.push(Buffer.from([0x1B, 0x61, 0x01]));
 
@@ -149,12 +163,12 @@ export function formatOrderTicket(orderData: any, config: any): Buffer {
 
   // Items Table
   parts.push(Buffer.from(divider, 'latin1'));
-  parts.push(Buffer.concat(formatItemRow("CANT", "DESCRIPCION", "IMPORTE", lineWidth, false)));
+  parts.push(Buffer.concat(formatItemRow("CANT", "DESCRIPCION", "IMPORTE", lineWidth, false, fontSize)));
   parts.push(Buffer.from(divider, 'latin1'));
 
   if (orderData.items && Array.isArray(orderData.items)) {
     for (const item of orderData.items) {
-      parts.push(Buffer.concat(formatItemRow(item.qty || "1", item.name || "", item.price || "", lineWidth, largeFontItems)));
+      parts.push(Buffer.concat(formatItemRow(item.qty || "1", item.name || "", item.price || "", lineWidth, largeFontItems, fontSize)));
       
       // If item has special notes
       if (item.notes && item.notes.trim()) {

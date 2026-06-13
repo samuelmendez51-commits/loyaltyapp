@@ -64,7 +64,7 @@ export async function POST(req: Request) {
 
     const orderData = {
       title: "LOYALTY APP - TERMINAL DE COCINA",
-      subtitle: "¡CONEXIÓN EXITOSA!",
+      subtitle: "CONEXION EXITOSA!",
       tenant: tenant || 'LA BURRERÍA',
       fecha: fechaActual,
       folio: "0001",
@@ -81,7 +81,8 @@ export async function POST(req: Request) {
     const config = {
       paper_width: lineWidth,
       large_font_items: !!large_font_items,
-      tiene_autocorte: !!tiene_autocorte
+      tiene_autocorte: !!tiene_autocorte,
+      fontSize: tamano_fuente === 'doble_alto' ? 'DOBLE_ALTO' : 'NORMAL'
     }
 
     const finalBuffer = formatOrderTicket(orderData, config)
@@ -104,7 +105,7 @@ export async function POST(req: Request) {
     console.log(divider.trimEnd())
     
     const logRow = (qty: string, desc: string, price: string, lg: boolean) => {
-      const rowBuffers = formatItemRow(qty, desc, price, lineWidth, lg);
+      const rowBuffers = formatItemRow(qty, desc, price, lineWidth, lg, tamano_fuente);
       for (const buf of rowBuffers) {
         let str = buf.toString('latin1');
         str = str.replace(/\x1b\x21[\x30\x00]/g, '');

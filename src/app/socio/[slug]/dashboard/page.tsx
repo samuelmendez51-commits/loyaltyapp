@@ -132,6 +132,7 @@ export default function SocioDashboardPage() {
     }
 
     try {
+      const currentFontSize = configRef.current.tamano_fuente === 'doble_alto' ? 'DOBLE_ALTO' : 'NORMAL'
       await fetch('/api/hardware/print-order', {
         method: 'POST',
         headers: {
@@ -144,7 +145,9 @@ export default function SocioDashboardPage() {
             config_impresora: configRef.current.config_impresora,
             tiene_autocorte: configRef.current.tiene_autocorte,
             paper_width: Number(configRef.current.paper_width) || 48,
-            large_font_items: configRef.current.large_font_items
+            large_font_items: configRef.current.large_font_items,
+            fontSize: currentFontSize,
+            letraGrandePlatillos: configRef.current.large_font_items
           }
         })
       })
@@ -178,6 +181,7 @@ export default function SocioDashboardPage() {
     }
 
     try {
+      const currentFontSize = config.tamano_fuente === 'doble_alto' ? 'DOBLE_ALTO' : 'NORMAL'
       const response = await fetch('/api/hardware/print-order', {
         method: 'POST',
         headers: {
@@ -190,7 +194,9 @@ export default function SocioDashboardPage() {
             config_impresora: config.config_impresora,
             tiene_autocorte: config.tiene_autocorte,
             paper_width: Number(config.paper_width) || 48,
-            large_font_items: config.large_font_items
+            large_font_items: config.large_font_items,
+            fontSize: currentFontSize,
+            letraGrandePlatillos: config.large_font_items
           }
         })
       })
@@ -539,6 +545,7 @@ export default function SocioDashboardPage() {
     if (!config.config_impresora) return
     setImprimiendo(true)
     try {
+      const currentFontSize = config.tamano_fuente === 'doble_alto' ? 'DOBLE_ALTO' : 'NORMAL'
       const response = await fetch('/api/hardware/print-test', {
         method: 'POST',
         headers: {
@@ -551,7 +558,9 @@ export default function SocioDashboardPage() {
           tiene_autocorte: config.tiene_autocorte,
           paper_width: Number(config.paper_width) || 48,
           large_font_items: config.large_font_items,
-          tenant: business?.nombre || slug
+          tenant: business?.nombre || slug,
+          fontSize: currentFontSize,
+          letraGrandePlatillos: config.large_font_items
         })
       })
       const data = await response.json()
