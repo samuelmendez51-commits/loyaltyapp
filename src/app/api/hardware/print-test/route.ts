@@ -1,4 +1,10 @@
 import { NextResponse } from 'next/server'
+import { exec } from 'child_process'
+import fs from 'fs'
+import path from 'path'
+import { promisify } from 'util'
+
+const execAsync = promisify(exec)
 
 export async function POST(req: Request) {
   try {
@@ -79,6 +85,38 @@ export async function POST(req: Request) {
     console.log('--- Hex Dump ---')
     console.log(finalBuffer.toString('hex').match(/.{1,2}/g)?.join(' ') || '')
     console.log('================================================\n')
+
+    if (tipo_impresora === 'red_usb') {
+      const tempFilePath = path.join(process.cwd(), 'test_ticket.bin')
+      fs.writeFileSync(tempFilePath, finalBuffer)
+
+      try {
+        const printerPath = '\\\\127.0.0.1\\' + config_impresora
+        const command = `cmd.exe /c copy /b "${tempFilePath}" "${printerPath}"`
+        
+        await execAsync(command)
+        
+        if (fs.existsSync(tempFilePath)) {
+          fs.unlinkSync(tempFilePath)
+        }
+        
+        return NextResponse.json({
+          success: true,
+          message: `Impresión física enviada con éxito a ${config_impresora} (USB Compartida)`,
+          bytes: finalBuffer.length,
+          hex: finalBuffer.toString('hex')
+        })
+      } catch (cmdError: any) {
+        if (fs.existsSync(tempFilePath)) {
+          fs.unlinkSync(tempFilePath)
+        }
+        console.error('Fallo en comando de impresión física:', cmdError)
+        return NextResponse.json(
+          { error: `Error de spooler Windows al copiar a la impresora: ${cmdError.message}` },
+          { status: 500 }
+        )
+      }
+    }
 
     return NextResponse.json({
       success: true,
