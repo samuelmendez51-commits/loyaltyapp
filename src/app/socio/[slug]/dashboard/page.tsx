@@ -67,6 +67,11 @@ export default function SocioDashboardPage() {
     paper_width: 48,
     large_font_items: false
   })
+  const configRef = useRef(config)
+  useEffect(() => {
+    configRef.current = config
+  }, [config])
+
   const [cargandoConfig, setCargandoConfig] = useState(true)
   const [imprimiendo, setImprimiendo] = useState(false)
 
@@ -89,6 +94,109 @@ export default function SocioDashboardPage() {
 
   // Timer Tick for semáforo countdown
   const [currentTime, setCurrentTime] = useState(Date.now())
+
+  const getParsedItems = (items: any) => {
+    if (!items) return []
+    if (Array.isArray(items)) return items
+    try {
+      return JSON.parse(items)
+    } catch (e) {
+      return []
+    }
+  }
+
+  const imprimirPedidoAutomatico = useCallback(async (order: Order) => {
+    const parsedItems = getParsedItems(order.items)
+    const orderData = {
+      title: "NUEVO PEDIDO",
+      subtitle: "IMPRESION AUTOMATICA",
+      tenant: business?.name || slug,
+      fecha: new Date(order.created_at).toLocaleString('es-MX', {
+        timeZone: 'America/Mexico_City',
+        dateStyle: 'medium',
+        timeStyle: 'medium'
+      }),
+      folio: order.id.slice(-4).toUpperCase(),
+      cliente: order.nombre_cliente,
+      servicio: order.tipo,
+      items: parsedItems.map((item: any) => ({
+        qty: String(item.cantidad || item.qty || 1),
+        name: item.nombre || item.name || "",
+        price: item.precio ? `$${Number(item.precio).toFixed(2)}` : "",
+        notes: item.notes || item.notes || ""
+      })),
+      total: `$${Number(order.total).toFixed(2)}`
+    }
+
+    try {
+      await fetch('/api/hardware/print-order', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          orderData,
+          config: {
+            tipo_impresora: configRef.current.tipo_impresora,
+            config_impresora: configRef.current.config_impresora,
+            tiene_autocorte: configRef.current.tiene_autocorte,
+            paper_width: Number(configRef.current.paper_width) || 48,
+            large_font_items: configRef.current.large_font_items
+          }
+        })
+      })
+    } catch (err: any) {
+      console.error('Error en impresión automática:', err)
+    }
+  }, [business?.name, slug])
+
+  const handleReimprimir = async (order: Order) => {
+    const parsedItems = getParsedItems(order.items)
+    const orderData = {
+      title: "PEDIDO REAL",
+      subtitle: "REIMPRESION DE TICKET",
+      tenant: business?.name || slug,
+      fecha: new Date(order.created_at).toLocaleString('es-MX', {
+        timeZone: 'America/Mexico_City',
+        dateStyle: 'medium',
+        timeStyle: 'medium'
+      }),
+      folio: order.id.slice(-4).toUpperCase(),
+      cliente: order.nombre_cliente,
+      servicio: order.tipo,
+      items: parsedItems.map((item: any) => ({
+        qty: String(item.cantidad || item.qty || 1),
+        name: item.nombre || item.name || "",
+        price: item.precio ? `$${Number(item.precio).toFixed(2)}` : "",
+        notes: item.notes || item.notes || ""
+      })),
+      total: `$${Number(order.total).toFixed(2)}`
+    }
+
+    try {
+      const response = await fetch('/api/hardware/print-order', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          orderData,
+          config: {
+            tipo_impresora: config.tipo_impresora,
+            config_impresora: config.config_impresora,
+            tiene_autocorte: config.tiene_autocorte,
+            paper_width: Number(config.paper_width) || 48,
+            large_font_items: config.large_font_items
+          }
+        })
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Error al imprimir')
+      alert('💾 ¡Ticket enviado a la impresora!')
+    } catch (err: any) {
+      alert('Error de impresión: ' + err.message)
+    }
+  }
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -228,6 +336,9 @@ export default function SocioDashboardPage() {
         setConnected(true)
         if (payload.eventType === 'INSERT') {
           const newOrder = payload.new as Order
+          if (configRef.current.imprimir_automatico && configRef.current.config_impresora) {
+            imprimirPedidoAutomatico(newOrder)
+          }
           setOrders(prev => {
             if (prev.some(o => o.id === newOrder.id)) return prev
             if (['pendiente', 'preparacion', 'listo'].includes(newOrder.estado) && !newOrder.tengo_el_pedido_at && !newOrder.entregado_at) {
@@ -258,7 +369,7 @@ export default function SocioDashboardPage() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [business?.id])
+  }, [business?.id, imprimirPedidoAutomatico])
 
   // 5. Cargar Historial de Órdenes
   const cargarHistorial = useCallback(async () => {
@@ -436,13 +547,11 @@ export default function SocioDashboardPage() {
           tiene_autocorte: config.tiene_autocorte,
           paper_width: Number(config.paper_width) || 48,
           large_font_items: config.large_font_items,
-          tenant: business?.name || slug
+          tenant: business?.nombre || slug
         })
       })
       const data = await response.json()
-      if (!response.ok) {
-        throw new Error(data.error || 'Error desconocido')
-      }
+      if (!response.ok) throw new Error(data.error || 'Error desconocido')
       alert('💾 ¡Impresión de prueba enviada con éxito!')
     } catch (err: any) {
       alert('Error al imprimir página de prueba: ' + err.message)
@@ -482,15 +591,7 @@ export default function SocioDashboardPage() {
     }
   }
 
-  const getParsedItems = (items: any) => {
-    if (!items) return []
-    if (Array.isArray(items)) return items
-    try {
-      return JSON.parse(items)
-    } catch (e) {
-      return []
-    }
-  }
+
 
   if (cargando && !business) {
     return (
@@ -622,9 +723,18 @@ export default function SocioDashboardPage() {
                             <div key={order.id} className="border border-zinc-200 rounded-xl p-4 hover:border-zinc-300 transition-colors shadow-sm space-y-3 relative overflow-hidden bg-[#fafafa]">
                               <div className="flex justify-between items-start">
                                 <div>
-                                  <span className="text-[10px] font-mono font-bold bg-zinc-200 px-2 py-0.5 rounded-full text-zinc-800 uppercase">
-                                    #{order.id.slice(-4).toUpperCase()}
-                                  </span>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-mono font-bold bg-zinc-200 px-2 py-0.5 rounded-full text-zinc-800 uppercase">
+                                      #{order.id.slice(-4).toUpperCase()}
+                                    </span>
+                                    <button
+                                      title="Reimprimir Ticket"
+                                      onClick={() => handleReimprimir(order)}
+                                      className="p-1 text-zinc-400 hover:text-[#dc2626] rounded hover:bg-zinc-150 transition-colors"
+                                    >
+                                      <Printer className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
                                   <h5 className="font-bold text-sm text-zinc-900 mt-1.5">{order.nombre_cliente}</h5>
                                 </div>
                                 <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${order.tipo === 'delivery' ? 'bg-blue-50 text-blue-600 border border-blue-100' : 'bg-amber-50 text-amber-600 border border-amber-100'}`}>
@@ -688,9 +798,18 @@ export default function SocioDashboardPage() {
 
                               <div className="flex justify-between items-start">
                                 <div>
-                                  <span className="text-[10px] font-mono font-bold bg-amber-100 px-2 py-0.5 rounded-full text-amber-800 uppercase">
-                                    #{order.id.slice(-4).toUpperCase()}
-                                  </span>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-mono font-bold bg-amber-100 px-2 py-0.5 rounded-full text-amber-800 uppercase">
+                                      #{order.id.slice(-4).toUpperCase()}
+                                    </span>
+                                    <button
+                                      title="Reimprimir Ticket"
+                                      onClick={() => handleReimprimir(order)}
+                                      className="p-1 text-zinc-400 hover:text-[#dc2626] rounded hover:bg-zinc-150 transition-colors"
+                                    >
+                                      <Printer className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
                                   <h5 className="font-bold text-sm text-zinc-900 mt-1.5">{order.nombre_cliente}</h5>
                                 </div>
                                 <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${order.tipo === 'delivery' ? 'bg-blue-50 text-blue-600 border border-blue-100' : 'bg-amber-50 text-amber-600 border border-amber-100'}`}>
@@ -800,9 +919,18 @@ export default function SocioDashboardPage() {
                             <div key={order.id} className="border border-zinc-200 rounded-xl p-4 hover:border-zinc-300 transition-colors shadow-sm space-y-3 relative overflow-hidden bg-emerald-50/25 border-emerald-100">
                               <div className="flex justify-between items-start">
                                 <div>
-                                  <span className="text-[10px] font-mono font-bold bg-emerald-100 px-2 py-0.5 rounded-full text-emerald-800 uppercase">
-                                    #{order.id.slice(-4).toUpperCase()}
-                                  </span>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-mono font-bold bg-emerald-100 px-2 py-0.5 rounded-full text-emerald-800 uppercase">
+                                      #{order.id.slice(-4).toUpperCase()}
+                                    </span>
+                                    <button
+                                      title="Reimprimir Ticket"
+                                      onClick={() => handleReimprimir(order)}
+                                      className="p-1 text-zinc-400 hover:text-[#dc2626] rounded hover:bg-zinc-100 transition-colors"
+                                    >
+                                      <Printer className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
                                   <h5 className="font-bold text-sm text-zinc-900 mt-1.5">{order.nombre_cliente}</h5>
                                 </div>
                                 <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
