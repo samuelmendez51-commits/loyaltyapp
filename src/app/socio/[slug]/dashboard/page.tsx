@@ -63,7 +63,8 @@ export default function SocioDashboardPage() {
     tiene_autocorte: true,
     tipo_impresora: 'bluetooth',
     config_impresora: '',
-    tamano_fuente: 'normal'
+    tamano_fuente: 'normal',
+    paper_width: '80mm'
   })
   const [cargandoConfig, setCargandoConfig] = useState(true)
   const [imprimiendo, setImprimiendo] = useState(false)
@@ -127,7 +128,8 @@ export default function SocioDashboardPage() {
             tiene_autocorte: data.tiene_autocorte || false,
             tipo_impresora: data.tipo_impresora || 'bluetooth',
             config_impresora: data.config_impresora || '',
-            tamano_fuente: data.tamano_fuente || 'normal'
+            tamano_fuente: data.tamano_fuente || 'normal',
+            paper_width: data.paper_width || '80mm'
           })
         } else {
           const { data: newC } = await supabase.from('terminal_config')
@@ -138,7 +140,8 @@ export default function SocioDashboardPage() {
               tiene_autocorte: true,
               tipo_impresora: 'bluetooth',
               config_impresora: '',
-              tamano_fuente: 'normal'
+              tamano_fuente: 'normal',
+              paper_width: '80mm'
             })
             .select()
             .single()
@@ -149,7 +152,8 @@ export default function SocioDashboardPage() {
               tiene_autocorte: newC.tiene_autocorte,
               tipo_impresora: newC.tipo_impresora,
               config_impresora: newC.config_impresora || '',
-              tamano_fuente: newC.tamano_fuente
+              tamano_fuente: newC.tamano_fuente,
+              paper_width: newC.paper_width || '80mm'
             })
           }
         }
@@ -398,6 +402,7 @@ export default function SocioDashboardPage() {
           tipo_impresora: config.tipo_impresora,
           config_impresora: config.config_impresora,
           tamano_fuente: config.tamano_fuente,
+          paper_width: config.paper_width,
           updated_at: new Date().toISOString()
         })
         .eq('business_id', business.id)
@@ -424,6 +429,7 @@ export default function SocioDashboardPage() {
           config_impresora: config.config_impresora,
           tamano_fuente: config.tamano_fuente,
           tiene_autocorte: config.tiene_autocorte,
+          paper_width: config.paper_width,
           tenant: business?.name || slug
         })
       })
@@ -1090,6 +1096,19 @@ export default function SocioDashboardPage() {
                           className="w-full bg-[#fafafa] border border-zinc-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#dc2626] focus:bg-white transition-colors"
                         />
                       </div>
+                    </div>
+
+                    {/* Paper Width Selector */}
+                    <div className="space-y-1.5">
+                      <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Ancho de Papel / Formato</label>
+                      <select
+                        value={config.paper_width}
+                        onChange={e => setConfig(prev => ({ ...prev, paper_width: e.target.value }))}
+                        className="w-full bg-[#fafafa] border border-zinc-200 rounded-xl px-4 py-3 text-[#09090b] text-sm focus:outline-none focus:border-[#dc2626] focus:bg-white transition-colors"
+                      >
+                        <option value="80mm">80mm (48 Columnas)</option>
+                        <option value="58mm">58mm (32 Columnas)</option>
+                      </select>
                     </div>
 
                     {/* Font Size Selector */}
