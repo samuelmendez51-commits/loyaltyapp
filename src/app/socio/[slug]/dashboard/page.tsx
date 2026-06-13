@@ -31,6 +31,7 @@ interface Order {
   calle: string
   numero: string
   colonia: string
+  notas?: string
   tipo: string
   items: any
   total: number

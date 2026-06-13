@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { fetchWithRetry } from '@/utils/fetchHelper'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -30,7 +31,7 @@ async function sendViaWhatsAppGateway({
 
     const url = `${apiUrl.replace(/\/$/, '')}/message/sendText/${instanceName}`
 
-    const response = await fetch(url, {
+    const response = await fetchWithRetry(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -68,7 +69,7 @@ async function sendViaWhatsAppGateway({
 
     const url = `https://graph.facebook.com/v18.0/${phoneId}/messages`
 
-    const response = await fetch(url, {
+    const response = await fetchWithRetry(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

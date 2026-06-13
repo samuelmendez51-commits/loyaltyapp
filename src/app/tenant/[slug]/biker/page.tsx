@@ -157,53 +157,27 @@ function LoginBiker({ fleetId, onLogin }: { fleetId: string; onLogin: (b: Biker)
     setCargando(true)
     setError('')
     try {
-      const { data, error: err } = await supabase
-        .from('bikers')
-        .select('*')
-        .eq('fleet_id', fleetId)
-        .eq('telefono', telefonoLimpio)
-        .eq('pin', pin)
-        .eq('activo', true)
-        .maybeSingle()
+      const { data: res, error: err } = await supabase
+        .rpc('login_biker', {
+          p_fleet_id: fleetId,
+          p_telefono: telefonoLimpio,
+          p_pin: pin
+        })
 
-      if (err || !data) {
+      if (err || !res) {
         setError('Teléfono o PIN incorrectos. Intenta de nuevo.')
         setPin('')
+      } else if (res.error) {
+        setError(res.error)
+        setPin('')
       } else {
-        // Verificar admisión y bloqueos
-        if (data.estado_aprobacion === 'pendiente') {
-          setError('Tu solicitud de ingreso está pendiente de aprobación.')
-          setPin('')
-        } else if (data.estado_aprobacion === 'rechazado') {
-          setError('Tu solicitud de ingreso ha sido rechazada.')
-          setPin('')
-        } else if (data.bloqueado_permanente) {
-          setError('Tu acceso ha sido bloqueado de forma indefinida.')
-          setPin('')
-        } else if (data.bloqueado_hasta && new Date(data.bloqueado_hasta) > new Date()) {
-          setError(`Acceso suspendido temporalmente hasta el ${new Date(data.bloqueado_hasta).toLocaleString('es-MX')}.`)
-          setPin('')
-        } else {
-          // Generar UUID de sesión único
-          const newSessionId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : (Math.random().toString(36).substring(2) + Date.now().toString(36))
-          
-          // Actualizar en base de datos
-          const { error: updErr } = await supabase
-            .from('bikers')
-            .update({ current_session_id: newSessionId })
-            .eq('id', data.id)
-
-          if (updErr) {
-            setError('Error al iniciar sesión única. Intenta de nuevo.')
-            return
-          }
-
-          // Guardar en cookie local
-          document.cookie = `biker_session_id=${newSessionId}; path=/; SameSite=Lax`
-          
-          onLogin({ ...data, current_session_id: newSessionId } as Biker)
-        }
+        // Guardar en cookie local
+        document.cookie = `biker_session_id=${res.session_id}; path=/; SameSite=Lax`
+        
+        onLogin(res.biker as Biker)
       }
+    } catch (e) {
+      setError('Error al iniciar sesión. Intenta de nuevo.')
     } finally {
       setCargando(false)
     }
@@ -538,7 +512,11 @@ export default function BikerPortal() {
     if (sessionMismatch) {
       // Candado de sesión única: forzar logout inmediato
       document.cookie = 'biker_session_id=; path=/; max-age=0'
-      await supabase.from('bikers').update({ conectado: false }).eq('id', biker.id)
+      await supabase.rpc('actualizar_presencia_biker', {
+        p_biker_id: biker.id,
+        p_session_id: getCookie('biker_session_id'),
+        p_conectado: false
+      })
       setBiker(null)
       setConectado(false)
       setViajeActivo(null)
@@ -549,7 +527,11 @@ export default function BikerPortal() {
 
     if (isPending || isPermBlocked || isTempBlocked) {
       // Bloqueo normal
-      await supabase.from('bikers').update({ conectado: false }).eq('id', biker.id)
+      await supabase.rpc('actualizar_presencia_biker', {
+        p_biker_id: biker.id,
+        p_session_id: getCookie('biker_session_id'),
+        p_conectado: false
+      })
       setBiker(null)
       setConectado(false)
       setViajeActivo(null)
@@ -568,7 +550,11 @@ export default function BikerPortal() {
 
     if (isExpired && conectado) {
       // Expiración de crédito: desconectar al biker
-      await supabase.from('bikers').update({ conectado: false }).eq('id', biker.id)
+      await supabase.rpc('actualizar_presencia_biker', {
+        p_biker_id: biker.id,
+        p_session_id: getCookie('biker_session_id'),
+        p_conectado: false
+      })
       setConectado(false)
       alert('Tu tiempo de acceso ha expirado. Por favor, realiza una recarga con el modulador de la flota.')
     }
@@ -716,10 +702,14 @@ export default function BikerPortal() {
         updatePayload.conectado_desde = null
       }
 
-      await supabase
-        .from('bikers')
-        .update(updatePayload)
-        .eq('id', biker.id)
+      await supabase.rpc('actualizar_presencia_biker', {
+        p_biker_id: biker.id,
+        p_session_id: getCookie('biker_session_id'),
+        p_conectado: nuevoEstado,
+        p_conectado_desde: updatePayload.conectado_desde || null,
+        p_minutos_conexion_hoy: updatePayload.minutos_conexion_hoy || null,
+        p_ultimo_ping: updatePayload.ultimo_ping || null
+      })
 
       setConectado(nuevoEstado)
       if (!nuevoEstado) {
@@ -826,10 +816,27 @@ export default function BikerPortal() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'delivery_requests', filter: `fleet_id=eq.${fleet.id}` },
-        () => {
-          cargarViajeActivo()
-          cargarStatsHoy()
-          if (conectado) cargarPendientes()
+        (payload: any) => {
+          const { eventType, new: newRec, old: oldRec } = payload
+          
+          // 1. Si el viaje activo cambia (ej. completado, cancelado, asignado a nosotros)
+          const esNuestroViaje = (newRec && newRec.biker_id === biker.id) || (oldRec && oldRec.biker_id === biker.id)
+          
+          if (esNuestroViaje) {
+            cargarViajeActivo()
+            cargarStatsHoy()
+          }
+          
+          // 2. Si hay cambios en los pendientes (nuevos viajes libres, o viajes reclamados por otros)
+          const afectabaPendientes = 
+            eventType === 'INSERT' && newRec.estado === 'pendiente' ||
+            eventType === 'DELETE' ||
+            (newRec && newRec.estado !== 'pendiente' && oldRec && oldRec.estado === 'pendiente') ||
+            (newRec && newRec.estado === 'pendiente' && oldRec && oldRec.estado !== 'pendiente')
+
+          if (conectado && (afectabaPendientes || esNuestroViaje)) {
+            cargarPendientes()
+          }
         }
       )
       .subscribe()
@@ -863,8 +870,9 @@ export default function BikerPortal() {
 
   // ── ACCIÓN: Avanzar estado del viaje (Recogí → Entregué) ─────────────────
   const avanzarEstado = async () => {
-    if (!viajeActivo || procesando) return
-
+    if (!viajeActivo || !biker || procesando) {
+      return
+    }
     // Si el siguiente estado es completado, abrimos el modal de cobro final
     if (viajeActivo.estado === 'en_camino') {
       const desglose = calcularTarifaReal(viajeActivo, fleet)
@@ -875,10 +883,13 @@ export default function BikerPortal() {
 
     setProcesando(true)
     try {
-      await supabase
-        .from('delivery_requests')
-        .update({ estado: 'en_camino', recogido_at: new Date().toISOString() })
-        .eq('id', viajeActivo.id)
+      const { data: ok, error } = await supabase.rpc('avanzar_estado_viaje', {
+        p_request_id: viajeActivo.id,
+        p_biker_id: biker.id,
+        p_session_id: getCookie('biker_session_id'),
+        p_estado: 'en_camino'
+      })
+      if (error || !ok) throw new Error()
       notif('ok', '¡Pedido recogido! Llevas el paquete.')
       await cargarViajeActivo()
     } catch {
@@ -890,19 +901,19 @@ export default function BikerPortal() {
 
   // ── ACCIÓN: Confirmar entrega final con tarifas recalculadas ──────────────
   const confirmarEntregaFinal = async () => {
-    if (!viajeActivo || !resumenDesglose || procesando) return
+    if (!viajeActivo || !biker || !resumenDesglose || procesando) return
     setProcesando(true)
     try {
-      await supabase
-        .from('delivery_requests')
-        .update({
-          estado: 'completado',
-          entregado_at: new Date().toISOString(),
-          tarifa_base: resumenDesglose.base,
-          tarifa_extra: resumenDesglose.extra,
-          total_cobrado: resumenDesglose.total
-        })
-        .eq('id', viajeActivo.id)
+      const { data: ok, error } = await supabase.rpc('avanzar_estado_viaje', {
+        p_request_id: viajeActivo.id,
+        p_biker_id: biker.id,
+        p_session_id: getCookie('biker_session_id'),
+        p_estado: 'completado',
+        p_tarifa_base: resumenDesglose.base,
+        p_tarifa_extra: resumenDesglose.extra,
+        p_total_cobrado: resumenDesglose.total
+      })
+      if (error || !ok) throw new Error()
       
       notif('ok', '¡Entrega completada! Bien hecho 🎉')
       setShowResumenModal(false)
@@ -943,7 +954,11 @@ export default function BikerPortal() {
   // ── ACCIÓN: Cerrar sesión ─────────────────────────────────────────────────
   const cerrarSesion = async () => {
     if (biker) {
-      await supabase.from('bikers').update({ conectado: false }).eq('id', biker.id)
+      await supabase.rpc('actualizar_presencia_biker', {
+        p_biker_id: biker.id,
+        p_session_id: getCookie('biker_session_id'),
+        p_conectado: false
+      })
     }
     setBiker(null)
     setConectado(false)

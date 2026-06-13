@@ -27,6 +27,7 @@ interface BusinessData {
   logo_url: string | null
   banner_url: string | null
   color_primario: string | null
+  google_class_created?: boolean | null
 }
 
 interface ClienteData {
@@ -330,7 +331,7 @@ export async function POST(req: Request) {
     if (slug) {
       const { data, error: bizError } = await supabase
         .from('businesses')
-        .select('id, nombre, slug, logo_url, banner_url, color_primario')
+        .select('id, nombre, slug, logo_url, banner_url, color_primario, google_class_created')
         .eq('slug', slug)
         .maybeSingle()
 
@@ -414,7 +415,20 @@ export async function POST(req: Request) {
     }
 
     // ── 6. Asegurar que la LoyaltyClass existe y está actualizada ─────────
-    await asegurarClaseExiste(classId, accessToken, business)
+    if (!business.id) {
+      await asegurarClaseExiste(classId, accessToken, business)
+    } else if (!business.google_class_created) {
+      const classCreated = await asegurarClaseExiste(classId, accessToken, business)
+      if (classCreated) {
+        await supabase
+          .from('businesses')
+          .update({ google_class_created: true })
+          .eq('id', business.id)
+        console.log(`[GoogleWallet] Cache set: google_class_created = true for business ${business.nombre}`)
+      }
+    } else {
+      console.log('[GoogleWallet] 🚀 Saltando check de clase (clase ya registrada en caché de BD):', classId)
+    }
 
     // ── 7. Construir el LoyaltyObject dinámico ────────────────────────────
     const bgColor = normalizeHexColor(business.color_primario)

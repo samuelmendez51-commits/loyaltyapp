@@ -1,6 +1,7 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
+  output: 'standalone',
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -21,6 +22,13 @@ const nextConfig: NextConfig = {
         path: '**/src/app/api/wallet/apple/route.ts',
         title: /Encountered unexpected file in NFT list/,
       },
+    ],
+  },
+  outputFileTracingIncludes: {
+    '/api/wallet/apple': [
+      './*.pem',
+      './*.cer',
+      './*.key',
     ],
   },
   // Headers de seguridad y PWA

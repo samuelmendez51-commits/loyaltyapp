@@ -24,11 +24,13 @@ import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
   Tooltip, PieChart, Pie, Cell, Legend
 } from 'recharts'
+import { PremiumStar } from '@/components/PremiumStar'
 
 // ── Interfaces ────────────────────────────────────────────────────────────────
 interface Cliente {
   id: string; nombre: string; puntos: number; telefono: string;
   email?: string | null; fecha_nacimiento?: string | null; created_at: string
+  bandera_roja?: boolean;
 }
 interface Historial {
   id: string; cliente_id: string; tipo_movimiento: string; cantidad: number
@@ -824,7 +826,20 @@ export default function DashboardPage() {
   const [premioRapido, setPremioRapido] = useState<string | null>(null)
   const [premioNombreCustom, setPremioNombreCustom] = useState('')
   const [premioSellos, setPremioSellos] = useState<string>('3')
+  const [premioSellosOtro, setPremioSellosOtro] = useState('')
   const [programaIdActivo, setProgramaIdActivo] = useState<string>('')
+
+  // Hot/Local Modifiers states for product creation/edition modal
+  const [modificadoresLocal, setModificadoresLocal] = useState<any[]>([])
+  const [editingModIdx, setEditingModIdx] = useState<number | null>(null)
+  const [modNombreLocal, setModNombreLocal] = useState('')
+  const [modRequeridoLocal, setModRequeridoLocal] = useState(false)
+  const [modIncluidosLocal, setModIncluidosLocal] = useState('0')
+  const [modMaximoLocal, setModMaximoLocal] = useState('')
+  const [opcionesModLocal, setOpcionesModLocal] = useState<any[]>([])
+  const [nuevaOpNombreLocal, setNuevaOpNombreLocal] = useState('')
+  const [nuevaOpPrecioLocal, setNuevaOpPrecioLocal] = useState('0')
+  const [gruposClonables, setGruposClonables] = useState<any[]>([])
   
   // Configuración de Ruletas
   const [ruletas, setRuletas] = useState<any[]>([])
@@ -2090,6 +2105,7 @@ export default function DashboardPage() {
         nombre_contacto: nombreContacto.trim(),
         apellido_contacto: apellidoContacto.trim(),
         telefono_empresa: telefonoEmpresa.trim(),
+        google_class_created: false,
       } as any).eq('id', businessId)
       if (error) throw error
       alert('✅ Datos de empresa guardados')
@@ -2247,7 +2263,21 @@ export default function DashboardPage() {
         .select('*, product_modifiers(*, modifier_options(*))')
         .eq('business_id', bId)
         .order('nombre')
-      if (products) setMenuProducts(products)
+      if (products) {
+        setMenuProducts(products)
+        // Extraer todos los grupos clonables únicos por nombre
+        const uniqueGroups: Record<string, any> = {}
+        products.forEach((p: any) => {
+          if (p.product_modifiers) {
+            p.product_modifiers.forEach((m: any) => {
+              if (m.nombre && !uniqueGroups[m.nombre]) {
+                uniqueGroups[m.nombre] = m
+              }
+            })
+          }
+        })
+        setGruposClonables(Object.values(uniqueGroups))
+      }
     } catch (e) {
       console.error('Error loading dynamic menu:', e)
     }
@@ -2333,6 +2363,8 @@ export default function DashboardPage() {
     }
 
     let error = null
+    let savedProductId = productoAEditar?.id
+
     if (productoAEditar) {
       const { error: err } = await supabase
         .from('menu_products')
@@ -2340,16 +2372,66 @@ export default function DashboardPage() {
         .eq('id', productoAEditar.id)
       error = err
     } else {
-      const { error: err } = await supabase
+      const { data: newProd, error: err } = await supabase
         .from('menu_products')
         .insert(payload)
+        .select()
+        .single()
+      if (newProd) savedProductId = newProd.id
       error = err
     }
 
-    setGuardandoProd(false)
     if (error) {
+      setGuardandoProd(false)
       alert('Error al guardar producto: ' + error.message)
     } else {
+      if (savedProductId) {
+        try {
+          // 1. Eliminar modificadores anteriores del producto
+          await supabase
+            .from('product_modifiers')
+            .delete()
+            .eq('product_id', savedProductId)
+
+          // 2. Insertar los nuevos
+          for (const m of modificadoresLocal) {
+            const { data: group, error: grpErr } = await supabase
+              .from('product_modifiers')
+              .insert({
+                product_id: savedProductId,
+                nombre: m.nombre,
+                requerido: m.requerido,
+                incluidos: Number(m.incluidos) || 0,
+                maximo_permitido: m.maximo_permitido ? Number(m.maximo_permitido) : null
+              })
+              .select()
+              .single()
+
+            if (grpErr || !group) {
+              console.error('Error al guardar grupo modificador:', grpErr)
+              continue
+            }
+
+            if (m.modifier_options && m.modifier_options.length > 0) {
+              const optsPayload = m.modifier_options.map((o: any) => ({
+                modifier_id: group.id,
+                nombre: o.nombre,
+                precio_extra: Number(o.precio_extra) || 0
+              }))
+              const { error: optsErr } = await supabase
+                .from('modifier_options')
+                .insert(optsPayload)
+              if (optsErr) {
+                console.error('Error al guardar opciones de modificador:', optsErr)
+              }
+            }
+          }
+        } catch (syncErr: any) {
+          console.error('Error al sincronizar modificadores:', syncErr)
+        }
+      }
+
+      setGuardandoProd(false)
       alert('✅ Producto guardado exitosamente')
       setProductoAEditar(null)
       setNombreProd('')
@@ -2359,6 +2441,8 @@ export default function DashboardPage() {
       setDisponibleProd(true)
       setEsUpsellProd(false)
       setGroupIdProd('')
+      setModificadoresLocal([])
+      cancelarEdicionGrupoMod()
       setIsEditModalOpen(false)
       cargarDatosMenu(businessId)
     }
@@ -2592,6 +2676,82 @@ export default function DashboardPage() {
 
   const quitarOpcionMemoria = (idx: number) => {
     setOpcionesMod(prev => prev.filter((_, i) => i !== idx))
+  }
+
+  const cancelarEdicionGrupoMod = () => {
+    setEditingModIdx(null)
+    setModNombreLocal('')
+    setModRequeridoLocal(false)
+    setModIncluidosLocal('0')
+    setModMaximoLocal('')
+    setOpcionesModLocal([])
+    setNuevaOpNombreLocal('')
+    setNuevaOpPrecioLocal('0')
+  }
+
+  const agregarOpcionLocal = () => {
+    if (!nuevaOpNombreLocal.trim()) return alert('Nombre de opción requerido')
+    const precio = Number(nuevaOpPrecioLocal) || 0
+    setOpcionesModLocal(prev => [...prev, { nombre: nuevaOpNombreLocal.trim(), precio_extra: precio }])
+    setNuevaOpNombreLocal('')
+    setNuevaOpPrecioLocal('0')
+  }
+
+  const quitarOpcionLocal = (idx: number) => {
+    setOpcionesModLocal(prev => prev.filter((_, i) => i !== idx))
+  }
+
+  const guardarGrupoLocal = () => {
+    if (!modNombreLocal.trim()) return alert('Nombre del grupo modificador requerido')
+    const nuevoGrupo = {
+      nombre: modNombreLocal.trim(),
+      requerido: modRequeridoLocal,
+      incluidos: Number(modIncluidosLocal) || 0,
+      maximo_permitido: modMaximoLocal ? Number(modMaximoLocal) : '',
+      modifier_options: opcionesModLocal
+    }
+    setModificadoresLocal(prev => {
+      if (editingModIdx !== null) {
+        return prev.map((item, idx) => idx === editingModIdx ? nuevoGrupo : item)
+      } else {
+        return [...prev, nuevoGrupo]
+      }
+    })
+    cancelarEdicionGrupoMod()
+  }
+
+  const cargarGrupoParaEditar = (idx: number) => {
+    const grupo = modificadoresLocal[idx]
+    if (!grupo) return
+    setEditingModIdx(idx)
+    setModNombreLocal(grupo.nombre)
+    setModRequeridoLocal(!!grupo.requerido)
+    setModIncluidosLocal(String(grupo.incluidos ?? 0))
+    setModMaximoLocal(grupo.maximo_permitido ? String(grupo.maximo_permitido) : '')
+    setOpcionesModLocal(grupo.modifier_options || [])
+  }
+
+  const eliminarGrupoLocal = (idx: number) => {
+    setModificadoresLocal(prev => prev.filter((_, i) => i !== idx))
+    if (editingModIdx === idx) {
+      cancelarEdicionGrupoMod()
+    }
+  }
+
+  const clonarGrupoModificador = (grp: any) => {
+    setModificadoresLocal(prev => {
+      if (prev.some(m => m.nombre === grp.nombre)) return prev
+      return [...prev, {
+        nombre: grp.nombre,
+        requerido: grp.requerido,
+        incluidos: grp.incluidos,
+        maximo_permitido: grp.maximo_permitido,
+        modifier_options: grp.modifier_options?.map((o: any) => ({
+          nombre: o.nombre,
+          precio_extra: o.precio_extra
+        })) || []
+      }]
+    })
   }
 
   const guardarModificadorCompleto = async () => {
@@ -4102,15 +4262,7 @@ export default function DashboardPage() {
                     <div className="grid grid-cols-5 gap-y-4 gap-x-3 place-items-center w-full px-2">
                       {[...Array(sellosTotales)].map((_, i) => (
                         <div key={i} className="flex items-center justify-center">
-                          {i < scanCliente.puntos ? (
-                            <svg viewBox="0 0 24 24" className="w-8 h-8 text-amber-500 drop-shadow-[0_0_8px_rgba(245,158,11,0.2)] fill-current">
-                              <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" stroke="currentColor" strokeWidth="1" strokeLinejoin="round" />
-                            </svg>
-                          ) : (
-                            <svg viewBox="0 0 24 24" className="w-8 h-8 text-[#f4f4f5] fill-current">
-                              <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" stroke="#d4d4d8" strokeWidth="1" strokeLinejoin="round" />
-                            </svg>
-                          )}
+                          <PremiumStar activo={i < scanCliente.puntos} size={32} />
                         </div>
                       ))}
                     </div>
@@ -5554,7 +5706,7 @@ export default function DashboardPage() {
                                   <td className="px-4 py-3 text-xs font-mono font-bold text-[#dc2626]">${p.precio}</td>
                                   <td className="px-4 py-3 text-right space-x-2">
                                     <button onClick={() => abrirGestorModificadores(p)} className="text-xs border border-[#e4e4e7] hover:bg-[#fafafa] font-bold py-1.5 px-3 rounded-lg text-[#09090b] transition-all">⚙️ Modificadores</button>
-                                    <button onClick={() => { setProductoAEditar(p); setNombreProd(p.nombre); setDescProd(p.descripcion || ''); setPrecioProd(String(p.precio)); setImagenProdUrl(p.imagen_url || ''); setDisponibleProd(p.disponible); setEsUpsellProd(!!p.es_upsell); setGroupIdProd(p.group_id); setIsEditModalOpen(true); }} className="text-xs border border-[#e4e4e7] hover:bg-[#fafafa] font-bold py-1.5 px-3 rounded-lg text-[#52525b] transition-all">Editar</button>
+                                    <button onClick={() => { setProductoAEditar(p); setNombreProd(p.nombre); setDescProd(p.descripcion || ''); setPrecioProd(String(p.precio)); setImagenProdUrl(p.imagen_url || ''); setDisponibleProd(p.disponible); setEsUpsellProd(!!p.es_upsell); setGroupIdProd(p.group_id); setModificadoresLocal(p.product_modifiers ? JSON.parse(JSON.stringify(p.product_modifiers)) : []); setIsEditModalOpen(true); }} className="text-xs border border-[#e4e4e7] hover:bg-[#fafafa] font-bold py-1.5 px-3 rounded-lg text-[#52525b] transition-all">Editar</button>
                                     <button onClick={() => borrarProducto(p.id)} className="text-xs bg-red-50 border border-red-100 hover:bg-red-100 font-bold py-1.5 px-3 rounded-lg text-[#dc2626] transition-all">Eliminar</button>
                                   </td>
                                 </tr>

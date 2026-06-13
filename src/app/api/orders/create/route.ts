@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { fetchWithRetry } from '@/utils/fetchHelper'
 
 // Inicializar el cliente Supabase usando la clave service_role si está disponible,
 // para evitar violaciones de políticas RLS en operaciones del servidor.
@@ -68,7 +69,7 @@ export async function POST(req: Request) {
       try {
         const url = new URL(req.url)
         const baseUrl = `${url.protocol}//${url.host}`
-        const fleetRes = await fetch(`${baseUrl}/api/mock-fleet/v1/deliveries`, {
+        const fleetRes = await fetchWithRetry(`${baseUrl}/api/mock-fleet/v1/deliveries`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'

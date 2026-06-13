@@ -1,9 +1,11 @@
 'use client'
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useParams, useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { QRCodeSVG } from 'qrcode.react'
 import { UtensilsCrossed, Bell, CreditCard, X, Gift, RotateCcw, Send, Lock, MapPin, Clock, Share2, Star, Truck, Check } from 'lucide-react'
+import { PremiumStar } from '@/components/PremiumStar'
 
 // ── Interfaces ────────────────────────────────────────────────────────────────
 interface Premio { id: string; nombre: string; estampillas_requeridas: number; imagen_url?: string }
@@ -37,7 +39,7 @@ function RenderIconoSello({ icono, size = 'w-8 h-8' }: { icono: string, size?: s
   if (icono === 'gift') {
     return <Gift className={`${size} text-rose-500 fill-rose-100 animate-pulse`} />
   }
-  return <Star className={`${size} text-amber-500 fill-amber-300`} />
+  return <PremiumStar activo={true} size={size.includes('w-5.5') ? 22 : 32} />
 }
 
 function DeliveryCountdown({ scheduledTime, onExpire }: { scheduledTime: string; onExpire?: () => void }) {
@@ -542,13 +544,14 @@ export default function TarjetaLealtadFinal() {
 
   useEffect(() => {
     const cargarDatos = async () => {
-      if (!id) return
-      const esUUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(id)
+      const idStr = (Array.isArray(id) ? id[0] : id) || ''
+      if (!idStr) return
+      const esUUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(idStr)
       let query = supabase.from('clientes').select('*')
       if (esUUID) {
-        query = query.eq('id', id)
+        query = query.eq('id', idStr)
       } else {
-        query = query.or(`telefono.eq.${id},telefono.eq.52${id},telefono.eq.+52${id}`)
+        query = query.or(`telefono.eq.${idStr},telefono.eq.52${idStr},telefono.eq.+52${idStr}`)
       }
       const { data: clienteData } = await query.maybeSingle()
 

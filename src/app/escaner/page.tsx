@@ -1,18 +1,11 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import { PremiumStar } from '@/components/PremiumStar'
 
 // --- ESTRELLAS PREMIUM ---
-const StarActive = () => (
-  <svg viewBox="0 0 24 24" className="w-10 h-10 sm:w-11 sm:h-11 text-[var(--brand-gold)] drop-shadow-[0_0_15px_rgba(212,175,55,0.8)] fill-current transition-all duration-300">
-    <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" stroke="currentColor" strokeWidth="1" strokeLinejoin="round" />
-  </svg>
-)
-const StarInactive = () => (
-  <svg viewBox="0 0 24 24" className="w-10 h-10 sm:w-11 sm:h-11 text-black fill-current transition-all duration-300">
-    <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" stroke="var(--border-subtle)" strokeWidth="1" strokeLinejoin="round" />
-  </svg>
-)
+const StarActive = () => <PremiumStar activo={true} size="2.75rem" className="sm:w-11 sm:h-11" />
+const StarInactive = () => <PremiumStar activo={false} size="2.75rem" className="sm:w-11 sm:h-11" />
 
 export default function EscanerTrabajadores() {
   const [cliente, setCliente] = useState<any>(null)

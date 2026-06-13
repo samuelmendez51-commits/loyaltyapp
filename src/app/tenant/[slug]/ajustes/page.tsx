@@ -155,7 +155,7 @@ export default function AjustesPage() {
 
       const url = urlData.publicUrl
       setLogoPreview(url)
-      await supabase.from('businesses').update({ logo_url: url }).eq('id', config.id)
+      await supabase.from('businesses').update({ logo_url: url, google_class_created: false }).eq('id', config.id)
     } catch (err: any) {
       setError('Error subiendo logo: ' + err.message)
     } finally {
@@ -182,7 +182,7 @@ export default function AjustesPage() {
 
       const url = urlData.publicUrl
       setBannerPreview(url)
-      await supabase.from('businesses').update({ banner_url: url }).eq('id', config.id)
+      await supabase.from('businesses').update({ banner_url: url, google_class_created: false }).eq('id', config.id)
       setSuccess('✅ Portada actualizada con éxito')
       setTimeout(() => setSuccess(''), 3000)
     } catch (err: any) {
@@ -209,6 +209,7 @@ export default function AjustesPage() {
       max_sellos: parseInt(maxSellos) || 10,
       monto_minimo_sello: parseFloat(montoMinimo) || 0,
       horas_bloqueo: parseInt(horasBloqueo) || 24,
+      google_class_created: false,
     }
 
     if (geoLat !== null) payload.latitude = geoLat

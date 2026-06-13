@@ -86,7 +86,7 @@ export default function BikerDashboardPage() {
       .order('repartidor_solicitado_at', { ascending: false })
       .then(({ data, error }) => {
         if (error) console.error('Error al cargar órdenes:', error)
-        if (data) setOrders(data)
+        if (data) setOrders(data as Order[])
         setCargando(false)
       })
 

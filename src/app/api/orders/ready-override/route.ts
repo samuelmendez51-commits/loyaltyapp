@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { fetchWithRetry } from '@/utils/fetchHelper'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -38,7 +39,7 @@ export async function POST(req: Request) {
     try {
       const url = new URL(req.url)
       const baseUrl = `${url.protocol}//${url.host}`
-      const fleetRes = await fetch(`${baseUrl}/api/mock-fleet/v1/deliveries/${order.delivery_token}/ready`, {
+      const fleetRes = await fetchWithRetry(`${baseUrl}/api/mock-fleet/v1/deliveries/${order.delivery_token}/ready`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json'
