@@ -77,57 +77,27 @@ function parseHostname(hostname: string): ParsedDomain {
     return { slug: 'bikers', isPartner: false, isAdmin: false, isBiker: true, isSocio: false, isProduction: false }
   }
 
-  // ── Socio — producción: [slug].socios.loyaltyclub.mx ────────
-  const socioProdSuffix = `.socios.${PROD_BASE}`
-  if (host.endsWith(socioProdSuffix)) {
-    const slug = host.slice(0, -socioProdSuffix.length)
+  // ── Socio ─────────────────────────────────────────────────────────────
+  if (host.includes('.socios.')) {
+    const slug = host.split('.socios.')[0]
     if (slug && slug !== 'www') {
-      return { slug, isPartner: false, isAdmin: false, isBiker: false, isSocio: true, isProduction: true }
+      return { slug, isPartner: false, isAdmin: false, isBiker: false, isSocio: true, isProduction }
     }
   }
 
-  // ── Socio — desarrollo: [slug].socios.localhost ─────────────
-  const socioDevSuffix = `.socios.${DEV_BASE}`
-  if (host.endsWith(socioDevSuffix)) {
-    const slug = host.slice(0, -socioDevSuffix.length)
+  // ── Biker del negocio ──────────────────────────────────────────────────
+  if (host.includes('.bikers.')) {
+    const slug = host.split('.bikers.')[0]
     if (slug && slug !== 'www') {
-      return { slug, isPartner: false, isAdmin: false, isBiker: false, isSocio: true, isProduction: false }
+      return { slug, isPartner: false, isAdmin: false, isBiker: true, isSocio: false, isProduction }
     }
   }
 
-  // ── Biker del negocio — producción: [slug].bikers.loyaltyclub.mx ────────
-  const bikerProdSuffix = `.bikers.${PROD_BASE}`
-  if (host.endsWith(bikerProdSuffix)) {
-    const slug = host.slice(0, -bikerProdSuffix.length)
+  // ── Partner (staff) ────────────────────────────────────────────────────
+  if (host.includes('.partners.')) {
+    const slug = host.split('.partners.')[0]
     if (slug && slug !== 'www') {
-      return { slug, isPartner: false, isAdmin: false, isBiker: true, isSocio: false, isProduction: true }
-    }
-  }
-
-  // ── Biker del negocio — desarrollo: [slug].bikers.localhost ─────────────
-  const bikerDevSuffix = `.bikers.${DEV_BASE}`
-  if (host.endsWith(bikerDevSuffix)) {
-    const slug = host.slice(0, -bikerDevSuffix.length)
-    if (slug && slug !== 'www') {
-      return { slug, isPartner: false, isAdmin: false, isBiker: true, isSocio: false, isProduction: false }
-    }
-  }
-
-  // ── Partner (staff) — producción: [slug].partners.loyaltyclub.mx ────────
-  const partnerProdSuffix = `.partners.${PROD_BASE}`
-  if (host.endsWith(partnerProdSuffix)) {
-    const slug = host.slice(0, -partnerProdSuffix.length)
-    if (slug && slug !== 'www') {
-      return { slug, isPartner: true, isAdmin: false, isBiker: false, isSocio: false, isProduction: true }
-    }
-  }
-
-  // ── Partner (staff) — desarrollo: [slug].partners.localhost ─────────────
-  const partnerDevSuffix = `.partners.${DEV_BASE}`
-  if (host.endsWith(partnerDevSuffix)) {
-    const slug = host.slice(0, -partnerDevSuffix.length)
-    if (slug && slug !== 'www') {
-      return { slug, isPartner: true, isAdmin: false, isBiker: false, isSocio: false, isProduction: false }
+      return { slug, isPartner: true, isAdmin: false, isBiker: false, isSocio: false, isProduction }
     }
   }
 

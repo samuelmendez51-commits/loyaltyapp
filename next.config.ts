@@ -41,6 +41,12 @@ const nextConfig: NextConfig = {
       },
     ]
   },
+  webpack: (config, { dev, isServer }) => {
+    if (dev && !isServer) {
+      config.output.hotUpdateMainFilename = 'static/webpack/[runtime].hot-update.json';
+    }
+    return config;
+  },
 };
 
 export default nextConfig;
