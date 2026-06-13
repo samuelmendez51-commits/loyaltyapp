@@ -3,105 +3,9 @@ import { exec } from 'child_process'
 import fs from 'fs'
 import path from 'path'
 import { promisify } from 'util'
+import { formatOrderTicket, cleanText, centerText, wrapText, formatItemRow } from '@/utils/printerHelper'
 
 const execAsync = promisify(exec)
-
-function cleanText(text: string): string {
-  if (!text) return "";
-  return text
-    .toUpperCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-}
-
-function centerText(text: string, width: number): string {
-  if (text.length >= width) return text + "\n";
-  const pad = Math.floor((width - text.length) / 2);
-  return " ".repeat(pad) + text + "\n";
-}
-
-function wrapText(text: string, limit: number): string[] {
-  const words = text.split(' ');
-  const lines: string[] = [];
-  let currentLine = '';
-
-  for (const word of words) {
-    if ((currentLine + (currentLine ? ' ' : '') + word).length <= limit) {
-      currentLine += (currentLine ? ' ' : '') + word;
-    } else {
-      if (currentLine) lines.push(currentLine);
-      currentLine = word.slice(0, limit);
-      let rem = word.slice(limit);
-      while (rem.length > limit) {
-        lines.push(currentLine);
-        currentLine = rem.slice(0, limit);
-        rem = rem.slice(limit);
-      }
-    }
-  }
-  if (currentLine) lines.push(currentLine);
-  return lines;
-}
-
-function formatItemRow(qty: string, desc: string, price: string, width: number, largeFontItems: boolean): Buffer[] {
-  qty = cleanText(qty);
-  desc = cleanText(desc);
-  price = cleanText(price);
-
-  const is32 = width === 32;
-  const colQtyStart = 0;
-  const colQtyWidth = 5;
-  
-  const colPriceWidth = is32 ? 8 : 9;
-  const colDescWidth = width - colQtyWidth - colPriceWidth;
-
-  const wrapLimit = largeFontItems ? Math.floor(colDescWidth / 2) : colDescWidth;
-  const descLines = wrapText(desc, wrapLimit);
-  
-  const resultBuffers: Buffer[] = [];
-
-  for (let i = 0; i < descLines.length; i++) {
-    const parts: Buffer[] = [];
-
-    if (i === 0) {
-      parts.push(Buffer.from(qty.padEnd(colQtyWidth).substring(0, colQtyWidth), 'latin1'));
-
-      if (largeFontItems) {
-        parts.push(Buffer.from([0x1B, 0x21, 0x30]));
-        const lineDesc = descLines[i].padEnd(wrapLimit).substring(0, wrapLimit);
-        parts.push(Buffer.from(lineDesc, 'latin1'));
-        parts.push(Buffer.from([0x1B, 0x21, 0x00]));
-
-        const remainingForPrice = width - colQtyWidth - (wrapLimit * 2);
-        parts.push(Buffer.from(price.padStart(remainingForPrice).substring(0, remainingForPrice) + '\n', 'latin1'));
-      } else {
-        const lineDesc = descLines[i].padEnd(colDescWidth).substring(0, colDescWidth);
-        parts.push(Buffer.from(lineDesc, 'latin1'));
-        parts.push(Buffer.from(price.padStart(colPriceWidth).substring(0, colPriceWidth) + '\n', 'latin1'));
-      }
-    } else {
-      parts.push(Buffer.from(' '.repeat(colQtyWidth), 'latin1'));
-
-      if (largeFontItems) {
-        parts.push(Buffer.from([0x1B, 0x21, 0x30]));
-        const lineDesc = descLines[i].padEnd(wrapLimit).substring(0, wrapLimit);
-        parts.push(Buffer.from(lineDesc, 'latin1'));
-        parts.push(Buffer.from([0x1B, 0x21, 0x00]));
-
-        const remainingSpaces = width - colQtyWidth - (wrapLimit * 2);
-        parts.push(Buffer.from(' '.repeat(remainingSpaces) + '\n', 'latin1'));
-      } else {
-        const lineDesc = descLines[i].padEnd(colDescWidth).substring(0, colDescWidth);
-        parts.push(Buffer.from(lineDesc, 'latin1'));
-        parts.push(Buffer.from(' '.repeat(colPriceWidth) + '\n', 'latin1'));
-      }
-    }
-
-    resultBuffers.push(Buffer.concat(parts));
-  }
-
-  return resultBuffers;
-}
 
 export async function POST(req: Request) {
   try {
@@ -133,50 +37,29 @@ export async function POST(req: Request) {
       timeStyle: 'medium'
     })
 
-    const parts: Buffer[] = []
-
-    parts.push(Buffer.from([0x1B, 0x40]))
-    parts.push(Buffer.from([0x1B, 0x74, 0x10]))
-    parts.push(Buffer.from([0x1B, 0x61, 0x01]))
-
-    if (tamano_fuente === 'doble_alto') {
-      parts.push(Buffer.from([0x1D, 0x21, 0x01]))
-    } else {
-      parts.push(Buffer.from([0x1D, 0x21, 0x00]))
+    const orderData = {
+      title: "LOYALTY APP - TERMINAL DE COCINA",
+      subtitle: "¡CONEXIÓN EXITOSA!",
+      tenant: tenant || 'LA BURRERÍA',
+      fecha: fechaActual,
+      folio: "0001",
+      cliente: "CLIENTE DE PRUEBA",
+      servicio: "TEST DE HARDWARE",
+      items: [
+        { qty: "1", name: "Burrito Vaquero Grande", price: "$135.00", notes: "Sin cebolla" },
+        { qty: "2", name: "Papas Medianas", price: "$70.00" },
+        { qty: "1", name: "Refresco de Lata", price: "$25.00" }
+      ],
+      total: "$230.00"
     }
 
-    parts.push(Buffer.from(cleanText(centerText("¡CONEXIÓN EXITOSA!", lineWidth)), 'latin1'))
-    parts.push(Buffer.from(cleanText(centerText("Loyalty App - Terminal de Cocina", lineWidth)), 'latin1'))
-    parts.push(Buffer.from(cleanText(centerText(`Tenant: ${tenant || 'La Burrería'}`, lineWidth)), 'latin1'))
-    parts.push(Buffer.from(cleanText(centerText(`Fecha: ${fechaActual}`, lineWidth)), 'latin1'))
-
-    parts.push(Buffer.from([0x1B, 0x61, 0x00]))
-    parts.push(Buffer.from([0x1D, 0x21, 0x00]))
-
-    parts.push(Buffer.from(divider, 'latin1'))
-    parts.push(Buffer.concat(formatItemRow("CANT", "DESCRIPCIÓN", "IMPORTE", lineWidth, false)))
-    parts.push(Buffer.from(divider, 'latin1'))
-    parts.push(Buffer.concat(formatItemRow("1", "Burrito Vaquero Grande", "$135.00", lineWidth, !!large_font_items)))
-    parts.push(Buffer.concat(formatItemRow("2", "Papas Medianas", "$70.00", lineWidth, !!large_font_items)))
-    parts.push(Buffer.concat(formatItemRow("1", "Refresco de Lata", "$25.00", lineWidth, !!large_font_items)))
-    parts.push(Buffer.from(divider, 'latin1'))
-
-    let totalLine = "";
-    if (lineWidth === 32) {
-      totalLine = cleanText("TOTAL:".padStart(24) + "$230.00".padStart(8));
-    } else {
-      totalLine = cleanText("TOTAL:".padStart(39) + "$230.00".padStart(9));
-    }
-    parts.push(Buffer.from(totalLine + "\n", 'latin1'))
-    parts.push(Buffer.from(dividerDouble, 'latin1'))
-
-    parts.push(Buffer.from("\n\n\n\n", 'latin1'))
-
-    if (tiene_autocorte) {
-      parts.push(Buffer.from([0x1D, 0x56, 0x42, 0x00]))
+    const config = {
+      paper_width: lineWidth,
+      large_font_items: !!large_font_items,
+      tiene_autocorte: !!tiene_autocorte
     }
 
-    const finalBuffer = Buffer.concat(parts)
+    const finalBuffer = formatOrderTicket(orderData, config)
 
     console.log('\n============= [ESC/POS PRINT TEST] =============')
     console.log(`Tipo de Conexión : ${tipo_impresora || 'wifi'}`)
@@ -186,10 +69,13 @@ export async function POST(req: Request) {
     console.log(`Letra Grande     : ${large_font_items ? 'SÍ' : 'NO'}`)
     console.log(`Enviar Autocorte : ${tiene_autocorte ? 'SÍ' : 'NO'}`)
     console.log('--- Ticket Generado ---')
-    console.log(cleanText(centerText("¡CONEXIÓN EXITOSA!", lineWidth)).trimEnd())
-    console.log(cleanText(centerText("Loyalty App - Terminal de Cocina", lineWidth)).trimEnd())
-    console.log(cleanText(centerText(`Tenant: ${tenant || 'La Burrería'}`, lineWidth)).trimEnd())
-    console.log(cleanText(centerText(`Fecha: ${fechaActual}`, lineWidth)).trimEnd())
+    console.log(cleanText(centerText(orderData.subtitle, lineWidth)).trimEnd())
+    console.log(cleanText(centerText(orderData.title, lineWidth)).trimEnd())
+    console.log(cleanText(centerText("TENANT: " + orderData.tenant, lineWidth)).trimEnd())
+    console.log(cleanText(centerText("FECHA: " + orderData.fecha, lineWidth)).trimEnd())
+    console.log("\n" + cleanText("FOLIO: #" + orderData.folio))
+    console.log(cleanText("CLIENTE: " + orderData.cliente))
+    console.log(cleanText("SERVICIO: " + orderData.servicio))
     console.log(divider.trimEnd())
     
     const logRow = (qty: string, desc: string, price: string, lg: boolean) => {
@@ -203,10 +89,21 @@ export async function POST(req: Request) {
 
     logRow("CANT", "DESCRIPCIÓN", "IMPORTE", false);
     console.log(divider.trimEnd());
-    logRow("1", "Burrito Vaquero Grande", "$135.00", !!large_font_items);
-    logRow("2", "Papas Medianas", "$70.00", !!large_font_items);
-    logRow("1", "Refresco de Lata", "$25.00", !!large_font_items);
+    for (const item of orderData.items) {
+      logRow(item.qty, item.name, item.price, !!large_font_items);
+      if (item.notes) {
+        const cleanNotes = cleanText(item.notes);
+        const notesLines = wrapText(cleanNotes, lineWidth - 7);
+        for (let j = 0; j < notesLines.length; j++) {
+          const prefix = j === 0 ? "     * " : "       ";
+          console.log((prefix + notesLines[j]).trimEnd());
+        }
+      }
+    }
     console.log(divider.trimEnd())
+    const colPriceWidth = lineWidth === 32 ? 8 : 9;
+    const colLabelWidth = lineWidth - colPriceWidth;
+    const totalLine = cleanText("TOTAL:".padStart(colLabelWidth) + orderData.total.padStart(colPriceWidth));
     console.log(totalLine.trimEnd())
     console.log(dividerDouble.trimEnd())
     if (tiene_autocorte) {
