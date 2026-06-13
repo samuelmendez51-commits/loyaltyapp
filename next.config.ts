@@ -10,6 +10,7 @@ const nextConfig: NextConfig = {
     'admin.localhost',
     'laburreria.partners.localhost',
     'laburreria.localhost',
+    'laburreria.socios.localhost',
     'localhost:3000'
   ],
 
