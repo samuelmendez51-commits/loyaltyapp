@@ -66,6 +66,7 @@ export default function SocioDashboardPage() {
     tamano_fuente: 'normal'
   })
   const [cargandoConfig, setCargandoConfig] = useState(true)
+  const [imprimiendo, setImprimiendo] = useState(false)
 
   // Solicitar Repartidor states
   const [requestActivo, setRequestActivo] = useState<any>(null)
@@ -405,6 +406,36 @@ export default function SocioDashboardPage() {
       alert('💾 ¡Configuración guardada correctamente!')
     } catch (err: any) {
       alert('Error al guardar configuración: ' + err.message)
+    }
+  }
+
+  const handleImprimirPrueba = async (e: React.MouseEvent) => {
+    e.preventDefault()
+    if (!config.config_impresora) return
+    setImprimiendo(true)
+    try {
+      const response = await fetch('/api/hardware/print-test', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          tipo_impresora: config.tipo_impresora,
+          config_impresora: config.config_impresora,
+          tamano_fuente: config.tamano_fuente,
+          tiene_autocorte: config.tiene_autocorte,
+          tenant: business?.name || slug
+        })
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data.error || 'Error desconocido')
+      }
+      alert('💾 ¡Impresión de prueba enviada con éxito!')
+    } catch (err: any) {
+      alert('Error al imprimir página de prueba: ' + err.message)
+    } finally {
+      setImprimiendo(false)
     }
   }
 
@@ -1085,12 +1116,33 @@ export default function SocioDashboardPage() {
                       </div>
                     </div>
 
-                    <button
-                      type="submit"
-                      className="w-full bg-[#dc2626] hover:bg-[#b91c1c] text-white font-bold text-xs uppercase tracking-widest py-4 rounded-xl shadow-lg transition-colors mt-6 cursor-pointer"
-                    >
-                      💾 Guardar Configuración de Hardware
-                    </button>
+                    <div className="flex flex-col sm:flex-row gap-3 mt-6">
+                      <button
+                        type="submit"
+                        className="flex-1 bg-[#dc2626] hover:bg-[#b91c1c] text-white font-bold text-xs uppercase tracking-widest py-4 rounded-xl shadow-lg transition-colors cursor-pointer"
+                      >
+                        💾 Guardar Configuración
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleImprimirPrueba}
+                        disabled={!config.config_impresora || imprimiendo}
+                        className={`flex-1 font-bold text-xs uppercase tracking-widest py-4 rounded-xl transition-all flex items-center justify-center gap-2 border ${
+                          !config.config_impresora || imprimiendo
+                            ? 'bg-zinc-100 border-zinc-200 text-zinc-400 cursor-not-allowed opacity-60'
+                            : 'bg-white border-zinc-300 text-zinc-750 hover:bg-zinc-50 hover:border-zinc-450 cursor-pointer shadow-sm'
+                        }`}
+                      >
+                        {imprimiendo ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            IMPRIMIENDO...
+                          </>
+                        ) : (
+                          '🖨️ IMPRIMIR PÁGINA DE PRUEBA'
+                        )}
+                      </button>
+                    </div>
                   </form>
                 )}
               </div>
