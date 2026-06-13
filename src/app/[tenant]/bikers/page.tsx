@@ -157,7 +157,9 @@ export default function BikersPortalPage() {
         .from('orders')
         .update({
           estado: 'IN_TRANSIT',
+          delivery_status: 'SHIPPED_IMMEDIATE',
           delivery_token: bikerName.trim(),
+          tengo_el_pedido_at: new Date().toISOString(),
           repartidor_solicitado_at: new Date().toISOString()
         })
         .eq('id', orderId)
@@ -179,6 +181,7 @@ export default function BikersPortalPage() {
         .from('orders')
         .update({
           estado: 'DELIVERED',
+          delivery_status: 'DELIVERED',
           entregado_at: new Date().toISOString()
         })
         .eq('id', orderId)
@@ -217,6 +220,55 @@ export default function BikersPortalPage() {
     )
   }
 
+  if (!bikerName) {
+    return (
+      <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col items-center justify-center p-6 font-sans relative overflow-hidden select-none">
+        {/* Decorative background glow */}
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-72 h-72 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute bottom-1/4 left-1/2 -translate-x-1/2 translate-y-1/2 w-96 h-96 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="w-full max-w-sm space-y-8 relative z-10 text-center animate-fadeIn">
+          {/* Animated Icon */}
+          <div className="flex justify-center">
+            <div className="w-20 h-20 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-3xl flex items-center justify-center shadow-2xl shadow-blue-500/20 border border-blue-400/20 animate-pulse">
+              <Bike className="w-10 h-10 text-white" />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <h1 className="text-2xl font-black tracking-tight text-white leading-tight">Portal de Repartidores</h1>
+            <p className="text-xs text-zinc-400">
+              Bienvenido al portal de entregas para <span className="text-blue-400 font-bold">{business.nombre}</span>.
+            </p>
+          </div>
+
+          <form onSubmit={handleSaveName} className="space-y-4">
+            <div className="space-y-1.5 text-left">
+              <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">
+                ¿Quién conduce hoy?
+              </label>
+              <input
+                type="text"
+                required
+                value={nameInput}
+                onChange={e => setNameInput(e.target.value)}
+                placeholder="Ingresa tu nombre..."
+                className="w-full bg-zinc-900 border border-zinc-850 focus:border-blue-500 focus:outline-none rounded-2xl px-5 py-4 text-sm font-semibold placeholder-zinc-650 transition-all shadow-inner text-white"
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs uppercase tracking-widest rounded-2xl shadow-xl shadow-blue-950/50 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
+            >
+              Comenzar Reparto 🚀
+            </button>
+          </form>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col font-sans pb-12 selection:bg-blue-600 selection:text-white">
       
@@ -242,11 +294,20 @@ export default function BikersPortalPage() {
 
       <main className="flex-1 max-w-md w-full mx-auto px-4 py-6 space-y-6">
         
-        {/* ── CONFIGURACIÓN DEL NOMBRE (Biker) ── */}
-        <section className="bg-zinc-900/60 border border-zinc-850 rounded-2xl p-4 shadow-xl backdrop-blur-sm">
+        {/* ── REPARTIDOR ACTIVO ── */}
+        <section className="bg-zinc-900/40 border border-zinc-850/60 rounded-2xl p-4 shadow-xl backdrop-blur-sm">
           {isEditingName ? (
             <form onSubmit={handleSaveName} className="space-y-3">
-              <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider">¿Quién conduce hoy?</label>
+              <div className="flex items-center justify-between">
+                <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Cambiar Nombre de Repartidor</label>
+                <button
+                  type="button"
+                  onClick={() => setIsEditingName(false)}
+                  className="text-[10px] font-bold text-zinc-500 hover:text-zinc-400 uppercase cursor-pointer"
+                >
+                  Cancelar
+                </button>
+              </div>
               <div className="flex gap-2">
                 <input
                   type="text"
@@ -254,7 +315,7 @@ export default function BikersPortalPage() {
                   value={nameInput}
                   onChange={e => setNameInput(e.target.value)}
                   placeholder="Tu Nombre (ej: Samuel M.)"
-                  className="flex-1 bg-zinc-950 border border-zinc-800 focus:border-blue-500 focus:outline-none rounded-xl px-4 py-3 text-sm font-semibold placeholder-zinc-650 transition-colors"
+                  className="flex-1 bg-zinc-950 border border-zinc-800 focus:border-blue-500 focus:outline-none rounded-xl px-4 py-3 text-sm font-semibold placeholder-zinc-700 transition-colors text-white"
                 />
                 <button
                   type="submit"
@@ -266,9 +327,9 @@ export default function BikersPortalPage() {
             </form>
           ) : (
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center">
-                  <User className="w-4 h-4 text-blue-400" />
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-950/30 border border-blue-900/20 flex items-center justify-center">
+                  <User className="w-5 h-5 text-blue-400" />
                 </div>
                 <div>
                   <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Repartidor Activo</p>
@@ -277,8 +338,11 @@ export default function BikersPortalPage() {
               </div>
               <button
                 type="button"
-                onClick={() => setIsEditingName(true)}
-                className="text-xs text-blue-400 hover:text-blue-300 font-bold uppercase cursor-pointer"
+                onClick={() => {
+                  setNameInput(bikerName)
+                  setIsEditingName(true)
+                }}
+                className="text-xs text-blue-400 hover:text-blue-300 font-bold uppercase cursor-pointer transition-colors"
               >
                 Cambiar
               </button>
@@ -439,8 +503,8 @@ export default function BikersPortalPage() {
                   <div className="grid grid-cols-1 gap-2 border-t border-zinc-850 pt-3">
                     <button
                       onClick={() => {
-                        const searchAddr = `${order.calle || ''} ${order.numero || ''} ${order.colonia || ''} Uruapan`
-                        window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(searchAddr)}`, '_blank')
+                        const direccion = `${order.calle || ''} ${order.numero || ''}`.trim()
+                        window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(direccion + ' ' + order.colonia + ' Uruapan')}`, '_blank')
                       }}
                       className="w-full py-3 bg-zinc-800 hover:bg-zinc-750 text-emerald-400 border border-zinc-750 font-bold text-xs uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
                     >
