@@ -18,7 +18,7 @@ export async function POST(req: Request) {
     // 1. Cargar la orden y validar token y estado
     const { data: order, error: fetchError } = await supabase
       .from('orders')
-      .select('id, delivery_status, delivery_token, cliente_id, business_id, sello_aprobado')
+      .select('id, delivery_status, delivery_token, cliente_id, business_id, sello_otorgado, sello_aprobado')
       .eq('id', order_id)
       .single()
 
@@ -67,8 +67,8 @@ export async function POST(req: Request) {
 
     if (updateError) throw updateError
 
-    // 4. Si el sello no estaba aprobado, sumar punto al cliente y registrar premios inmutables
-    if (!order.sello_aprobado && order.cliente_id && order.business_id) {
+    // 4. Si el sello fue otorgado pero no estaba aprobado, sumar punto al cliente y registrar premios inmutables
+    if (order.sello_otorgado && !order.sello_aprobado && order.cliente_id && order.business_id) {
       const { data: client } = await supabase
         .from('clientes')
         .select('*')

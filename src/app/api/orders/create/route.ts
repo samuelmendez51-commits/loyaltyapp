@@ -109,7 +109,6 @@ export async function POST(req: Request) {
         items,
         total,
         sello_otorgado: selloOtorgado,
-        sello_aprobado: false,
         sello_rechazado: false,
         estado: 'pendiente',
         lat_entrega: lat_entrega || null,
@@ -129,7 +128,7 @@ export async function POST(req: Request) {
       throw insertError
     }
 
-    // 6. Registrar evento de tracking e incrementar puntos si aplica
+    // 6. Registrar evento de tracking si aplica
     if (selloOtorgado && cliente_id) {
       await supabase.from('tracking_events').insert({
         business_id,
@@ -138,21 +137,6 @@ export async function POST(req: Request) {
         event_type: 'created_pending',
         metadata: { total, tipo, monto_minimo: biz.monto_minimo_sello },
       })
-
-      // Incrementar puntos del cliente de forma optimista
-      const { data: cliente } = await supabase
-        .from('clientes')
-        .select('puntos')
-        .eq('id', cliente_id)
-        .single()
-
-      if (cliente) {
-        const maxSellos = biz.max_sellos || 10
-        await supabase
-          .from('clientes')
-          .update({ puntos: Math.min(cliente.puntos + 1, maxSellos) })
-          .eq('id', cliente_id)
-      }
     }
 
     return NextResponse.json({

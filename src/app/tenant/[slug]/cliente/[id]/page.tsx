@@ -650,11 +650,14 @@ export default function TarjetaLealtadFinal() {
         business_id: null
       }
     } else {
-      const { data } = await supabase
-        .from('clientes')
-        .select('*')
-        .eq('id', id)
-        .maybeSingle()
+      const esUUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(id)
+      let query = supabase.from('clientes').select('*')
+      if (esUUID) {
+        query = query.eq('id', id)
+      } else {
+        query = query.or(`telefono.eq.${id},telefono.eq.52${id},telefono.eq.+52${id}`)
+      }
+      const { data } = await query.maybeSingle()
       clienteData = data
     }
 

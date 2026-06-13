@@ -222,12 +222,19 @@ export async function POST(req: Request) {
 
     // Normalizar el teléfono de entrada para buscar en Supabase
     const cleanRecipient = clientPhone.replace(/\D/g, '')
+    if (cleanRecipient.length < 10) {
+      return NextResponse.json(
+        { error: 'El número de teléfono debe contener al menos 10 dígitos.' },
+        { status: 400 }
+      )
+    }
     const recipientPhone = cleanRecipient.startsWith('52')
       ? cleanRecipient
       : `52${cleanRecipient}`
 
-    // El formato almacenado incluye + al inicio
+    // El formato almacenado incluye + al inicio y también puede ser sin prefijo (10 dígitos)
     const telConPlus = `+${recipientPhone}`
+    const last10 = cleanRecipient.slice(-10)
 
     try {
       // Intentar por ID directo si viene en el payload (más preciso)
@@ -243,11 +250,11 @@ export async function POST(req: Request) {
           sellosActuales = Number(cli.puntos) || 0
         }
       } else {
-        // Buscar por teléfono (con y sin +)
+        // Buscar por teléfono (con y sin +, y el sufijo de 10 dígitos)
         const { data: cli } = await supabase
           .from('clientes')
           .select('nombre, puntos')
-          .or(`telefono.eq.${telConPlus},telefono.eq.${recipientPhone}`)
+          .or(`telefono.eq.${telConPlus},telefono.eq.${recipientPhone},telefono.eq.${last10}`)
           .maybeSingle()
 
         if (cli) {

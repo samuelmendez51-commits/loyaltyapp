@@ -259,7 +259,7 @@ function enforceTenantIsolation(
 // ─────────────────────────────────────────────────────────────────────────────
 // MIDDLEWARE PRINCIPAL (Exportado como proxy para Next.js 16)
 // ─────────────────────────────────────────────────────────────────────────────
-export default function proxy(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname
   const hostname = request.headers.get('host') || ''
 

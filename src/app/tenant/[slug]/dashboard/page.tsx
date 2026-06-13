@@ -3760,7 +3760,7 @@ export default function DashboardPage() {
                     </thead>
                     <tbody className="divide-y divide-[#f4f4f5]">
                       {clientesVIP.map(c => {
-                        const sospechoso = sociosSospechosos[c.id] && !clientesAprobados.includes(c.id)
+                        const sospechoso = c.bandera_roja && sociosSospechosos[c.id] && !clientesAprobados.includes(c.id)
                         return (
                           <tr key={c.id} className="hover:bg-[#fafafa] transition-colors group cursor-pointer" onClick={() => setClienteSeleccionadoModal(c)}>
                             <td className="px-6 py-4 whitespace-nowrap">
@@ -6804,7 +6804,7 @@ export default function DashboardPage() {
                 <p className="text-xs font-mono text-[#71717a]">{clienteSeleccionadoModal.telefono}</p>
               </div>
 
-              {sociosSospechosos[clienteSeleccionadoModal.id] && !clientesAprobados.includes(clienteSeleccionadoModal.id) && (
+              {clienteSeleccionadoModal.bandera_roja && sociosSospechosos[clienteSeleccionadoModal.id] && !clientesAprobados.includes(clienteSeleccionadoModal.id) && (
                 <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 text-left space-y-2">
                   <div className="flex items-center gap-1.5 text-rose-700 font-bold text-xs uppercase">
                     <AlertTriangle className="w-4 h-4 text-rose-600 animate-pulse" />
