@@ -64,7 +64,8 @@ export default function SocioDashboardPage() {
     tipo_impresora: 'bluetooth',
     config_impresora: '',
     tamano_fuente: 'normal',
-    paper_width: '80mm'
+    paper_width: 48,
+    large_font_items: false
   })
   const [cargandoConfig, setCargandoConfig] = useState(true)
   const [imprimiendo, setImprimiendo] = useState(false)
@@ -129,7 +130,8 @@ export default function SocioDashboardPage() {
             tipo_impresora: data.tipo_impresora || 'bluetooth',
             config_impresora: data.config_impresora || '',
             tamano_fuente: data.tamano_fuente || 'normal',
-            paper_width: data.paper_width || '80mm'
+            paper_width: Number(data.paper_width) || 48,
+            large_font_items: data.large_font_items || false
           })
         } else {
           const { data: newC } = await supabase.from('terminal_config')
@@ -141,7 +143,8 @@ export default function SocioDashboardPage() {
               tipo_impresora: 'bluetooth',
               config_impresora: '',
               tamano_fuente: 'normal',
-              paper_width: '80mm'
+              paper_width: 48,
+              large_font_items: false
             })
             .select()
             .single()
@@ -153,7 +156,8 @@ export default function SocioDashboardPage() {
               tipo_impresora: newC.tipo_impresora,
               config_impresora: newC.config_impresora || '',
               tamano_fuente: newC.tamano_fuente,
-              paper_width: newC.paper_width || '80mm'
+              paper_width: Number(newC.paper_width) || 48,
+              large_font_items: newC.large_font_items || false
             })
           }
         }
@@ -402,7 +406,8 @@ export default function SocioDashboardPage() {
           tipo_impresora: config.tipo_impresora,
           config_impresora: config.config_impresora,
           tamano_fuente: config.tamano_fuente,
-          paper_width: config.paper_width,
+          paper_width: Number(config.paper_width) || 48,
+          large_font_items: config.large_font_items,
           updated_at: new Date().toISOString()
         })
         .eq('business_id', business.id)
@@ -429,7 +434,8 @@ export default function SocioDashboardPage() {
           config_impresora: config.config_impresora,
           tamano_fuente: config.tamano_fuente,
           tiene_autocorte: config.tiene_autocorte,
-          paper_width: config.paper_width,
+          paper_width: Number(config.paper_width) || 48,
+          large_font_items: config.large_font_items,
           tenant: business?.name || slug
         })
       })
@@ -1103,12 +1109,26 @@ export default function SocioDashboardPage() {
                       <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Ancho de Papel / Formato</label>
                       <select
                         value={config.paper_width}
-                        onChange={e => setConfig(prev => ({ ...prev, paper_width: e.target.value }))}
+                        onChange={e => setConfig(prev => ({ ...prev, paper_width: Number(e.target.value) }))}
                         className="w-full bg-[#fafafa] border border-zinc-200 rounded-xl px-4 py-3 text-[#09090b] text-sm focus:outline-none focus:border-[#dc2626] focus:bg-white transition-colors"
                       >
-                        <option value="80mm">80mm (48 Columnas)</option>
-                        <option value="58mm">58mm (32 Columnas)</option>
+                        <option value={48}>80mm (48 Columnas)</option>
+                        <option value={32}>58mm (32 Columnas)</option>
                       </select>
+                    </div>
+
+                    {/* Kitchen Large Font Checkbox */}
+                    <div className="flex items-center space-x-2 pt-1 pb-2">
+                      <input
+                        type="checkbox"
+                        id="large_font_items"
+                        checked={config.large_font_items || false}
+                        onChange={e => setConfig(prev => ({ ...prev, large_font_items: e.target.checked }))}
+                        className="w-4 h-4 text-[#dc2626] border-zinc-300 rounded focus:ring-[#dc2626] cursor-pointer"
+                      />
+                      <label htmlFor="large_font_items" className="text-xs text-zinc-600 font-medium cursor-pointer select-none">
+                        🔎 Usar letra grande para platillos en cocina
+                      </label>
                     </div>
 
                     {/* Font Size Selector */}
