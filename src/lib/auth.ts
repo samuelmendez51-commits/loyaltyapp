@@ -25,7 +25,7 @@ export async function getSession(): Promise<Session | null> {
   return { rol, nombre, businessId, branchId, userId }
 }
 
-export function setSessionCookies(
+export async function setSessionCookies(
   response: Response,
   session: Session,
   rememberMe: boolean = false

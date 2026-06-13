@@ -823,22 +823,33 @@ export default function TarjetaLealtadFinal() {
         try {
           const { data: pData } = await supabase
             .from('menu_products')
-            .select('*, product_modifiers(*, modifier_options(*))')
+            .select('*, product_modifiers(*, modifier_options(*)), product_ingredients(ingredients(*))')
             .eq('business_id', bizData.id)
           if (pData) {
             const ahora = new Date()
             let huboCambio = false
 
             const productosProcesados = await Promise.all(pData.map(async (prod: any) => {
+              let processedProd = prod
+
               if (!prod.disponible && prod.suspension_hasta && new Date(prod.suspension_hasta) < ahora) {
                 await supabase
                   .from('menu_products')
                   .update({ disponible: true, suspension_tipo: 'indefinida', suspension_hasta: null })
                   .eq('id', prod.id)
                 huboCambio = true
-                return { ...prod, disponible: true, suspension_tipo: 'indefinida', suspension_hasta: null }
+                processedProd = { ...prod, disponible: true, suspension_tipo: 'indefinida', suspension_hasta: null }
               }
-              return prod
+
+              // Cascading availability check: if any associated ingredient is unavailable, force disable
+              const tieneIngredienteAgotado = processedProd.product_ingredients?.some(
+                (pi: any) => pi.ingredients && pi.ingredients.is_available === false
+              )
+              if (tieneIngredienteAgotado) {
+                processedProd = { ...processedProd, disponible: false }
+              }
+
+              return processedProd
             }))
 
             const disponibles = productosProcesados.filter((p: any) => p.disponible)
