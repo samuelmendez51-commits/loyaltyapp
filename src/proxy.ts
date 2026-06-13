@@ -68,6 +68,9 @@ function parseHostname(hostname: string): ParsedDomain {
   if (host === `bikers.partners.${PROD_BASE}`) {
     return { slug: 'bikers', isPartner: true, isAdmin: false, isBiker: true, isSocio: false, isProduction: true }
   }
+  if (host === `bikers.${PROD_BASE}`) {
+    return { slug: 'bikers', isPartner: false, isAdmin: false, isBiker: true, isSocio: false, isProduction: true }
+  }
 
   // ── Bikers — desarrollo ──────────────────────────────────────────────────
   if (host === `bikers-partners.${DEV_BASE}` || host === `bikers.partners.${DEV_BASE}`) {
@@ -254,7 +257,8 @@ export function proxy(request: NextRequest) {
   // BLOQUE BIKERS ESPECÍFICO DEL TENANT — [slug].bikers.localhost
   // ══════════════════════════════════════════════════════════════════════════
   if (isBiker && slug && slug !== 'bikers') {
-    return rewriteTo(request, `/biker/${slug}/dashboard`)
+    const targetPath = path === '/' ? '/dashboard' : path
+    return rewriteTo(request, `/biker/${slug}${targetPath}`)
   }
 
   // Leer cookies de sesión (server-side, no manipulables por JS cliente)
@@ -274,6 +278,9 @@ export function proxy(request: NextRequest) {
     }
 
     if (isPartner) {
+      if (path === '/dashboard' || path.startsWith('/dashboard/')) {
+        return rewriteTo(request, `/biker/bikers${path}`)
+      }
       // bikers.partners.* → modulador de flota (panel admin)
       const subPath = path === '/' || path === '/login' ? '' : path
       return rewriteTo(request, `/tenant/bikers/modulador${subPath}`)
