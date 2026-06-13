@@ -3602,12 +3602,23 @@ export default function DashboardPage() {
                   </h3>
                   <p className="text-xs text-[#71717a]">Visualiza, registra e importa los socios de tu club de lealtad en un panel CRM unificado.</p>
                 </div>
-                <button
-                  onClick={() => setMostrarAgregarSocioModal(true)}
-                  className="btn-primary py-2.5 px-4 text-xs flex items-center gap-1.5 self-start sm:self-auto shrink-0 shadow-sm"
-                >
-                  <Plus className="w-4 h-4" /> Agregar Socio
-                </button>
+                <div className="flex gap-2 self-start sm:self-auto shrink-0">
+                  <button
+                    onClick={() => {
+                      if (!business?.id) return
+                      window.open(`/api/admin/customers/export-csv?business_id=${business.id}`)
+                    }}
+                    className="flex items-center gap-1.5 py-2.5 px-4 text-xs font-bold bg-[#f4f4f5] hover:bg-[#e4e4e7] border border-[#e4e4e7] text-[#18181b] rounded-xl shadow-sm transition-colors cursor-pointer"
+                  >
+                    <Download className="w-4 h-4 text-[#71717a]" /> Exportar CSV
+                  </button>
+                  <button
+                    onClick={() => setMostrarAgregarSocioModal(true)}
+                    className="btn-primary py-2.5 px-4 text-xs flex items-center gap-1.5 shadow-sm cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" /> Agregar Socio
+                  </button>
+                </div>
               </div>
 
               {/* ── IMPORTADOR MASIVO CSV ── */}

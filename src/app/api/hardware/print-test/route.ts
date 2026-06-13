@@ -3,9 +3,34 @@ import { exec } from 'child_process'
 import fs from 'fs'
 import path from 'path'
 import { promisify } from 'util'
+import net from 'net'
 import { formatOrderTicket, cleanText, centerText, wrapText, formatItemRow } from '@/utils/printerHelper'
 
 const execAsync = promisify(exec)
+
+function printViaTcp(ip: string, buffer: Buffer, port: number = 9100): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const client = new net.Socket();
+    client.setTimeout(5000);
+    
+    client.connect(port, ip, () => {
+      client.write(buffer, () => {
+        client.end();
+        resolve();
+      });
+    });
+
+    client.on('error', (err) => {
+      client.destroy();
+      reject(err);
+    });
+
+    client.on('timeout', () => {
+      client.destroy();
+      reject(new Error('Tiempo de espera agotado al conectar a la impresora por red local'));
+    });
+  });
+}
 
 export async function POST(req: Request) {
   try {
@@ -140,6 +165,22 @@ export async function POST(req: Request) {
         console.error('Fallo en comando de impresión física:', cmdError)
         return NextResponse.json(
           { error: `Error de spooler Windows al copiar a la impresora: ${cmdError.message}` },
+          { status: 500 }
+        )
+      }
+    } else if (tipo_impresora === 'wifi') {
+      try {
+        await printViaTcp(config_impresora, finalBuffer)
+        return NextResponse.json({
+          success: true,
+          message: `Impresión física enviada con éxito a la IP ${config_impresora} via TCP (Puerto 9100)`,
+          bytes: finalBuffer.length,
+          hex: finalBuffer.toString('hex')
+        })
+      } catch (tcpError: any) {
+        console.error('Fallo en conexión TCP de impresora:', tcpError)
+        return NextResponse.json(
+          { error: `No se pudo conectar a la impresora en la IP ${config_impresora}: ${tcpError.message}` },
           { status: 500 }
         )
       }

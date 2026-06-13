@@ -18,7 +18,8 @@ import {
   Printer,
   Sliders,
   DollarSign,
-  Info
+  Info,
+  HelpCircle
 } from 'lucide-react'
 
 // ── Interfaces ─────────────────────────────────────────────────────────────
@@ -74,6 +75,7 @@ export default function SocioDashboardPage() {
 
   const [cargandoConfig, setCargandoConfig] = useState(true)
   const [imprimiendo, setImprimiendo] = useState(false)
+  const [showHelpModal, setShowHelpModal] = useState(false)
 
   // Solicitar Repartidor states
   const [requestActivo, setRequestActivo] = useState<any>(null)
@@ -108,6 +110,7 @@ export default function SocioDashboardPage() {
   const imprimirPedidoAutomatico = useCallback(async (order: Order) => {
     const parsedItems = getParsedItems(order.items)
     const orderData = {
+      id: order.id,
       title: "NUEVO PEDIDO",
       subtitle: "IMPRESION AUTOMATICA",
       tenant: business?.name || slug,
@@ -153,6 +156,7 @@ export default function SocioDashboardPage() {
   const handleReimprimir = async (order: Order) => {
     const parsedItems = getParsedItems(order.items)
     const orderData = {
+      id: order.id,
       title: "PEDIDO REAL",
       subtitle: "REIMPRESION DE TICKET",
       tenant: business?.name || slug,
@@ -1221,7 +1225,17 @@ export default function SocioDashboardPage() {
 
                       {/* Printer ID/IP */}
                       <div className="space-y-1.5">
-                        <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Dirección / IP de Impresora</label>
+                        <div className="flex items-center justify-between">
+                          <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Dirección / IP de Impresora</label>
+                          <button
+                            type="button"
+                            title="Ayuda de Conexión"
+                            onClick={() => setShowHelpModal(true)}
+                            className="text-[#dc2626] hover:text-red-700 transition-colors flex items-center gap-1 text-[10px] font-bold uppercase cursor-pointer"
+                          >
+                            <HelpCircle className="w-3.5 h-3.5" /> ¿Cómo conectar?
+                          </button>
+                        </div>
                         <input
                           type="text"
                           value={config.config_impresora}
@@ -1317,6 +1331,84 @@ export default function SocioDashboardPage() {
           </div>
         </section>
       </main>
+      {/* ── MODAL DE AYUDA DE HARDWARE ── */}
+      {showHelpModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fadeIn">
+          <div className="bg-white rounded-2xl border border-zinc-200 shadow-2xl max-w-md w-full overflow-hidden flex flex-col">
+            <div className="p-6 border-b border-zinc-100 flex items-center justify-between bg-zinc-950 text-white">
+              <div className="flex items-center gap-2">
+                <HelpCircle className="w-5 h-5 text-[#dc2626]" />
+                <h3 className="font-bold text-sm uppercase tracking-wider">Ayuda de Impresora</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowHelpModal(false)}
+                className="text-zinc-400 hover:text-white transition-colors text-lg font-bold p-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-4 text-xs text-zinc-600 leading-relaxed max-h-[70vh] overflow-y-auto">
+              <div>
+                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">Conexión Seleccionada:</span>
+                <span className="inline-block px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wide bg-[#fef2f2] text-[#dc2626] border border-red-100">
+                  {config.tipo_impresora === 'red_usb' && 'USB (Red Compartida)'}
+                  {config.tipo_impresora === 'wifi' && 'Wi-Fi (IP Red Local)'}
+                  {config.tipo_impresora === 'bluetooth' && 'Bluetooth (COM Virtual)'}
+                </span>
+              </div>
+
+              <div className="border-t border-zinc-100 pt-4">
+                {config.tipo_impresora === 'red_usb' && (
+                  <div className="space-y-2.5">
+                    <p className="font-bold text-zinc-900">Sigue estos pasos en la PC con Windows donde está conectada la impresora por USB:</p>
+                    <ol className="list-decimal pl-4 space-y-2">
+                      <li>Ve a <strong>Configuración de Windows &gt; Impresoras</strong>.</li>
+                      <li>Selecciona tu impresora (ej: <strong>XP-80C</strong>) y dale en <strong>Administrar &gt; Propiedades de la impresora</strong>.</li>
+                      <li>Ve a la pestaña <strong>Compartir</strong>, activa <strong>"Compartir esta impresora"</strong> y asígnale un nombre corto y sin espacios (ej: <strong>XP-80C</strong>).</li>
+                      <li>Escribe ese mismo nombre exacto en el cuadro de texto de este panel.</li>
+                    </ol>
+                  </div>
+                )}
+
+                {config.tipo_impresora === 'wifi' && (
+                  <div className="space-y-2.5">
+                    <p className="font-bold text-zinc-900">Sigue estos pasos para conectar la impresora térmica por Red:</p>
+                    <ol className="list-decimal pl-4 space-y-2">
+                      <li>Asegúrate de que la impresora esté conectada con cable de red (Ethernet) o por Wi-Fi al mismo módem al que está conectada esta tablet/PC.</li>
+                      <li>Configura la impresora con una <strong>IP fija</strong> dentro del rango de tu red local (ej: <strong>192.168.1.100</strong>).</li>
+                      <li>Escribe la dirección IP completa en el cuadro de texto de este panel.</li>
+                      <li>El sistema abrirá un socket directo para transmitir la comanda utilizando el puerto estándar <strong>9100</strong>.</li>
+                    </ol>
+                  </div>
+                )}
+
+                {config.tipo_impresora === 'bluetooth' && (
+                  <div className="space-y-2.5">
+                    <p className="font-bold text-zinc-900">Sigue estos pasos para configurar tu impresora Bluetooth:</p>
+                    <ol className="list-decimal pl-4 space-y-2">
+                      <li>Empareja la impresora por Bluetooth en la configuración de Windows.</li>
+                      <li>Abre el <strong>Administrador de Dispositivos</strong> de Windows y busca en la sección "Puertos (COM y LPT)" qué puerto COM virtual le asignó el sistema (ej: <strong>COM3</strong>).</li>
+                      <li>Escribe ese puerto (ej: <strong>COM3</strong>) en el cuadro de texto de este panel.</li>
+                    </ol>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="p-4 bg-zinc-50 border-t border-zinc-100 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowHelpModal(false)}
+                className="bg-zinc-950 hover:bg-zinc-800 text-white font-bold text-[10px] uppercase tracking-widest px-5 py-2.5 rounded-xl shadow transition-colors cursor-pointer"
+              >
+                Entendido
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
