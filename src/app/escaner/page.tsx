@@ -17,6 +17,8 @@ export default function EscanerTrabajadores() {
   const [coupon, setCoupon] = useState<any>(null)
   const [programaActivo, setProgramaActivo] = useState<any>(null)
   const [camaraDisponible, setCamaraDisponible] = useState(true)
+  const [ultimoCriterioBuscado, setUltimoCriterioBuscado] = useState('')
+  const [copied, setCopied] = useState(false)
 
   const getCookieVal = (name: string) => {
     if (typeof document === 'undefined') return ''
@@ -150,10 +152,12 @@ export default function EscanerTrabajadores() {
 
       if (error || !data) {
         setMensaje({ tipo: 'error', texto: 'CLIENTE NO ENCONTRADO EN TU NEGOCIO' })
+        setUltimoCriterioBuscado(criterioLimpio)
       } else {
         setCliente(data)
         setMensaje({ tipo: '', texto: '' })
         setInputManual('')
+        setUltimoCriterioBuscado('')
       }
     } catch (err) {
       setMensaje({ tipo: 'error', texto: 'ERROR DE CONEXIÓN' })
@@ -412,12 +416,48 @@ export default function EscanerTrabajadores() {
 
         {/* ESTADO 2: MENSAJE DE ERROR */}
         {mensaje.texto && !cliente && (
-          <div className="card-glass p-10 text-center flex flex-col items-center min-h-[400px] justify-center">
-            <div className="text-7xl mb-6 drop-shadow-lg">⚠️</div>
-            <p className="text-xl font-black uppercase text-white mb-10 tracking-widest leading-relaxed">{mensaje.texto}</p>
-            <button onClick={() => window.location.reload()} className="px-8 py-4 bg-transparent border-2 border-[var(--brand-red)] text-white rounded-2xl font-bold text-xs uppercase hover:bg-[var(--brand-red)]/10 transition-all tracking-widest">
-              Reintentar
-            </button>
+          <div className="card-glass p-10 text-center flex flex-col items-center min-h-[400px] justify-center space-y-6">
+            <div className="text-7xl mb-2 drop-shadow-lg">⚠️</div>
+            <p className="text-xl font-black uppercase text-white tracking-widest leading-relaxed">{mensaje.texto}</p>
+            
+            {/* Clipboard copy invite/pre-registration link button when client search fails */}
+            {ultimoCriterioBuscado && /^\d+$/.test(ultimoCriterioBuscado.replace(/\D/g, '')) && (
+              <div className="w-full p-4 bg-zinc-900/40 border border-zinc-800 rounded-2xl space-y-3">
+                <p className="text-[10px] text-[#a1a1aa] font-bold uppercase tracking-wider">¿Deseas registrar a este número?</p>
+                <button
+                  onClick={() => {
+                    const cleanTel = ultimoCriterioBuscado.replace(/\D/g, '')
+                    const host = typeof window !== 'undefined' ? window.location.host : 'loyaltyclub.mx'
+                    const publicHost = host.replace('.partners.', '.')
+                    const protocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'https' : 'http'
+                    const regUrl = `${protocol}://${publicHost}/registro?tel=${cleanTel}`
+                    navigator.clipboard.writeText(regUrl)
+                    setCopied(true)
+                    setTimeout(() => setCopied(false), 2000)
+                  }}
+                  className={`w-full font-bold text-xs uppercase tracking-widest py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md ${
+                    copied ? 'bg-emerald-600 text-white hover:bg-emerald-500' : 'bg-[#dc2626] hover:bg-[#b91c1c] text-white'
+                  }`}
+                >
+                  {copied ? '✅ Enlace Copiado' : '📋 Copiar Enlace de Registro'}
+                </button>
+              </div>
+            )}
+
+            <div className="flex gap-3 w-full">
+              <button 
+                onClick={() => { setMensaje({ tipo: '', texto: '' }); setCliente(null); setUltimoCriterioBuscado(''); }} 
+                className="flex-1 py-3.5 bg-transparent border-2 border-zinc-800 text-zinc-450 hover:text-white rounded-xl font-bold text-xs uppercase transition-all tracking-widest"
+              >
+                Volver
+              </button>
+              <button 
+                onClick={() => window.location.reload()} 
+                className="flex-1 py-3.5 bg-transparent border-2 border-[var(--brand-red)] text-white rounded-xl font-bold text-xs uppercase hover:bg-[var(--brand-red)]/10 transition-all tracking-widest"
+              >
+                Reintentar
+              </button>
+            </div>
           </div>
         )}
 

@@ -373,6 +373,102 @@ function RuletaVIP({
   )
 }
 
+function StepperSeguimiento({ activeOrder }: { activeOrder: any }) {
+  const req = Array.isArray(activeOrder.delivery_requests)
+    ? activeOrder.delivery_requests[0]
+    : activeOrder.delivery_requests
+  const bikerName = req?.bikers?.nombre
+
+  // Determinar índice activo (0, 1, 2, 3)
+  let activeIndex = 0
+  const estado = activeOrder.estado
+  const delStatus = activeOrder.delivery_status
+  const reqEstado = req?.estado
+
+  if (delStatus === 'DELIVERED' || estado === 'entregado') {
+    activeIndex = 3
+  } else if (delStatus === 'SHIPPED_IMMEDIATE' || estado === 'en_camino' || ['aceptado', 'en_camino'].includes(reqEstado)) {
+    activeIndex = 2
+  } else if (estado === 'aprobado' || estado === 'preparacion' || estado === 'listo' || delStatus === 'SHIPPED_SCHEDULED') {
+    activeIndex = 1
+  }
+
+  const pasos = [
+    { label: 'Recibido / Pendiente', desc: 'Pedido registrado en el sistema VIP.', icon: Clock },
+    { label: 'En Cocina', desc: 'Preparando y cocinando tus alimentos.', icon: UtensilsCrossed },
+    { 
+      label: 'En Reparto', 
+      desc: bikerName 
+        ? `La moto va en camino. Repartidor asignado: ${bikerName}.` 
+        : 'Tu pedido está listo y buscando repartidor.', 
+      icon: Truck 
+    },
+    { label: 'Entregado', desc: '¡Servicio finalizado! Que disfrutes tu comida.', icon: Check }
+  ]
+
+  return (
+    <div className="bg-white border border-[#f0f0f0] rounded-3xl p-6 shadow-[0_4px_24px_rgba(0,0,0,0.06)] space-y-6 text-[#09090b]">
+      <div className="flex justify-between items-center border-b border-[#f4f4f5] pb-3.5">
+        <div>
+          <h3 className="text-sm font-black tracking-tight uppercase">Rastreo de Pedido</h3>
+          <p className="text-[10px] text-[#71717a] font-mono mt-0.5">ID: #{activeOrder.id.slice(-6).toUpperCase()}</p>
+        </div>
+        <span className="text-[10px] font-bold bg-[#fafafa] border border-[#e4e4e7] px-2.5 py-1 rounded-full text-zinc-650">
+          En Tiempo Real
+        </span>
+      </div>
+
+      <div className="relative pl-6 space-y-8">
+        {/* Línea conectora de fondo */}
+        <div className="absolute left-[13px] top-2 bottom-2 w-[3px] bg-zinc-100" />
+        {/* Línea conectora activa */}
+        <div 
+          className="absolute left-[13px] top-2 w-[3px] bg-amber-500 transition-all duration-500"
+          style={{ height: `${(activeIndex / 3) * 100}%`, maxHeight: 'calc(100% - 16px)' }}
+        />
+
+        {pasos.map((paso, idx) => {
+          const Icon = paso.icon
+          const completado = idx < activeIndex
+          const activo = idx === activeIndex
+          const pendiente = idx > activeIndex
+
+          return (
+            <div key={idx} className="flex gap-4 relative animate-fadeIn">
+              {/* Círculo indicador */}
+              <div 
+                className={`w-7 h-7 rounded-full flex items-center justify-center text-xs border-2 z-10 transition-all duration-300 ${
+                  completado 
+                    ? 'bg-amber-500 border-amber-500 text-white' 
+                    : activo 
+                    ? 'bg-white border-amber-500 text-amber-600 scale-110 shadow-md ring-4 ring-amber-100' 
+                    : 'bg-white border-zinc-200 text-zinc-400'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+              </div>
+
+              {/* Contenido textual */}
+              <div className="flex-1 min-w-0">
+                <h4 className={`text-xs font-black tracking-tight transition-colors ${
+                  activo ? 'text-amber-600' : completado ? 'text-zinc-800' : 'text-zinc-400'
+                }`}>
+                  {paso.label}
+                </h4>
+                <p className={`text-[10px] mt-0.5 leading-normal transition-colors ${
+                  activo ? 'text-zinc-700 font-medium' : completado ? 'text-zinc-500' : 'text-zinc-400'
+                }`}>
+                  {paso.desc}
+                </p>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ── Componente Principal ───────────────────────────────────────────────────────
 export default function TarjetaLealtadFinal() {
   // slug: negocio del subdominio | id: ID de la tarjeta VIP del cliente
@@ -579,6 +675,21 @@ export default function TarjetaLealtadFinal() {
     }
   }, [mapaCargado, pasoMenu, vistaActiva, tipoMenu, business])
 
+  const cargarPedidoDetalles = useCallback(async (oId: string) => {
+    try {
+      const { data: ord } = await supabase
+        .from('orders')
+        .select('*, delivery_requests(*, bikers(nombre, telefono))')
+        .eq('id', oId)
+        .maybeSingle()
+      if (ord) {
+        setActiveOrder(ord)
+      }
+    } catch (err) {
+      console.warn('Error al cargar detalles del pedido:', err)
+    }
+  }, [])
+
   useEffect(() => {
     if (!cliente?.id) return
 
@@ -594,11 +705,25 @@ export default function TarjetaLealtadFinal() {
         },
         (payload) => {
           const ord = payload.new as any
-          if (ord && ord.tipo === 'delivery' && ['SHIPPED_SCHEDULED', 'SHIPPED_IMMEDIATE', 'DELIVERED', 'CANCELLED'].includes(ord.delivery_status)) {
+          if (ord && ord.tipo === 'delivery') {
             const dosHorasAtras = new Date(Date.now() - 2 * 60 * 60 * 1000)
             if (new Date(ord.created_at) > dosHorasAtras) {
-              setActiveOrder(ord)
+              cargarPedidoDetalles(ord.id)
             }
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'delivery_requests'
+        },
+        (payload) => {
+          const req = payload.new as any
+          if (req && activeOrder && req.order_id === activeOrder.id) {
+            cargarPedidoDetalles(activeOrder.id)
           }
         }
       )
@@ -607,7 +732,7 @@ export default function TarjetaLealtadFinal() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [cliente?.id])
+  }, [cliente?.id, activeOrder?.id, cargarPedidoDetalles])
 
   useEffect(() => {
     if (!id) return
@@ -667,15 +792,14 @@ export default function TarjetaLealtadFinal() {
       setCliente(clienteData)
       
       if (!isGuest) {
-        // Cargar pedido activo de delivery (creado en las últimas 2 horas con estado de pre-despacho)
+        // Cargar pedido activo de delivery (creado en las últimas 2 horas)
         try {
           const dosHorasAtras = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
           const { data: ord } = await supabase
             .from('orders')
-            .select('*')
+            .select('*, delivery_requests(*, bikers(nombre, telefono))')
             .eq('cliente_id', clienteData.id)
             .eq('tipo', 'delivery')
-            .in('delivery_status', ['SHIPPED_SCHEDULED', 'SHIPPED_IMMEDIATE'])
             .gt('created_at', dosHorasAtras)
             .order('created_at', { ascending: false })
             .limit(1)
@@ -991,7 +1115,7 @@ export default function TarjetaLealtadFinal() {
     reward_instruction: business?.card_custom_labels?.reward_instruction || "¡ACUMULA {total_stamps} SELLOS Y OBTÉN TU PREMIO GRATIS!",
     stamps_suffix: business?.card_custom_labels?.stamps_suffix || "SELLOS ACUMULADOS",
     roulette_locked_title: business?.card_custom_labels?.roulette_locked_title || "Ruleta VIP Bloqueada",
-    roulette_locked_desc: business?.card_custom_labels?.roulette_locked_desc || "¡Felicidades! Alcanzaste los sellos necesarios. Esta ruleta requiere una compra mínima de ${min_amount} MXN para activarse.",
+    roulette_locked_desc: business?.card_custom_labels?.roulette_locked_desc || (ultimoPedidoTotal < minRuletaTicket ? "Ruleta VIP bloqueada. Realiza una compra mayor a ${min_amount} para ganar sellos y desbloquear premios. ¡A veces el camino también incluye recompensas! Descubre qué premio obtienes al girar la ruleta" : "¡Felicidades! Alcanzaste los sellos necesarios. Esta ruleta requiere una compra mínima de ${min_amount} MXN para activarse."),
     footer_instruction: business?.card_custom_labels?.footer_instruction || "Realiza un pedido desde el menú o en caja que iguale o supere este monto."
   }
 
@@ -2099,7 +2223,7 @@ _Pedido procesado a través de LoyaltyClub VIP_`
 
               {/* Selector de Categorías en Pills */}
               {grupos.length > 0 && (
-                <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory">
+                <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory">
                   {grupos.map(g => (
                     <button
                       key={g.id}
@@ -2122,7 +2246,7 @@ _Pedido procesado a través de LoyaltyClub VIP_`
                   const prodGrupo = productos.filter(p => p.group_id === grupo.id)
                   if (prodGrupo.length === 0) return null
                   
-                  const colapsado = categoriasColapsadas[grupo.id] !== false
+                  const colapsado = !!categoriasColapsadas[grupo.id]
                   
                   return (
                     <div key={grupo.id} id={`category-section-${grupo.id}`} className="bg-white border border-[#f0f0f0] rounded-3xl p-5 shadow-[0_4px_20px_rgba(0,0,0,0.04)] space-y-4 transition-all">
@@ -2255,22 +2379,25 @@ _Pedido procesado a través de LoyaltyClub VIP_`
           ) : (
             /* Si no está confirmado */
             cart.length === 0 ? (
-              /* Carrito Vacío */
-              <div className="bg-white border border-[#f0f0f0] rounded-3xl p-8 shadow-[0_4px_24px_rgba(0,0,0,0.08)] text-center space-y-5 animate-fadeIn">
-                <div className="text-4xl">🛒</div>
-                <div className="space-y-1">
-                  <h3 className="text-base font-bold text-[#09090b]">Tu carrito está vacío</h3>
-                  <p className="text-xs text-[#71717a] leading-relaxed">
-                    Aún no has agregado productos a tu orden. ¡Explora nuestro menú digital!
-                  </p>
+              activeOrder ? (
+                <StepperSeguimiento activeOrder={activeOrder} />
+              ) : (
+                <div className="bg-white border border-[#f0f0f0] rounded-3xl p-8 shadow-[0_4px_24px_rgba(0,0,0,0.08)] text-center space-y-5 animate-fadeIn">
+                  <div className="text-4xl">🛵</div>
+                  <div className="space-y-1">
+                    <h3 className="text-base font-bold text-[#09090b]">Sin Pedidos Activos</h3>
+                    <p className="text-xs text-[#71717a] leading-relaxed">
+                      No tienes pedidos activos en este momento. ¡Ve al menú y estrena tu tarjeta de puntos!
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setVistaActiva('menu')}
+                    className="w-full bg-[#09090b] hover:bg-zinc-800 text-white font-black py-3 rounded-xl text-xs uppercase tracking-widest transition-all active:scale-95 shadow-sm"
+                  >
+                    Ver Menú Digital
+                  </button>
                 </div>
-                <button
-                  onClick={() => setVistaActiva('menu')}
-                  className="w-full bg-[#09090b] hover:bg-zinc-800 text-white font-black py-3 rounded-xl text-xs uppercase tracking-widest transition-all active:scale-95 shadow-sm"
-                >
-                  Ver Menú Digital
-                </button>
-              </div>
+              )
             ) : (
               /* CHECKOUT FLOW */
               <div className="bg-white border border-[#f0f0f0] rounded-3xl p-6 shadow-[0_4px_24px_rgba(0,0,0,0.08)] space-y-6 animate-fadeIn">
@@ -2317,14 +2444,33 @@ _Pedido procesado a través de LoyaltyClub VIP_`
                     <span className="text-[#dc2626] text-base">${totalCarrito.toLocaleString()} MXN</span>
                   </div>
                   
-                  {totalCarrito >= (business?.monto_minimo_sello || 0) ? (
-                    <p className="text-green-700 text-[10px] font-bold text-center bg-green-50 border border-green-200 rounded-xl py-2">
-                      ⭐ ¡Felicidades! Este pedido califica para recibir un sello VIP.
-                    </p>
-                  ) : (
-                    <p className="text-[#71717a] text-[9px] font-medium text-center bg-[#f4f4f5] rounded-xl py-2">
-                      Agrega ${((business?.monto_minimo_sello || 0) - totalCarrito).toLocaleString()} MXN más para ganar un sello.
-                    </p>
+                  {/* Golden Progress Bar in Checkout */}
+                  {Number(business?.monto_minimo_sello || 0) > 0 && (
+                    <div className="space-y-1.5 bg-amber-50/30 border border-amber-200 rounded-2xl p-3.5 shadow-sm">
+                      <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-wider text-amber-750">
+                        {totalCarrito >= Number(business.monto_minimo_sello) ? (
+                          <span>✨ ¡Pedido calificado para Sello VIP!</span>
+                        ) : (
+                          <span>Faltan ${Math.max(Number(business.monto_minimo_sello) - totalCarrito, 0).toLocaleString()} MXN para el sello</span>
+                        )}
+                        <span>{Math.round(Math.min((totalCarrito / Number(business.monto_minimo_sello)) * 100, 100))}%</span>
+                      </div>
+                      <div className="w-full h-2 bg-white rounded-full overflow-hidden border border-amber-200">
+                        <div 
+                          className="h-full bg-gradient-to-r from-amber-400 via-yellow-500 to-amber-600 transition-all duration-300"
+                          style={{ width: `${Math.min((totalCarrito / Number(business.monto_minimo_sello)) * 100, 100)}%` }}
+                        />
+                      </div>
+                      {totalCarrito >= Number(business.monto_minimo_sello) ? (
+                        <p className="text-[9px] text-green-700 font-bold text-center">
+                          ⭐ Este pedido cumple con el monto mínimo. Recibirás tu sello automáticamente al entregarse.
+                        </p>
+                      ) : (
+                        <p className="text-[9px] text-[#71717a] font-medium text-center">
+                          Agrega ${Math.max(Number(business.monto_minimo_sello) - totalCarrito, 0).toLocaleString()} MXN más para calificar para el sello VIP.
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
                 
@@ -2890,24 +3036,46 @@ _Pedido procesado a través de LoyaltyClub VIP_`
       {/* Floating Bottom Cart Bar */}
       {cantidadTotal > 0 && pasoMenu === 'menu' && vistaActiva === 'menu' && (
         <div className="fixed bottom-[76px] left-0 right-0 px-4 z-40 animate-slideUp">
-          <div className="max-w-sm mx-auto bg-white border border-[#e4e4e7] rounded-3xl p-4 shadow-[0_8px_30px_rgba(0,0,0,0.10)] flex justify-between items-center gap-4">
-            <div className="min-w-0">
-              <p className="text-[9px] text-[#a1a1aa] uppercase tracking-widest font-black">Mi Orden VIP</p>
-              <p className="font-extrabold text-sm text-[#09090b]">{cantidadTotal} {cantidadTotal === 1 ? 'producto' : 'productos'} · <span className="font-mono text-[#dc2626]">${totalCarrito.toLocaleString()} MXN</span></p>
+          <div className="max-w-sm mx-auto bg-white border border-[#e4e4e7] rounded-3xl p-4 shadow-[0_8px_30px_rgba(0,0,0,0.10)] flex flex-col gap-3">
+            <div className="flex justify-between items-center gap-4">
+              <div className="min-w-0">
+                <p className="text-[9px] text-[#a1a1aa] uppercase tracking-widest font-black">Mi Orden VIP</p>
+                <p className="font-extrabold text-sm text-[#09090b]">{cantidadTotal} {cantidadTotal === 1 ? 'producto' : 'productos'} · <span className="font-mono text-[#dc2626]">${totalCarrito.toLocaleString()} MXN</span></p>
+              </div>
+              <button
+                onClick={() => {
+                  if (cliente?.id === 'guest') {
+                    setMostrarModalRegistro(true)
+                  } else {
+                    setVistaActiva('pedidos')
+                    setPasoMenu('checkout')
+                  }
+                }}
+                className="bg-[#dc2626] hover:bg-[#b91c1c] text-white font-black text-xs uppercase tracking-widest py-3 px-5 rounded-2xl transition-all flex items-center gap-1.5 shrink-0 shadow-md active:scale-95"
+              >
+                <span>Ver Carrito 🛒</span>
+              </button>
             </div>
-            <button
-              onClick={() => {
-                if (cliente?.id === 'guest') {
-                  setMostrarModalRegistro(true)
-                } else {
-                  setVistaActiva('pedidos')
-                  setPasoMenu('checkout')
-                }
-              }}
-              className="bg-[#dc2626] hover:bg-[#b91c1c] text-white font-black text-xs uppercase tracking-widest py-3 px-5 rounded-2xl transition-all flex items-center gap-1.5 shrink-0 shadow-md active:scale-95"
-            >
-              <span>Ver Carrito 🛒</span>
-            </button>
+            
+            {/* Golden Progress Bar */}
+            {Number(business?.monto_minimo_sello || 0) > 0 && (
+              <div className="border-t border-[#e4e4e7] pt-2 space-y-1">
+                <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-wider text-amber-600">
+                  {totalCarrito >= Number(business.monto_minimo_sello) ? (
+                    <span>✨ ¡Pedido calificado para Sello!</span>
+                  ) : (
+                    <span>Faltan ${Math.max(Number(business.monto_minimo_sello) - totalCarrito, 0).toLocaleString()} MXN para tu próximo sello</span>
+                  )}
+                  <span>{Math.round(Math.min((totalCarrito / Number(business.monto_minimo_sello)) * 100, 100))}%</span>
+                </div>
+                <div className="w-full h-1.5 bg-zinc-100 rounded-full overflow-hidden border border-zinc-200">
+                  <div 
+                    className="h-full bg-gradient-to-r from-amber-400 via-yellow-500 to-amber-600 transition-all duration-300"
+                    style={{ width: `${Math.min((totalCarrito / Number(business.monto_minimo_sello)) * 100, 100)}%` }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

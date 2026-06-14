@@ -609,19 +609,19 @@ export default function SocioDashboardPage() {
 
   if (cargando && !business) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center text-zinc-400">
+      <div className="min-h-screen bg-[#fafafa] flex flex-col items-center justify-center text-zinc-600">
         <RefreshCw className="w-8 h-8 animate-spin text-[#dc2626] mb-4" />
-        <p className="text-sm font-semibold uppercase tracking-widest font-mono">Conectando con la base de datos de socios...</p>
+        <p className="text-xs font-bold uppercase tracking-widest font-mono">Conectando con la base de datos de socios...</p>
       </div>
     )
   }
 
   if (!business) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center text-zinc-400 p-6">
+      <div className="min-h-screen bg-[#fafafa] flex flex-col items-center justify-center text-zinc-650 p-6">
         <AlertTriangle className="w-12 h-12 text-rose-500 mb-4" />
-        <p className="text-sm font-bold uppercase tracking-widest font-mono text-white mb-2">Comercio No Encontrado</p>
-        <p className="text-xs text-zinc-500 text-center max-w-sm">Verifica que el subdominio corresponda a un restaurante válido registrado en LoyaltyClub.</p>
+        <p className="text-sm font-bold uppercase tracking-widest font-mono text-[#09090b] mb-2">Comercio No Encontrado</p>
+        <p className="text-xs text-zinc-500 text-center max-w-sm font-medium">Verifica que el subdominio corresponda a un restaurante válido registrado en LoyaltyClub.</p>
       </div>
     )
   }

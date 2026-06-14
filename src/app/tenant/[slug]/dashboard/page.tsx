@@ -588,6 +588,11 @@ export default function DashboardPage() {
   const [numSectoresNuevo, setNumSectoresNuevo] = useState(4)
   const [nuevosPremios, setNuevosPremios] = useState<string[]>(['', '', '', ''])
 
+  // ── RULETA INDEPENDIENTE CRUD ──
+  const [nombreRuletaIndep, setNombreRuletaIndep] = useState('')
+  const [premiosRuletaIndep, setPremiosRuletaIndep] = useState('')
+  const [ruletaIdEditando, setRuletaIdEditando] = useState<string | null>(null)
+
   // Helper: ajustar array de premios al nuevo tamaño (sin perder los ya escritos)
   const ajustarPremiosPrincipal = (n: number) => {
     setNumSectoresPrincipal(n)
@@ -1903,6 +1908,91 @@ export default function DashboardPage() {
       }
     } catch (err) {
       console.warn("La columna program_id no está disponible en businesses en la base de datos.", err)
+    }
+  }
+
+  // ── Handlers para Ruletas Independientes (CRUD) ──
+  const iniciarEdicionRuletaIndep = (r: any) => {
+    setRuletaIdEditando(r.id)
+    setNombreRuletaIndep(r.nombre)
+    setPremiosRuletaIndep(Array.isArray(r.premios) ? r.premios.join(', ') : '')
+  }
+
+  const limpiarFormRuletaIndep = () => {
+    setRuletaIdEditando(null)
+    setNombreRuletaIndep('')
+    setPremiosRuletaIndep('')
+  }
+
+  const guardarRuletaIndependiente = async () => {
+    const businessId = getCookieVal('session_business_id') || business?.id
+    if (!businessId) return
+
+    if (!nombreRuletaIndep.trim() || !premiosRuletaIndep.trim()) {
+      alert('Por favor completa todos los campos obligatorios.')
+      return
+    }
+
+    const arrPremios = premiosRuletaIndep.split(',').map(p => p.trim()).filter(Boolean)
+    if (arrPremios.length < 2) {
+      alert('Ingresa al menos 2 premios separados por comas.')
+      return
+    }
+
+    try {
+      if (ruletaIdEditando) {
+        // Actualizar
+        const { error } = await supabase
+          .from('ruletas')
+          .update({
+            nombre: nombreRuletaIndep.trim(),
+            premios: arrPremios
+          })
+          .eq('id', ruletaIdEditando)
+
+        if (error) throw error
+        alert('✅ Ruleta actualizada con éxito')
+      } else {
+        // Crear
+        const { error } = await supabase
+          .from('ruletas')
+          .insert({
+            business_id: businessId,
+            nombre: nombreRuletaIndep.trim(),
+            premios: arrPremios
+          })
+
+        if (error) throw error
+        alert('✅ Ruleta creada con éxito')
+      }
+
+      limpiarFormRuletaIndep()
+      // Recargar ruletas
+      const { data } = await supabase.from('ruletas').select('*').eq('business_id', businessId)
+      if (data) setRuletas(data)
+    } catch (e: any) {
+      alert('Error al guardar la ruleta: ' + e.message)
+    }
+  }
+
+  const eliminarRuletaIndependiente = async (id: string) => {
+    if (!confirm('¿Seguro que deseas eliminar esta ruleta? Los programas asociados se desvincularán.')) return
+    try {
+      const { error } = await supabase
+        .from('ruletas')
+        .delete()
+        .eq('id', id)
+
+      if (error) throw error
+      alert('🗑️ Ruleta eliminada con éxito')
+      
+      const businessId = getCookieVal('session_business_id') || business?.id
+      if (businessId) {
+        const { data } = await supabase.from('ruletas').select('*').eq('business_id', businessId)
+        if (data) setRuletas(data)
+      }
+    } catch (e: any) {
+      alert('Error al eliminar la ruleta: ' + e.message)
     }
   }
 
@@ -6549,6 +6639,95 @@ export default function DashboardPage() {
                 </div>
               </div>
 
+              {/* ── Sección de Ruletas Independientes (CRUD) ── */}
+              <div className="bg-white border border-[#e4e4e7] p-6 rounded-2xl shadow-sm space-y-6">
+                <div>
+                  <h3 className="font-bold text-[#09090b] mb-1">Catálogo de Ruletas Independientes</h3>
+                  <p className="text-xs text-[#71717a]">Administra configuraciones de ruletas independientes con nombres propios para vincularlas a programas o tarjetas específicas en la pestaña "Tarjetas de Lealtad".</p>
+                </div>
+
+                {/* Formulario de creación/edición */}
+                <div className="bg-[#fafafa] border border-[#e4e4e7] p-5 rounded-2xl space-y-4 text-left">
+                  <h4 className="font-bold text-[10px] text-[#52525b] uppercase tracking-wider">
+                    {ruletaIdEditando ? '✏️ Editar Ruleta' : '✨ Crear Nueva Ruleta'}
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className={LBL}>Nombre de Configuración *</label>
+                      <input
+                        type="text"
+                        value={nombreRuletaIndep}
+                        onChange={e => setNombreRuletaIndep(e.target.value)}
+                        placeholder="Ej: Ruleta 200, Ruleta VIP Oro"
+                        className={IC}
+                      />
+                    </div>
+                    <div>
+                      <label className={LBL}>Premios (Separados por comas) *</label>
+                      <input
+                        type="text"
+                        value={premiosRuletaIndep}
+                        onChange={e => setPremiosRuletaIndep(e.target.value)}
+                        placeholder="Ej: Café Gratis, Postre, Bebida Grande, 20% Off"
+                        className={IC}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-2.5">
+                    <button
+                      onClick={guardarRuletaIndependiente}
+                      className="btn-primary py-2.5 px-4 text-xs font-bold"
+                    >
+                      {ruletaIdEditando ? 'Guardar Cambios' : 'Crear Ruleta'}
+                    </button>
+                    {ruletaIdEditando && (
+                      <button
+                        onClick={limpiarFormRuletaIndep}
+                        className="py-2.5 px-4 text-xs font-bold bg-white border border-zinc-200 rounded-xl hover:bg-zinc-50 text-zinc-500"
+                      >
+                        Cancelar
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Listado de ruletas */}
+                <div className="space-y-3 text-left">
+                  <h4 className="font-bold text-[10px] text-[#09090b] uppercase tracking-wider">Configuraciones Guardadas</h4>
+                  {ruletas.length === 0 ? (
+                    <div className="text-center py-6 bg-[#fafafa] border border-dashed border-[#e4e4e7] rounded-2xl text-[#71717a] text-xs">
+                      No hay ruletas independientes creadas en este comercio.
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-[#e4e4e7] border border-[#e4e4e7] rounded-2xl bg-white overflow-hidden">
+                      {ruletas.map(r => (
+                        <div key={r.id} className="p-4 flex items-center justify-between gap-4 hover:bg-[#fafafa] transition-colors">
+                          <div className="min-w-0 flex-1">
+                            <p className="font-bold text-xs text-[#09090b]">{r.nombre}</p>
+                            <p className="text-[11px] text-[#71717a] truncate mt-0.5">
+                              Premios: <span className="font-medium text-[#52525b]">{Array.isArray(r.premios) ? r.premios.join(', ') : 'Ninguno'}</span>
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              onClick={() => iniciarEdicionRuletaIndep(r)}
+                              className="text-xs font-bold text-blue-600 hover:text-blue-700 transition-colors px-2 py-1"
+                            >
+                              Editar
+                            </button>
+                            <button
+                              onClick={() => eliminarRuletaIndependiente(r.id)}
+                              className="text-xs font-bold text-red-500 hover:text-red-700 transition-colors px-2 py-1"
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
 
               {/* ── DEMO INTERACTIVO DE RULETA ── */}
               <div className="bg-white border border-[#e4e4e7] p-6 rounded-2xl shadow-sm space-y-5">

@@ -278,11 +278,8 @@ export function proxy(request: NextRequest) {
     }
 
     if (isPartner) {
-      if (path === '/dashboard' || path.startsWith('/dashboard/')) {
-        return rewriteTo(request, `/biker/bikers${path}`)
-      }
       // bikers.partners.* → modulador de flota (panel admin)
-      const subPath = path === '/' || path === '/login' ? '' : path
+      const subPath = path === '/' || path === '/login' || path === '/dashboard' || path === '/dashboard/' ? '' : path
       return rewriteTo(request, `/tenant/bikers/modulador${subPath}`)
     } else {
       // bikers.localhost → portal móvil del repartidor

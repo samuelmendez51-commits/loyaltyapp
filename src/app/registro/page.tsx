@@ -37,6 +37,14 @@ export default function RegistroCliente() {
       }
     }
     cargarNegocio()
+
+    if (typeof window !== 'undefined') {
+      const searchParams = new URLSearchParams(window.location.search)
+      const telParam = searchParams.get('telefono') || searchParams.get('tel')
+      if (telParam) {
+        setTelefono(telParam.replace(/\D/g, '').slice(-10))
+      }
+    }
   }, [])
 
   const registrarCliente = async (e: React.FormEvent) => {

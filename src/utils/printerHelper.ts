@@ -132,16 +132,16 @@ export function formatOrderTicket(orderData: any, config: any): Buffer {
 
   // Print Header
   if (orderData.subtitle) {
-    parts.push(Buffer.from(cleanText(centerText(orderData.subtitle, lineWidth)), 'latin1'));
+    parts.push(Buffer.from(cleanText(orderData.subtitle + "\n"), 'latin1'));
   }
   if (orderData.title) {
-    parts.push(Buffer.from(cleanText(centerText(orderData.title, lineWidth)), 'latin1'));
+    parts.push(Buffer.from(cleanText(orderData.title + "\n"), 'latin1'));
   }
   if (orderData.tenant) {
-    parts.push(Buffer.from(cleanText(centerText("TENANT: " + orderData.tenant, lineWidth)), 'latin1'));
+    parts.push(Buffer.from(cleanText("TENANT: " + orderData.tenant + "\n"), 'latin1'));
   }
   if (orderData.fecha) {
-    parts.push(Buffer.from(cleanText(centerText("FECHA: " + orderData.fecha, lineWidth)), 'latin1'));
+    parts.push(Buffer.from(cleanText("FECHA: " + orderData.fecha + "\n"), 'latin1'));
   }
 
   // Left alignment (ESC a 0)

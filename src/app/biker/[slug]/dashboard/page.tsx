@@ -211,7 +211,7 @@ export default function BikerDashboardPage() {
 
   if (cargando && !business) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center text-zinc-400">
+      <div className="min-h-screen bg-[#fafafa] flex flex-col items-center justify-center text-zinc-650">
         <RefreshCw className="w-8 h-8 animate-spin text-[#dc2626] mb-4" />
         <p className="text-xs font-bold uppercase tracking-widest font-mono">Conectando Portal Biker...</p>
       </div>
@@ -220,33 +220,33 @@ export default function BikerDashboardPage() {
 
   if (!business) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center text-zinc-400 p-6 text-center">
+      <div className="min-h-screen bg-[#fafafa] flex flex-col items-center justify-center text-zinc-650 p-6 text-center">
         <AlertTriangle className="w-12 h-12 text-rose-500 mb-4" />
-        <h2 className="text-sm font-bold uppercase tracking-widest font-mono text-white mb-2">Comercio No Vinculado</h2>
-        <p className="text-xs text-zinc-650 max-w-xs">El subdominio proporcionado no pertenece a un negocio activo de LoyaltyClub.</p>
+        <h2 className="text-sm font-bold uppercase tracking-widest font-mono text-[#09090b] mb-2">Comercio No Vinculado</h2>
+        <p className="text-xs text-zinc-500 max-w-xs font-medium">El subdominio proporcionado no pertenece a un negocio activo de LoyaltyClub.</p>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col font-sans selection:bg-[#dc2626] selection:text-white">
+    <div className="min-h-screen bg-[#fafafa] text-zinc-800 flex flex-col font-sans selection:bg-[#dc2626] selection:text-white">
       
       {/* ── CABECERA ── */}
-      <header className="sticky top-0 z-30 bg-zinc-900/90 backdrop-blur-md border-b border-zinc-800 px-4 py-3.5 flex items-center justify-between shadow-lg">
+      <header className="sticky top-0 z-30 bg-white border-b border-zinc-200 px-4 py-3.5 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-[#dc2626] rounded-xl flex items-center justify-center shadow-lg shadow-red-950/45 shrink-0">
+          <div className="w-9 h-9 bg-[#dc2626] rounded-xl flex items-center justify-center shadow-md shadow-red-500/10 shrink-0">
             <Bike className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="font-serif font-black text-sm text-white uppercase tracking-tight truncate max-w-[150px] sm:max-w-xs">
+            <h1 className="font-serif font-black text-sm text-[#09090b] uppercase tracking-tight truncate max-w-[150px] sm:max-w-xs">
               {business.nombre}
             </h1>
             <p className="text-[9px] font-mono text-zinc-500 uppercase tracking-widest mt-0.5">Ruta de Reparto</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 bg-zinc-950 border border-zinc-800 px-3 py-1.5 rounded-full shrink-0">
+        <div className="flex items-center gap-2 bg-[#fafafa] border border-zinc-200 px-3 py-1.5 rounded-full shrink-0">
           <span className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]' : 'bg-rose-500 animate-pulse'} inline-block`} />
-          <span className="text-[9px] font-mono font-bold text-zinc-400 uppercase tracking-wider">
+          <span className="text-[9px] font-mono font-bold text-zinc-650 uppercase tracking-wider">
             {connected ? 'En Línea' : 'Sincronizando'}
           </span>
         </div>
@@ -269,7 +269,7 @@ export default function BikerDashboardPage() {
           </h2>
 
           {miRuta.length === 0 ? (
-            <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-3xl p-6 text-center">
+            <div className="bg-zinc-100/40 border border-zinc-200 rounded-3xl p-6 text-center">
               <p className="text-xs text-zinc-500 font-mono">No tienes pedidos en camino actualmente.</p>
             </div>
           ) : (
@@ -278,7 +278,7 @@ export default function BikerDashboardPage() {
                 const cleanPhone = getCleanPhone(order.telefono_cliente)
                 const isCash = order.metodo_pago === 'efectivo'
                 return (
-                  <div key={order.id} className="bg-zinc-900 border-2 border-emerald-500 rounded-3xl p-5 shadow-2xl relative overflow-hidden space-y-4 animate-fadeIn">
+                  <div key={order.id} className="bg-white border-2 border-emerald-500 rounded-3xl p-5 shadow-md relative overflow-hidden space-y-4 animate-fadeIn">
                     
                     {order.delayed_minutes && order.delayed_minutes > 0 ? (
                       <div className="bg-rose-600 text-white border border-rose-500 rounded-2xl p-4 text-xs font-black flex items-center gap-2 animate-pulse uppercase tracking-wider text-center justify-center">
@@ -290,30 +290,30 @@ export default function BikerDashboardPage() {
                     {/* Alerta de ruta activa */}
                     <div className="flex justify-between items-start">
                       <div>
-                        <span className="text-[10px] font-mono font-black bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded-lg uppercase">
+                        <span className="text-[10px] font-mono font-black bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-lg uppercase">
                           #{order.id.slice(-4).toUpperCase()}
                         </span>
-                        <h3 className="font-black text-lg text-white mt-2 leading-tight">
+                        <h3 className="font-black text-lg text-[#09090b] mt-2 leading-tight">
                           {order.nombre_cliente}
                         </h3>
                       </div>
                       <div className="text-right">
                         <span className="text-[9px] font-mono text-zinc-500 block">Tomado a las</span>
-                        <span className="text-xs font-bold font-mono text-zinc-300">{formatTime(order.tengo_el_pedido_at || '')}</span>
+                        <span className="text-xs font-bold font-mono text-zinc-700">{formatTime(order.tengo_el_pedido_at || '')}</span>
                       </div>
                     </div>
 
                     {/* Dirección Gigante */}
-                    <div className="bg-zinc-950 border border-zinc-850 rounded-2xl p-4 space-y-2">
+                    <div className="bg-zinc-50 border border-zinc-200 rounded-2xl p-4 space-y-2">
                       <div className="flex items-start gap-2.5">
-                        <MapPin className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                        <MapPin className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
                         <div>
                           <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider leading-none">Dirección de Entrega</p>
-                          <p className="text-sm font-black text-white mt-1 leading-relaxed">
+                          <p className="text-sm font-black text-[#09090b] mt-1 leading-relaxed">
                             {order.calle} {order.numero}, {order.colonia}
                           </p>
                           {order.referencia && (
-                            <p className="text-xs text-amber-500 font-bold mt-1.5">
+                            <p className="text-xs text-amber-600 font-bold mt-1.5">
                               📍 Ref: {order.referencia}
                             </p>
                           )}
@@ -325,30 +325,30 @@ export default function BikerDashboardPage() {
                           href={`https://www.google.com/maps/dir/?api=1&destination=${order.lat_entrega},${order.lng_entrega}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="w-full flex items-center justify-center gap-1.5 bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 py-3.5 rounded-xl text-xs font-bold text-zinc-300 transition-colors mt-2"
+                          className="w-full flex items-center justify-center gap-1.5 bg-white hover:bg-zinc-50 border border-zinc-200 py-3.5 rounded-xl text-xs font-bold text-zinc-700 transition-colors mt-2"
                         >
-                          <Navigation className="w-4 h-4 text-emerald-400" />
+                          <Navigation className="w-4 h-4 text-emerald-600" />
                           Navegar con Google Maps
                         </a>
                       )}
                     </div>
 
                     {/* Cobro y Forma de Pago */}
-                    <div className="flex items-center justify-between bg-zinc-950 border border-zinc-850 rounded-2xl p-4 font-mono">
+                    <div className="flex items-center justify-between bg-zinc-50 border border-zinc-200 rounded-2xl p-4 font-mono">
                       <div>
                         <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Pago al Entregar</p>
-                        <p className={`text-xs font-bold mt-1 ${isCash ? 'text-amber-500' : 'text-zinc-400'}`}>
+                        <p className={`text-xs font-bold mt-1 ${isCash ? 'text-amber-600' : 'text-zinc-650'}`}>
                           {isCash ? '💵 EFECTIVO' : '💳 TRANSFERENCIA'}
                         </p>
                       </div>
                       <div className="text-right">
-                        <span className="text-2xl font-black text-white font-mono">${order.total}</span>
+                        <span className="text-2xl font-black text-[#09090b] font-mono">${order.total}</span>
                       </div>
                     </div>
 
                     {/* Notas del cliente */}
                     {order.notas && (
-                      <p className="text-xs text-zinc-400 bg-zinc-950/60 p-3 rounded-xl border border-zinc-850 leading-relaxed font-mono">
+                      <p className="text-xs text-zinc-650 bg-zinc-50 p-3 rounded-xl border border-zinc-200 leading-relaxed font-mono">
                         <strong>Comentarios:</strong> {order.notas}
                       </p>
                     )}
@@ -358,17 +358,17 @@ export default function BikerDashboardPage() {
                       <div className="grid grid-cols-2 gap-3">
                         <a
                           href={`tel:${cleanPhone}`}
-                          className="flex items-center justify-center gap-2 bg-zinc-950 border border-zinc-800 hover:bg-zinc-850 py-3.5 rounded-2xl text-xs font-black uppercase text-zinc-300 transition-all active:scale-95 cursor-pointer"
+                          className="flex items-center justify-center gap-2 bg-zinc-50 border border-zinc-200 hover:bg-zinc-100 py-3.5 rounded-2xl text-xs font-black uppercase text-zinc-700 transition-all active:scale-95 cursor-pointer"
                         >
-                          <Phone className="w-4 h-4 text-sky-400" /> Llamar
+                          <Phone className="w-4 h-4 text-sky-600" /> Llamar
                         </a>
                         <a
                           href={`https://wa.me/${cleanPhone}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center justify-center gap-2 bg-zinc-950 border border-zinc-800 hover:bg-zinc-850 py-3.5 rounded-2xl text-xs font-black uppercase text-zinc-300 transition-all active:scale-95 cursor-pointer"
+                          className="flex items-center justify-center gap-2 bg-zinc-50 border border-zinc-200 hover:bg-zinc-100 py-3.5 rounded-2xl text-xs font-black uppercase text-zinc-700 transition-all active:scale-95 cursor-pointer"
                         >
-                          <MessageSquare className="w-4 h-4 text-emerald-400" /> WhatsApp
+                          <MessageSquare className="w-4 h-4 text-emerald-600" /> WhatsApp
                         </a>
                       </div>
                     )}
@@ -377,7 +377,7 @@ export default function BikerDashboardPage() {
                     <button
                       onClick={() => handleEntregado(order.id)}
                       disabled={procesandoId === order.id}
-                      className="w-full bg-emerald-600 hover:bg-emerald-500 active:scale-95 disabled:opacity-50 text-white font-black text-sm uppercase py-5 rounded-2xl transition-all shadow-xl shadow-emerald-950/15 flex items-center justify-center gap-2 cursor-pointer select-none"
+                      className="w-full bg-emerald-600 hover:bg-emerald-500 active:scale-95 disabled:opacity-50 text-white font-black text-sm uppercase py-5 rounded-2xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer select-none"
                     >
                       {procesandoId === order.id ? (
                         <RefreshCw className="w-5 h-5 animate-spin" />
@@ -400,23 +400,23 @@ export default function BikerDashboardPage() {
           <h2 className="text-[10px] font-black uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
             <span>📥 Pedidos por Recoger</span>
             {pedidosPorRecoger.length > 0 && (
-              <span className="bg-zinc-900 text-zinc-400 border border-zinc-800 px-1.5 py-0.5 rounded text-[9px] font-mono">
+              <span className="bg-zinc-100 text-zinc-650 border border-zinc-200 px-1.5 py-0.5 rounded text-[9px] font-mono">
                 {pedidosPorRecoger.length}
               </span>
             )}
           </h2>
 
           {pedidosPorRecoger.length === 0 ? (
-            <div className="bg-zinc-900/20 border border-zinc-900 rounded-3xl p-8 text-center space-y-2">
-              <Clock className="w-8 h-8 text-zinc-800 mx-auto" />
-              <p className="text-xs text-zinc-600 font-mono">Sin pedidos pendientes de recolección.</p>
+            <div className="bg-zinc-100/20 border border-zinc-200 rounded-3xl p-8 text-center space-y-2">
+              <Clock className="w-8 h-8 text-zinc-400 mx-auto" />
+              <p className="text-xs text-zinc-500 font-mono">Sin pedidos pendientes de recolección.</p>
             </div>
           ) : (
             <div className="space-y-4">
               {pedidosPorRecoger.map(order => {
                 const elapsedMin = Math.floor((Date.now() - new Date(order.repartidor_solicitado_at || order.created_at).getTime()) / 60000)
                 return (
-                  <div key={order.id} className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-lg space-y-4 relative overflow-hidden animate-fadeIn">
+                  <div key={order.id} className="bg-white border border-zinc-200 rounded-3xl p-5 shadow-sm space-y-4 relative overflow-hidden animate-fadeIn">
                     
                     {order.delayed_minutes && order.delayed_minutes > 0 ? (
                       <div className="bg-rose-600 text-white border border-rose-500 rounded-2xl p-4 text-xs font-black flex items-center gap-2 animate-pulse uppercase tracking-wider text-center justify-center">
@@ -428,24 +428,24 @@ export default function BikerDashboardPage() {
                     {/* Alerta de Pedido Solicitado */}
                     <div className="flex justify-between items-start">
                       <div>
-                        <span className="text-[10px] font-mono font-bold bg-zinc-800 text-zinc-300 px-2 py-0.5 rounded-lg uppercase">
+                        <span className="text-[10px] font-mono font-bold bg-zinc-100 text-zinc-650 px-2 py-0.5 rounded-lg uppercase">
                           #{order.id.slice(-4).toUpperCase()}
                         </span>
-                        <h4 className="font-bold text-base text-zinc-200 mt-2 leading-tight">
+                        <h4 className="font-bold text-base text-[#09090b] mt-2 leading-tight">
                           {order.nombre_cliente}
                         </h4>
                       </div>
                       <div className="text-right">
                         <span className="text-[9px] font-mono text-zinc-500 block">Solicitado hace</span>
-                        <span className="text-xs font-black font-mono text-amber-500">{elapsedMin} min</span>
+                        <span className="text-xs font-black font-mono text-amber-600">{elapsedMin} min</span>
                       </div>
                     </div>
 
                     {/* Dirección resumida */}
-                    <div className="flex items-start gap-2 text-xs text-zinc-400 bg-zinc-950 p-3.5 rounded-xl border border-zinc-850">
-                      <MapPin className="w-4 h-4 text-zinc-500 shrink-0 mt-0.5" />
+                    <div className="flex items-start gap-2 text-xs text-zinc-650 bg-zinc-50 p-3.5 rounded-xl border border-zinc-200">
+                      <MapPin className="w-4 h-4 text-zinc-400 shrink-0 mt-0.5" />
                       <div>
-                        <p className="font-semibold text-zinc-300 leading-normal">{order.calle} {order.numero}, {order.colonia}</p>
+                        <p className="font-semibold text-zinc-700 leading-normal">{order.calle} {order.numero}, {order.colonia}</p>
                       </div>
                     </div>
 
@@ -453,7 +453,7 @@ export default function BikerDashboardPage() {
                     <button
                       onClick={() => handleTomarPedido(order.id)}
                       disabled={procesandoId === order.id || miRuta.length >= 3}
-                      className="w-full bg-blue-600 hover:bg-blue-500 active:scale-95 disabled:opacity-50 text-white font-black text-sm uppercase py-4.5 rounded-2xl transition-all shadow-lg shadow-blue-950/10 flex items-center justify-center gap-2 cursor-pointer select-none"
+                      className="w-full bg-blue-600 hover:bg-blue-500 active:scale-95 disabled:opacity-50 text-white font-black text-sm uppercase py-4.5 rounded-2xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer select-none"
                     >
                       {procesandoId === order.id ? (
                         <RefreshCw className="w-5 h-5 animate-spin" />

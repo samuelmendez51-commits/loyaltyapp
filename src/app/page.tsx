@@ -83,6 +83,9 @@ export default function LandingPage() {
     if (session.rol === 'admin_comercio') {
       return `${protocol}://${session.slug}.partners.${domain}/dashboard`
     }
+    if (session.rol === 'empleado' || session.rol === 'cajero') {
+      return `${protocol}://${session.slug}.partners.${domain}/escaner`
+    }
     return `${protocol}://${session.slug}.${domain}/cliente`
   }
 

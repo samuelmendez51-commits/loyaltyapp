@@ -103,8 +103,10 @@ export default function LoginPage() {
           return '/dashboard'
         } else {
           if (slug) {
-            const domain = host.includes('loyaltyclub.mx') ? 'loyaltyclub.mx' : 'localhost:3000'
-            return `https://${slug}.${domain}/dashboard`
+            const isProd = host.includes('loyaltyclub.mx')
+            const domain = isProd ? 'loyaltyclub.mx' : 'localhost:3000'
+            const protocol = isProd ? 'https' : 'http'
+            return `${protocol}://${slug}.partners.${domain}/dashboard`
           }
           return '/dashboard'
         }
@@ -115,8 +117,10 @@ export default function LoginPage() {
         return '/escaner'
       } else {
         if (slug) {
-          const domain = host.includes('loyaltyclub.mx') ? 'loyaltyclub.mx' : 'localhost:3000'
-          return `https://${slug}.${domain}/escaner`
+          const isProd = host.includes('loyaltyclub.mx')
+          const domain = isProd ? 'loyaltyclub.mx' : 'localhost:3000'
+          const protocol = isProd ? 'https' : 'http'
+          return `${protocol}://${slug}.partners.${domain}/escaner`
         }
         return '/escaner'
       }
@@ -407,15 +411,15 @@ export default function LoginPage() {
 
         {/* ── Logo y Branding ── */}
         <div className="text-center space-y-4">
-          <div className="w-[72px] h-[72px] mx-auto rounded-2xl overflow-hidden shadow-md border border-[#e4e4e7] bg-white flex items-center justify-center">
+          <div className="w-[72px] h-[72px] mx-auto rounded-2xl overflow-hidden shadow-md border border-[#e4e4e7] bg-gradient-to-tr from-amber-500 to-amber-600 flex items-center justify-center">
             {subdomainBranding?.logo ? (
               subdomainBranding.logo.startsWith('http') || subdomainBranding.logo.startsWith('/') ? (
-                <img src={subdomainBranding.logo} alt="" className="w-full h-full object-cover" />
+                <img src={subdomainBranding.logo} alt="" className="w-full h-full object-cover bg-white" />
               ) : (
                 <span className="text-3xl">{subdomainBranding.logo}</span>
               )
             ) : (
-              <img src="/logo.png" alt="LoyaltyClub" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display='none' }} />
+              <span className="text-white text-3xl font-black select-none">👑</span>
             )}
           </div>
           <div>

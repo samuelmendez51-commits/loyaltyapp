@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import { deleteBusinessAction, updateBusinessAction, toggleBloqueoAction, generarDemoAction } from '@/app/actions/superadmin'
 import { 
   LayoutDashboard, 
   Building2, 
@@ -401,32 +402,18 @@ export default function SuperAdminPage() {
   }
 
   const toggleBloqueo = async (b: Business) => {
-    const nuevoEstado = !b.bloqueado_manual
-    await supabase.from('businesses')
-      .update({ bloqueado_manual: nuevoEstado, estado: nuevoEstado ? 'bloqueado' : 'activo' })
-      .eq('id', b.id)
+    const res = await toggleBloqueoAction(b.id, b.bloqueado_manual)
+    if (!res.success) {
+      alert('Error al cambiar bloqueo: ' + res.error)
+    }
     cargar()
   }
 
   const generarDemo = async (b: Business) => {
-    const fin = new Date()
-    fin.setDate(fin.getDate() + (diasDemo || 30))
-    await supabase.from('businesses').update({
-      estado: 'demo',
-      es_demo: true,
-      fecha_vencimiento: fin.toISOString(),
-      bloqueado_manual: false,
-    }).eq('id', b.id)
-    
-    await supabase.from('credit_transactions').insert({
-      business_id: b.id,
-      tipo: 'demo',
-      creditos: 1,
-      meses: 1,
-      monto_mxn: 0,
-      notas: 'Demo 30 días activado desde SuperAdmin',
-      creado_por: 'superadmin'
-    })
+    const res = await generarDemoAction(b.id, diasDemo)
+    if (!res.success) {
+      alert('Error al activar demo: ' + res.error)
+    }
     cargar()
   }
 
@@ -768,7 +755,7 @@ export default function SuperAdminPage() {
                     <div className="w-8 h-8 border-2 border-zinc-200 border-t-[#dc2626] rounded-full animate-spin" />
                   </div>
                 ) : (
-                  <div className="overflow-visible pb-24 min-h-[350px]">
+                  <div className="overflow-x-auto pb-24 min-h-[350px]">
                     <table className="w-full text-xs">
                       <thead className="bg-[#fafafa] border-b border-[#e4e4e7]">
                         <tr>
@@ -1365,44 +1352,27 @@ function EditarBusinessModal({
     setCargando(true)
     
     try {
-      // 1. Actualizar negocio
-      const { error } = await supabase
-        .from('businesses')
-        .update({
-          nombre,
-          slug: slug.trim().toLowerCase().replace(/[^a-z0-9-]/g, ''),
-          owner_name: ownerName,
-          owner_email: ownerEmail.trim().toLowerCase(),
-          plan,
-          estado,
-          es_demo: esDemo,
-          fecha_vencimiento: planVitalicio ? null : (fechaVencimiento ? new Date(fechaVencimiento).toISOString() : null),
-          creditos_totales: Number(creditosTotales),
-          creditos_usados: Number(creditosUsados),
-          plan_vitalicio: planVitalicio,
-          portal_cliente_enabled: portalClienteEnabled,
-          terminal_cocina_enabled: terminalCocinaEnabled,
-          logistica_bikers_enabled: logisticaBikersEnabled,
-          ruleta_vip_enabled: ruletaVipEnabled
-        })
-        .eq('id', business.id)
-
-      if (error) throw error
-
-      // 2. Si se ingresó/modificó el PIN/Contraseña, actualizarla en business_users del dueño
-      if (nuevoPin.trim()) {
-        const { error: pinError } = await supabase
-          .from('business_users')
-          .update({ 
-            pin: nuevoPin.trim(),
-            email: ownerEmail.trim().toLowerCase(),
-            nombre: ownerName.trim()
-          })
-          .eq('business_id', business.id)
-          .eq('rol', 'admin_comercio')
-        
-        if (pinError) throw pinError
+      const slugFormateado = slug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '')
+      const fields = {
+        nombre,
+        slug: slugFormateado,
+        owner_name: ownerName,
+        owner_email: ownerEmail.trim().toLowerCase(),
+        plan,
+        estado,
+        es_demo: esDemo,
+        fecha_vencimiento: planVitalicio ? null : (fechaVencimiento ? new Date(fechaVencimiento).toISOString() : null),
+        creditos_totales: Number(creditosTotales),
+        creditos_usados: Number(creditosUsados),
+        plan_vitalicio: planVitalicio,
+        portal_cliente_enabled: portalClienteEnabled,
+        terminal_cocina_enabled: terminalCocinaEnabled,
+        logistica_bikers_enabled: logisticaBikersEnabled,
+        ruleta_vip_enabled: ruletaVipEnabled
       }
+
+      const res = await updateBusinessAction(business.id, fields, nuevoPin)
+      if (!res.success) throw new Error(res.error)
 
       alert('✅ Negocio y Credenciales actualizados con éxito absoluto')
       onSuccess()
@@ -1427,31 +1397,11 @@ function EditarBusinessModal({
     }
     setCargando(true)
     try {
-      // 1. Limpiar audit_logs
-      await supabase.from('audit_logs').delete().eq('business_id', business.id)
-      // 2. Limpiar tracking_events
-      await supabase.from('tracking_events').delete().eq('business_id', business.id)
-      // 3. Limpiar credit_transactions
-      await supabase.from('credit_transactions').delete().eq('business_id', business.id)
-      // 4. Limpiar orders
-      await supabase.from('orders').delete().eq('business_id', business.id)
-      // 5. Limpiar historial_puntos
-      await supabase.from('historial_puntos').delete().eq('business_id', business.id)
-      // 6. Limpiar clientes
-      await supabase.from('clientes').delete().eq('business_id', business.id)
-      // 7. Limpiar programas_fidelidad
-      await supabase.from('programas_fidelidad').delete().eq('business_id', business.id)
-      // 8. Limpiar ruletas
-      await supabase.from('ruletas').delete().eq('business_id', business.id)
+      const res = await deleteBusinessAction(business.id)
+      if (!res.success) throw new Error(res.error)
 
-      // Finalmente, eliminar negocio
-      const { error } = await supabase.from('businesses').delete().eq('id', business.id)
-      if (error) {
-        throw error
-      } else {
-        alert('🗑️ Negocio eliminado con éxito')
-        onSuccess()
-      }
+      alert('🗑️ Negocio eliminado con éxito')
+      onSuccess()
     } catch (err: any) {
       alert('Error al eliminar el negocio: ' + err.message)
     } finally {

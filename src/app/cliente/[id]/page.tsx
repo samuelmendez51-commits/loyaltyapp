@@ -337,6 +337,102 @@ function RuletaVIP({
   )
 }
 
+function StepperSeguimiento({ activeOrder }: { activeOrder: any }) {
+  const req = Array.isArray(activeOrder.delivery_requests)
+    ? activeOrder.delivery_requests[0]
+    : activeOrder.delivery_requests
+  const bikerName = req?.bikers?.nombre
+
+  // Determinar índice activo (0, 1, 2, 3)
+  let activeIndex = 0
+  const estado = activeOrder.estado
+  const delStatus = activeOrder.delivery_status
+  const reqEstado = req?.estado
+
+  if (delStatus === 'DELIVERED' || estado === 'entregado') {
+    activeIndex = 3
+  } else if (delStatus === 'SHIPPED_IMMEDIATE' || estado === 'en_camino' || ['aceptado', 'en_camino'].includes(reqEstado)) {
+    activeIndex = 2
+  } else if (estado === 'aprobado' || estado === 'preparacion' || estado === 'listo' || delStatus === 'SHIPPED_SCHEDULED') {
+    activeIndex = 1
+  }
+
+  const pasos = [
+    { label: 'Recibido / Pendiente', desc: 'Pedido registrado en el sistema VIP.', icon: Clock },
+    { label: 'En Cocina', desc: 'Preparando y cocinando tus alimentos.', icon: UtensilsCrossed },
+    { 
+      label: 'En Reparto', 
+      desc: bikerName 
+        ? `La moto va en camino. Repartidor asignado: ${bikerName}.` 
+        : 'Tu pedido está listo y buscando repartidor.', 
+      icon: Truck 
+    },
+    { label: 'Entregado', desc: '¡Servicio finalizado! Que disfrutes tu comida.', icon: Check }
+  ]
+
+  return (
+    <div className="bg-white border border-[#f0f0f0] rounded-3xl p-6 shadow-[0_4px_24px_rgba(0,0,0,0.06)] space-y-6 text-[#09090b]">
+      <div className="flex justify-between items-center border-b border-[#f4f4f5] pb-3.5">
+        <div>
+          <h3 className="text-sm font-black tracking-tight uppercase">Rastreo de Pedido</h3>
+          <p className="text-[10px] text-[#71717a] font-mono mt-0.5">ID: #{activeOrder.id.slice(-6).toUpperCase()}</p>
+        </div>
+        <span className="text-[10px] font-bold bg-[#fafafa] border border-[#e4e4e7] px-2.5 py-1 rounded-full text-zinc-650">
+          En Tiempo Real
+        </span>
+      </div>
+
+      <div className="relative pl-6 space-y-8">
+        {/* Línea conectora de fondo */}
+        <div className="absolute left-[13px] top-2 bottom-2 w-[3px] bg-zinc-100" />
+        {/* Línea conectora activa */}
+        <div 
+          className="absolute left-[13px] top-2 w-[3px] bg-amber-500 transition-all duration-500"
+          style={{ height: `${(activeIndex / 3) * 100}%`, maxHeight: 'calc(100% - 16px)' }}
+        />
+
+        {pasos.map((paso, idx) => {
+          const Icon = paso.icon
+          const completado = idx < activeIndex
+          const activo = idx === activeIndex
+          const pendiente = idx > activeIndex
+
+          return (
+            <div key={idx} className="flex gap-4 relative animate-fadeIn">
+              {/* Círculo indicador */}
+              <div 
+                className={`w-7 h-7 rounded-full flex items-center justify-center text-xs border-2 z-10 transition-all duration-300 ${
+                  completado 
+                    ? 'bg-amber-500 border-amber-500 text-white' 
+                    : activo 
+                    ? 'bg-white border-amber-500 text-amber-600 scale-110 shadow-md ring-4 ring-amber-100' 
+                    : 'bg-white border-zinc-200 text-zinc-400'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+              </div>
+
+              {/* Contenido textual */}
+              <div className="flex-1 min-w-0">
+                <h4 className={`text-xs font-black tracking-tight transition-colors ${
+                  activo ? 'text-amber-600' : completado ? 'text-zinc-800' : 'text-zinc-400'
+                }`}>
+                  {paso.label}
+                </h4>
+                <p className={`text-[10px] mt-0.5 leading-normal transition-colors ${
+                  activo ? 'text-zinc-700 font-medium' : completado ? 'text-zinc-500' : 'text-zinc-400'
+                }`}>
+                  {paso.desc}
+                </p>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ── Componente Principal ───────────────────────────────────────────────────────
 export default function TarjetaLealtadFinal() {
   const { id } = useParams()
@@ -512,6 +608,21 @@ export default function TarjetaLealtadFinal() {
     }
   }, [mapaCargado, pasoMenu, tipoMenu, business])
 
+  const cargarPedidoDetalles = useCallback(async (oId: string) => {
+    try {
+      const { data: ord } = await supabase
+        .from('orders')
+        .select('*, delivery_requests(*, bikers(nombre, telefono))')
+        .eq('id', oId)
+        .maybeSingle()
+      if (ord) {
+        setActiveOrder(ord)
+      }
+    } catch (err) {
+      console.warn('Error al cargar detalles del pedido:', err)
+    }
+  }, [])
+
   useEffect(() => {
     if (!cliente?.id) return
 
@@ -527,11 +638,25 @@ export default function TarjetaLealtadFinal() {
         },
         (payload) => {
           const ord = payload.new as any
-          if (ord && ord.tipo === 'delivery' && ['SHIPPED_SCHEDULED', 'SHIPPED_IMMEDIATE', 'DELIVERED', 'CANCELLED'].includes(ord.delivery_status)) {
+          if (ord && ord.tipo === 'delivery') {
             const dosHorasAtras = new Date(Date.now() - 2 * 60 * 60 * 1000)
             if (new Date(ord.created_at) > dosHorasAtras) {
-              setActiveOrder(ord)
+              cargarPedidoDetalles(ord.id)
             }
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'delivery_requests'
+        },
+        (payload) => {
+          const req = payload.new as any
+          if (req && activeOrder && req.order_id === activeOrder.id) {
+            cargarPedidoDetalles(activeOrder.id)
           }
         }
       )
@@ -540,7 +665,7 @@ export default function TarjetaLealtadFinal() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [cliente?.id])
+  }, [cliente?.id, activeOrder?.id, cargarPedidoDetalles])
 
   useEffect(() => {
     const cargarDatos = async () => {
@@ -558,15 +683,14 @@ export default function TarjetaLealtadFinal() {
       if (clienteData) {
         setCliente(clienteData)
         
-        // Cargar pedido activo de delivery (creado en las últimas 2 horas con estado de pre-despacho)
+        // Cargar pedido activo de delivery (creado en las últimas 2 horas)
         try {
           const dosHorasAtras = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
           const { data: ord } = await supabase
             .from('orders')
-            .select('*')
+            .select('*, delivery_requests(*, bikers(nombre, telefono))')
             .eq('cliente_id', clienteData.id)
             .eq('tipo', 'delivery')
-            .in('delivery_status', ['SHIPPED_SCHEDULED', 'SHIPPED_IMMEDIATE'])
             .gt('created_at', dosHorasAtras)
             .order('created_at', { ascending: false })
             .limit(1)
@@ -854,6 +978,12 @@ export default function TarjetaLealtadFinal() {
 
   // La ruleta solo se activa si tiene la estructura y cumple el monto mínimo de su última compra
   const tieneRuletaActiva = tieneEstructuraRuleta && cumpleMontoMinimoRuleta
+
+  useEffect(() => {
+    if (tieneRuletaActiva) {
+      setMostrarRuleta(true)
+    }
+  }, [tieneRuletaActiva])
 
   // ── Funciones del Carrito e Interacción del Menú ──
   const ejecutarAutocompletado = async () => {
@@ -1524,7 +1654,7 @@ _Pedido procesado a través de LoyaltyClub VIP_`
 
             {/* QR / Acción principal */}
             <div className="px-6 pb-6 flex flex-col items-center gap-4">
-              {tarjetaCompleta ? (
+              {tieneRuletaActiva ? (
                 <button
                   onClick={() => setMostrarRuleta(true)}
                   className="btn-primary w-full py-4 text-base animate-bounce flex items-center justify-center gap-2"
@@ -1532,6 +1662,27 @@ _Pedido procesado a través de LoyaltyClub VIP_`
                   <Gift className="w-5 h-5" />
                   ¡Girar Ruleta de Premios!
                 </button>
+              ) : tieneEstructuraRuleta && !cumpleMontoMinimoRuleta ? (
+                <div className="w-full bg-[#fefcbf] border-2 border-[#ecc94b] rounded-2xl p-5 text-center space-y-3 shadow-sm animate-fadeIn">
+                  <div className="w-12 h-12 rounded-full bg-[#fef08a] flex items-center justify-center mx-auto text-[#a16207]">
+                    <Lock className="w-6 h-6 animate-pulse" />
+                  </div>
+                  <div>
+                    <p className="font-extrabold text-[#854d0e] text-sm flex items-center justify-center gap-1.5">
+                      <span>🔒 Ruleta VIP Bloqueada</span>
+                    </p>
+                    <p className="text-[11px] text-[#a16207] mt-1.5 leading-relaxed">
+                      {ultimoPedidoTotal < minRuletaTicket ? `Ruleta VIP bloqueada. Realiza una compra mayor a $${minRuletaTicket} para ganar sellos y desbloquear premios. ¡A veces el camino también incluye recompensas! Descubre qué premio obtienes al girar la ruleta` : `¡Felicidades! Alcanzaste los sellos necesarios. Esta ruleta requiere una compra mínima de $${minRuletaTicket} MXN para activarse.`}
+                    </p>
+                    <div className="mt-3 py-2 px-3 bg-white/70 border border-[#fef08a] rounded-xl text-[10px] inline-block">
+                      <span className="text-[#854d0e]">Tu última compra registrada: </span>
+                      <span className="font-bold text-red-650">${ultimoPedidoTotal} MXN</span>
+                    </div>
+                    <p className="text-[9px] text-[#b45309] mt-2 italic">
+                      Realiza un pedido desde el menú o en caja que iguale o supere este monto.
+                    </p>
+                  </div>
+                </div>
               ) : activeCoupon ? (
                 <div className="flex flex-col items-center gap-3 w-full">
                   <div className="p-3 bg-white border-2 border-[#dc2626] rounded-2xl shadow-sm">
@@ -1659,7 +1810,7 @@ _Pedido procesado a través de LoyaltyClub VIP_`
 
               {/* Selector de Categorías en Pills */}
               {grupos.length > 0 && (
-                <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory">
+                <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory">
                   {grupos.map(g => (
                     <button
                       key={g.id}
@@ -1756,17 +1907,39 @@ _Pedido procesado a través de LoyaltyClub VIP_`
               {/* Floating Bottom Cart Bar */}
               {cantidadTotal > 0 && (
                 <div className="fixed bottom-20 left-0 right-0 px-4 z-40 animate-slideUp">
-                  <div className="max-w-sm mx-auto bg-[#09090b] text-white rounded-3xl p-4 shadow-[0_8px_30px_rgba(0,0,0,0.15)] border border-[#27272a] flex justify-between items-center gap-4">
-                    <div className="min-w-0">
-                      <p className="text-[9px] text-white/50 uppercase tracking-widest font-black">Mi Orden VIP</p>
-                      <p className="font-extrabold text-sm">{cantidadTotal} {cantidadTotal === 1 ? 'producto' : 'productos'} · <span className="font-mono text-red-400">${totalCarrito.toLocaleString()} MXN</span></p>
+                  <div className="max-w-sm mx-auto bg-[#09090b] text-white rounded-3xl p-4 shadow-[0_8px_30px_rgba(0,0,0,0.15)] border border-[#27272a] flex flex-col gap-3">
+                    <div className="flex justify-between items-center gap-4">
+                      <div className="min-w-0">
+                        <p className="text-[9px] text-white/50 uppercase tracking-widest font-black">Mi Orden VIP</p>
+                        <p className="font-extrabold text-sm">{cantidadTotal} {cantidadTotal === 1 ? 'producto' : 'productos'} · <span className="font-mono text-red-400">${totalCarrito.toLocaleString()} MXN</span></p>
+                      </div>
+                      <button
+                        onClick={() => setPasoMenu('checkout')}
+                        className="bg-[#dc2626] hover:bg-[#b91c1c] text-white font-black text-xs uppercase tracking-widest py-3 px-5 rounded-2xl transition-all flex items-center gap-1.5 shrink-0 shadow-md active:scale-95"
+                      >
+                        <span>Ver Carrito 🛒</span>
+                      </button>
                     </div>
-                    <button
-                      onClick={() => setPasoMenu('checkout')}
-                      className="bg-[#dc2626] hover:bg-[#b91c1c] text-white font-black text-xs uppercase tracking-widest py-3 px-5 rounded-2xl transition-all flex items-center gap-1.5 shrink-0 shadow-md active:scale-95"
-                    >
-                      <span>Ver Carrito 🛒</span>
-                    </button>
+
+                    {/* Golden Progress Bar */}
+                    {Number(business?.monto_minimo_sello || 0) > 0 && (
+                      <div className="border-t border-[#27272a] pt-2 space-y-1">
+                        <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-wider text-amber-500">
+                          {totalCarrito >= Number(business.monto_minimo_sello) ? (
+                            <span>✨ ¡Pedido calificado para Sello!</span>
+                          ) : (
+                            <span>Faltan ${Math.max(Number(business.monto_minimo_sello) - totalCarrito, 0).toLocaleString()} MXN para tu sello</span>
+                          )}
+                          <span>{Math.round(Math.min((totalCarrito / Number(business.monto_minimo_sello)) * 100, 100))}%</span>
+                        </div>
+                        <div className="w-full h-1.5 bg-zinc-900 rounded-full overflow-hidden border border-[#27272a]">
+                          <div 
+                            className="h-full bg-gradient-to-r from-amber-400 via-yellow-500 to-amber-600 transition-all duration-300"
+                            style={{ width: `${Math.min((totalCarrito / Number(business.monto_minimo_sello)) * 100, 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -1819,14 +1992,33 @@ _Pedido procesado a través de LoyaltyClub VIP_`
                   <span className="text-[#dc2626] text-base">${totalCarrito.toLocaleString()} MXN</span>
                 </div>
                 
-                {totalCarrito >= (business?.monto_minimo_sello || 0) ? (
-                  <p className="text-green-700 text-[10px] font-bold text-center bg-green-50 border border-green-200 rounded-xl py-2">
-                    ⭐ ¡Felicidades! Este pedido califica para recibir un sello VIP.
-                  </p>
-                ) : (
-                  <p className="text-[#71717a] text-[9px] font-medium text-center bg-[#f4f4f5] rounded-xl py-2">
-                    Agrega ${((business?.monto_minimo_sello || 0) - totalCarrito).toLocaleString()} MXN más para ganar un sello.
-                  </p>
+                {/* Golden Progress Bar in Checkout */}
+                {Number(business?.monto_minimo_sello || 0) > 0 && (
+                  <div className="space-y-1.5 bg-amber-50/30 border border-amber-200 rounded-2xl p-3.5 shadow-sm">
+                    <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-wider text-amber-750">
+                      {totalCarrito >= Number(business.monto_minimo_sello) ? (
+                        <span>✨ ¡Pedido calificado para Sello VIP!</span>
+                      ) : (
+                        <span>Faltan ${Math.max(Number(business.monto_minimo_sello) - totalCarrito, 0).toLocaleString()} MXN para el sello</span>
+                      )}
+                      <span>{Math.round(Math.min((totalCarrito / Number(business.monto_minimo_sello)) * 100, 100))}%</span>
+                    </div>
+                    <div className="w-full h-2 bg-white rounded-full overflow-hidden border border-amber-200">
+                      <div 
+                        className="h-full bg-gradient-to-r from-amber-400 via-yellow-500 to-amber-600 transition-all duration-300"
+                        style={{ width: `${Math.min((totalCarrito / Number(business.monto_minimo_sello)) * 100, 100)}%` }}
+                      />
+                    </div>
+                    {totalCarrito >= Number(business.monto_minimo_sello) ? (
+                      <p className="text-[9px] text-green-700 font-bold text-center">
+                        ⭐ Este pedido cumple con el monto mínimo. Recibirás tu sello automáticamente al entregarse.
+                      </p>
+                    ) : (
+                      <p className="text-[9px] text-[#71717a] font-medium text-center">
+                        Agrega ${Math.max(Number(business.monto_minimo_sello) - totalCarrito, 0).toLocaleString()} MXN más para calificar para el sello VIP.
+                      </p>
+                    )}
+                  </div>
                 )}
               </div>
               
@@ -1969,31 +2161,40 @@ _Pedido procesado a través de LoyaltyClub VIP_`
 
       {/* ── Vista: Hacer Pedido ── */}
       {vistaActiva === 'pedido' && (
-        <div className="max-w-sm mx-auto pt-8 px-4 animate-fadeIn">
-          <h2 className="text-xl font-bold text-[#09090b] mb-6">Hacer un Pedido</h2>
-          {business?.telefono_whatsapp ? (
-            <div className="space-y-4">
-              <div className="bg-white border border-[#e4e4e7] rounded-2xl p-5 shadow-sm">
-                <p className="text-sm text-[#71717a] mb-4">Haz tu pedido directamente por WhatsApp con el negocio.</p>
-                <a
-                  href={`https://wa.me/${'52' + (business.telefono_whatsapp || '').replace(/\D/g, '').slice(-10)}?text=${encodeURIComponent(`Hola! Soy ${cliente.nombre} (Socio VIP ID: ${cliente.id.substring(0, 8)}) y quiero hacer un pedido.`)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn-primary w-full py-3.5 text-sm flex items-center justify-center gap-2"
-                  style={{ backgroundColor: '#25D366', boxShadow: '0 2px 12px rgba(37,211,102,0.3)' }}
-                >
-                  <svg viewBox="0 0 24 24" className="w-5 h-5 fill-current text-white">
-                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-                  </svg>
-                  Pedir por WhatsApp
-                </a>
-              </div>
-            </div>
+        <div className="max-w-sm mx-auto pt-8 px-4 animate-fadeIn space-y-5 text-[#09090b]">
+          {activeOrder ? (
+            <StepperSeguimiento activeOrder={activeOrder} />
           ) : (
-            <div className="bg-white rounded-2xl p-8 text-center border border-[#e4e4e7] shadow-sm">
-              <p className="text-4xl mb-3">📲</p>
-              <p className="font-bold text-[#09090b]">Pedidos No Configurados</p>
-              <p className="text-xs text-[#71717a] mt-1">El negocio aún no ha configurado el canal de pedidos.</p>
+            <div className="bg-white border border-[#f0f0f0] rounded-3xl p-8 shadow-[0_4px_24px_rgba(0,0,0,0.08)] text-center space-y-5 animate-fadeIn">
+              <div className="text-4xl">🛵</div>
+              <div className="space-y-1">
+                <h3 className="text-base font-bold text-[#09090b]">Sin Pedidos Activos</h3>
+                <p className="text-xs text-[#71717a] leading-relaxed">
+                  No tienes pedidos activos en este momento. ¡Ve al menú y estrena tu tarjeta de puntos!
+                </p>
+              </div>
+              <button
+                onClick={() => setVistaActiva('menu')}
+                className="w-full bg-[#09090b] hover:bg-zinc-800 text-white font-black py-3.5 rounded-xl text-xs uppercase tracking-widest transition-all active:scale-95 shadow-sm"
+              >
+                Ver Menú Digital
+              </button>
+            </div>
+          )}
+
+          {/* También mostrar la opción de pedir por WhatsApp si no hay pedido activo */}
+          {!activeOrder && business?.telefono_whatsapp && (
+            <div className="bg-white border border-[#e4e4e7] rounded-3xl p-5 shadow-sm text-center space-y-3">
+              <p className="text-xs font-semibold text-[#71717a]">¿Quieres realizar un nuevo pedido?</p>
+              <a
+                href={`https://wa.me/${'52' + (business.telefono_whatsapp || '').replace(/\D/g, '').slice(-10)}?text=${encodeURIComponent(`Hola! Soy ${cliente?.nombre || ''} (Socio VIP ID: ${cliente?.id?.substring(0, 8) || ''}) y quiero hacer un pedido.`)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-primary w-full py-3.5 text-xs flex items-center justify-center gap-2 font-bold"
+                style={{ backgroundColor: '#25D366', boxShadow: '0 2px 12px rgba(37,211,102,0.2)' }}
+              >
+                Pedir por WhatsApp
+              </a>
             </div>
           )}
         </div>

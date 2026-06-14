@@ -221,3 +221,12 @@
 
 .animate-fadeIn { animation: fadeIn 0.2s ease forwards; }
 .animate-slideUp { animation: slideUp 0.3s ease forwards; }
+
+/* Utility to hide scrollbars on scrollable category pill selectors */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none !important;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none !important;  /* IE and Edge */
+  scrollbar-width: none !important;  /* Firefox */
+}
